@@ -15,15 +15,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. 配置 Java 环境（匹配你的 Gradle 8.5 版本）
+      # 2. 配置 Java 环境
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      # 3. 显式配置 Android SDK 和 NDK 环境
-      # Android Gradle 插件会自动根据你的 build.gradle 配置去下载 CMake 和 NDK
+      # 3. 配置 Android SDK 环境
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -32,27 +31,27 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          # 这里不需要死锁版本，默认会拉取最新的稳定版 Flutter SDK
 
-      # 5. 获取 Flutter 项目依赖的插件（ffi, shared_preferences 等）
+      # 5. 进入子文件夹获取依赖
       - name: Install dependencies
         run: flutter pub get
+        working-directory: esurfing_flutter # 👈 强行指定进入该文件夹执行
 
-      # 6. 执行分架构 Release APK 编译
-      # 这一步会激活 CMakeFetchContent 去线上拉取 curl，并开始交叉编译 4 种架构的 .so 并打包
+      # 6. 进入子文件夹执行分架构 Release APK 编译
       - name: Build Split Release APKs
         run: flutter build apk --release --split-per-abi
+        working-directory: esurfing_flutter # 👈 强行指定进入该文件夹执行
 
-      # 7. 收集并上传编译出的 arm64-v8a 手机安装包（绝大多数现代安卓手机都用这个）
+      # 7. 收集并上传编译出的 arm64-v8a 安装包（注意路径前面加上了子文件夹名）
       - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
         with:
           name: surfing-client-arm64
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          path: esurfing_flutter/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
 
-      # 8. 收集并上传 armeabi-v7a 安装包（老旧或低端安卓手机使用）
+      # 8. 收集并上传 armeabi-v7a 安装包
       - name: Upload arm32 APK
         uses: actions/upload-artifact@v4
         with:
           name: surfing-client-armv7
-          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          path: esurfing_flutter/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
