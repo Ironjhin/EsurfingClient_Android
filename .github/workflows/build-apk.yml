@@ -30,14 +30,34 @@ jobs:
         with:
           channel: 'stable'
 
-      # 利用线上 Linux 虚拟环境的 Flutter 引擎强行修复并补齐所有缺失的原生构建桩文件
-      - name: Auto Repair Gradle Wrapper
-        run: flutter create --platforms=android .
+      # 核心步骤：生成基础外壳后，立即强行注入全套正确配置，锁死所有变量
+      - name: Auto Repair and Force Inject Configs
+        run: |
+          # 1. 让 Flutter 生成缺失的 gradlew 和引导层
+          flutter create --platforms=android .
+          
+          # 2. 强行重写并锁死 gradle-wrapper.properties，确保 distributionUrl 绝对存在
+          mkdir -p android/gradle/wrapper
+          cat << 'EOF' > android/gradle/wrapper/gradle-wrapper.properties
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-all.zip
+          EOF
+
+          # 3. 强行重写并锁死 gradle.properties，确保彻底关闭 Jetifier 并阻止 AGP 9 报错
+          cat << 'EOF' > android/gradle.properties
+          org.gradle.jvmargs=-Xmx4G
+          android.useAndroidX=true
+          android.enableJetifier=false
+          android.newDsl=false
+          EOF
 
       - name: Install dependencies
         run: flutter pub get
 
-      # 方案 A：移除 --split-per-abi，生成包含全架构的通用安装包，避开 ABI 冲突
+      # 执行全架构通用包编译
       - name: Build Universal Release APK
         run: flutter build apk --release --android-skip-build-dependency-validation
 
