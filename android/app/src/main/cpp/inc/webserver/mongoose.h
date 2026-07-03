@@ -618,7 +618,7 @@ typedef enum { false = 0, true = 1 } bool;
 #endif
 #endif
 
-#include <process.h>
+#ifdef _WIN32`n#include <process.h>`n#endif
 #include <winerror.h>
 
 // For mg_random()
