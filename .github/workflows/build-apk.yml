@@ -38,7 +38,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Split Release APKs
-        run: flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
 
       - name: Upload arm64 APK
         uses: actions/upload-artifact@v4
