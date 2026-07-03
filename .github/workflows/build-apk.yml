@@ -1,4 +1,4 @@
-name: Flutter Multi-Arch APK Build
+name: Flutter Universal APK Build
 
 on:
   push:
@@ -37,17 +37,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build Split Release APKs
-        run: flutter build apk --release --split-per-abi --android-skip-build-dependency-validation
+      # 方案 A：移除 --split-per-abi，生成包含全架构的通用安装包，避开 ABI 冲突
+      - name: Build Universal Release APK
+        run: flutter build apk --release --android-skip-build-dependency-validation
 
-      - name: Upload arm64 APK
+      # 归档通用 APK 产物
+      - name: Upload Universal APK
         uses: actions/upload-artifact@v4
         with:
-          name: surfing-client-arm64
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-
-      - name: Upload arm32 APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: surfing-client-armv7
-          path: build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          name: surfing-client-universal
+          path: build/app/outputs/flutter-apk/app-release.apk
