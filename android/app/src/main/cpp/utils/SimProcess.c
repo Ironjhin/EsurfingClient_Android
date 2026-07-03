@@ -1,12 +1,12 @@
 #include "utils/SimProcess.h"
 
-#include <process.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "utils/PlatformUtils.h"
 
 #ifdef _WIN32
+#include <process.h>
 #include <windows.h>
 #else
 #include <unistd.h>
