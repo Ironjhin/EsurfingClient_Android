@@ -9,6 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef PROGRAM_FULL_VERSION
+#define PROGRAM_FULL_VERSION "1.0.0"
+#endif
+
 #ifndef __OPENWRT__
 extern bool start_web_server();
 #endif
