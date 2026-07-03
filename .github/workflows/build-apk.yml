@@ -30,6 +30,10 @@ jobs:
         with:
           channel: 'stable'
 
+      # 利用线上 Linux 虚拟环境的 Flutter 引擎强行修复并补齐所有缺失的原生构建桩文件
+      - name: Auto Repair Gradle Wrapper
+        run: flutter create --platforms=android .
+
       - name: Install dependencies
         run: flutter pub get
 
