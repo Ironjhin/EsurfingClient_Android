@@ -75,7 +75,7 @@ class AuthController {
   /// ================================================================
   ///  启动认证 Isolate
   /// ================================================================
-  Future<bool> start() async {
+  Future<bool> start({int accountCount = 1}) async {
     if (_initialized == false) return false;
     if (_running) return true;
 
