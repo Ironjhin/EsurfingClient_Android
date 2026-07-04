@@ -93,8 +93,8 @@ class AuthController {
       // 等待 worker 发回确认
       _workerSendPort = await _mainReceivePort!.first as SendPort;
 
-      // 通知 worker 开始
-      _workerSendPort!.send(_StartCommand());
+      // 通知 worker 开始认证
+      _workerSendPort!.send(_StartCommand(accountCount));
       _running = true;
       onStatusChanged?.call(true, 'Running — authentication active');
       return true;
@@ -154,22 +154,36 @@ class AuthController {
   }
 
   /// ================================================================
-  ///  Isolate 入口 — 仅用作信号宿主
+  ///  Isolate 入口 — 在此调用 FFI 启动 C 层认证线程
   /// ================================================================
   static void _workerEntryPoint(SendPort mainSendPort) {
     final receivePort = ReceivePort();
     mainSendPort.send(receivePort.sendPort);
 
     receivePort.listen((message) {
-      if (message is _StopCommand) {
+      if (message is _StartCommand) {
+        print('==== [DART LOG] ENTERING FFI CALL ====');
+        final bindings = NativeBindings.instance;
+        if (bindings.isLoaded) {
+          for (int i = 0; i < message.accountCount; i++) {
+            print('==== [DART LOG] Calling esurfingClientStart(idx=$i) ====');
+            final res = bindings.esurfingClientStart(i);
+            print('==== [DART LOG] EXITING FFI CALL, RETURN: $res (idx=$i) ====');
+          }
+        } else {
+          print('==== [DART LOG] NativeBindings NOT LOADED ====');
+        }
+      } else if (message is _StopCommand) {
         receivePort.close();
         Isolate.exit();
       }
-      // _StartCommand: 什么都不做，C 层已经在跑了
     });
   }
 }
 
 /// Isolate 内部消息
-class _StartCommand {}
+class _StartCommand {
+  final int accountCount;
+  _StartCommand(this.accountCount);
+}
 class _StopCommand {}

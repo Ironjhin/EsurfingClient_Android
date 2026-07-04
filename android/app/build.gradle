@@ -22,8 +22,8 @@ android {
         applicationId = "com.example.esurfing_client"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
 
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
@@ -39,9 +39,18 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            storeFile = file('debug.keystore')
+            storePassword = 'android'
+            keyAlias = 'debug'
+            keyPassword = 'android'
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig = signingConfigs.release
         }
         debug {
             jniDebuggable = true

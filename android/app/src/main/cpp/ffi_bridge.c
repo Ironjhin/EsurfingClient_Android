@@ -85,7 +85,10 @@ int32_t esurfing_client_start(int32_t idx) {
     if (g_threads[idx].t) return 0;
     g_threads[idx].idx=idx;
     g_threads[idx].t=sim_thread_create(dialer_app,(void*)(intptr_t)(int8_t)idx);
-    if(!g_threads[idx].t) return -1;
+    if(!g_threads[idx].t) {
+        LOG_ERROR("==== [C LOG] sim_thread_create FAILED, errno: %d ====", errno);
+        return -1;
+    }
     g_started++; return 0;
 }
 void esurfing_client_stop(void){ g_need_exit=1; g_thread_keep_alive=0; for(int i=0;i<g_prog_cnt;i++){ g_prog_status[i].runtime_status.is_need_reset=1; g_prog_status[i].runtime_status.is_running=0; } }

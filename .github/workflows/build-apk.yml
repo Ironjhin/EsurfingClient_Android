@@ -57,9 +57,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 执行全架构通用包编译
+      # 执行全架构通用包编译（动态版本号：github.run_number 绝对递增）
       - name: Build Universal Release APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+        run: flutter build apk --release --android-skip-build-dependency-validation --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       # 归档通用 APK 产物
       - name: Upload Universal APK

@@ -124,7 +124,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         return;
       }
 
-      final started = await _authCtrl.start();
+      final started = await _authCtrl.start(accountCount: validAccounts.length);
       if (mounted) {
         if (started) {
           setState(() {
