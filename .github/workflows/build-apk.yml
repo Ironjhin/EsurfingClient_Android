@@ -73,11 +73,15 @@ jobs:
           printf '%s\n' \
             "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
             "" \
-            "本次修复：" \
-            "- 204 状态码探测间隔恢复为 10 秒，消除高频暴刷" \
-            "- 日志清空改用 C 层同源物理截断 + Dart 字节偏移读取，彻底解决日志复活和磁盘膨胀" \
-            "- 重定向跟随注入 Cookie 引擎 + 标准浏览器 UA 指纹伪装，修复 curl_code=56 网关重置" \
-            "- 重定向失败时状态机熔断返回，防止无效 auth 占用线程" \
+            "本轮修复：" \
+            "- 启用服务开关现在能真正自动启动认证线程" \
+            "- Portal 配置提取增加结尾标签缺失容错，消除 NULL 解引用闪退" \
+            "- 校园网标志提取增加三层判空保护" \
+            "- 探测 URL 切换为微软 CDN 节点 + 小米备用，移除不可路由 IP" \
+            "- 恢复 libcurl FOLLOWLOCATION 原生重定向，修复相对路径崩溃" \
+            "- CURLINFO_REDIRECT_COUNT 替代手动 302 拦截" \
+            "- 204 探测间隔恢复为 10 秒" \
+            "- Cookie 引擎 + 浏览器 UA 伪装修复 curl_code=56 网关重置" \
             > /tmp/release-notes.md
           gh release create "$TAG_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \
