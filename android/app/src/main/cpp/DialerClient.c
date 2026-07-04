@@ -373,12 +373,28 @@ static AuthStatus auth()
     }
 
     char* portal_config = extract_between_tags(resp.body_data, portal_start_tag, portal_end_tag); // 从响应体内容中提取指定内容
-    free(resp.body_data);
     if (portal_config == NULL)
     {
-        LOG_ERROR("提取门户配置失败");
+        LOG_ERROR("提取门户配置失败, 响应体内容前 2048 字节:");
+        const size_t dump_len = resp.body_size < 2048 ? resp.body_size : 2048;
+        // 逐行输出以避免日志行过长
+        char line_buf[257];
+        size_t pos = 0;
+        while (pos < dump_len) {
+            size_t line_end = 0;
+            // 找换行
+            for (size_t i = pos; i < dump_len && resp.body_data[i] != '\n'; i++) line_end++;
+            size_t copy_len = line_end;
+            if (copy_len > 256) copy_len = 256;
+            memcpy(line_buf, resp.body_data + pos, copy_len);
+            line_buf[copy_len] = '\0';
+            LOG_ERROR("PORTAL|%s", line_buf);
+            pos += line_end + 1;  // skip \n
+        }
+        free(resp.body_data);
         return AUTH_FAILED;
     }
+    free(resp.body_data);
 
     char* auth_url = xml_parser(portal_config, "auth-url"); // 提取 auth_url (包含 CDATA 等字符)
     if (auth_url == NULL)
