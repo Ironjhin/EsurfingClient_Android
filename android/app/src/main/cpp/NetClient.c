@@ -7,10 +7,9 @@
 
 #include <string.h>
 #include <stdio.h>
-
-#ifdef __OPENWRT__
 #include <errno.h>
 
+#ifdef __OPENWRT__
 #ifndef SOL_SOCKET
     #define SOL_SOCKET 1
 #endif
@@ -55,7 +54,6 @@ char* extract_url_param(const char* url, const char* search_str_start)
     return result;
 }
 
-#ifdef __OPENWRT__
 static curl_socket_t open_socket_callback(void* client_p, curlsocktype purpose, struct curl_sockaddr* addr)
 {
     (void)client_p;
@@ -67,21 +65,35 @@ static curl_socket_t open_socket_callback(void* client_p, curlsocktype purpose, 
         return CURL_SOCKET_BAD;
     }
 
+#ifndef __ANDROID__
     if (g_prog_status[tl_thread_idx].login_cfg.mark != 0)
     {
-        if (setsockopt(sock_fd, SOL_SOCKET, SO_MARK, &g_prog_status[tl_thread_idx].login_cfg.mark, sizeof(g_prog_status[tl_thread_idx].login_cfg.mark)) == -1)
+        if (setsockopt(sock_fd, SOL_SOCKET, SO_MARK,
+                &g_prog_status[tl_thread_idx].login_cfg.mark,
+                sizeof(g_prog_status[tl_thread_idx].login_cfg.mark)) == -1)
         {
-            LOG_ERROR("设置 SO_MARK 失败 (mark = %" PRIu32 " (0x%x)): %s", g_prog_status[tl_thread_idx].login_cfg.mark, g_prog_status[tl_thread_idx].login_cfg.mark, strerror(errno));
+            if (errno == EPERM || errno == EACCES)
+            {
+                LOG_WARN("setsockopt SO_MARK failed (EPERM), bypassing for Android compatibility...");
+            }
+            else
+            {
+                LOG_ERROR("设置 SO_MARK 失败 (mark = %" PRIu32 " (0x%x)): %s",
+                    g_prog_status[tl_thread_idx].login_cfg.mark,
+                    g_prog_status[tl_thread_idx].login_cfg.mark, strerror(errno));
+            }
         }
         else
         {
-            LOG_VERBOSE("设置 SO_MARK = %" PRIu32 " (0x%x)", g_prog_status[tl_thread_idx].login_cfg.mark, g_prog_status[tl_thread_idx].login_cfg.mark);
+            LOG_VERBOSE("设置 SO_MARK = %" PRIu32 " (0x%x)",
+                g_prog_status[tl_thread_idx].login_cfg.mark,
+                g_prog_status[tl_thread_idx].login_cfg.mark);
         }
     }
+#endif
 
     return sock_fd;
 }
-#endif
 
 static size_t header_cb(const void* contents, const size_t size, const size_t nmemb, void* userdata)
 {
@@ -322,10 +334,7 @@ http_resp_t post(const char* url, const char* data)
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-
-#ifdef __OPENWRT__
     curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
-#endif
 
     LOG_VERBOSE("执行 CURL");
     const CURLcode curl_code = curl_easy_perform(curl);
@@ -416,9 +425,7 @@ http_resp_t get(const char* url)
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
-    #ifdef __OPENWRT__
         curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
-    #endif
     }
 
     LOG_VERBOSE("执行 CURL");
@@ -508,24 +515,37 @@ NetworkStatus get_last_location()
         case REQUEST_REDIRECT:
             break;
         case REQUEST_SUCCESS:
+            LOG_WARN("get_last_location: Captive portal not triggered. Status code: 204. Network might be already online or not intercepted by gateway.");
             retry = 1;
             LOG_INFO("已连接至互联网");
             sleep_ms(10000, true);
             break;
         default:
+            if (resp.status == REQUEST_HAVE_RES)
+            {
+                LOG_WARN("get_last_location: Captive portal not triggered. Status code: 200. Network might be already online or not intercepted by gateway.");
+            }
             if (retry > 5)
             {
-                LOG_FATAL("超过最多重试次数");
+                LOG_FATAL("get_last_location: 超过最多重试次数, curl_code=%d, status=%d", resp.curl_code, resp.status);
                 return REQUEST_ERROR;
             }
-            LOG_WARN("非重定向, 响应码: %d, 重试: 第 %" PRIu8 " 次, 最多 5 次", resp.status, retry);
+            LOG_WARN("非重定向, curl_code=%d, 响应码: %d, 重试: 第 %" PRIu8 " 次, 最多 5 次", resp.curl_code, resp.status, retry);
             retry++;
             sleep_ms(1000, true);
             break;
         }
     } while (resp.status != REQUEST_REDIRECT);
 
-    while (resp.status == REQUEST_REDIRECT) resp = get(g_prog_status[tl_thread_idx].last_location);
+    while (resp.status == REQUEST_REDIRECT)
+    {
+        LOG_DEBUG("跟随重定向至: %s", g_prog_status[tl_thread_idx].last_location);
+        resp = get(g_prog_status[tl_thread_idx].last_location);
+        if (resp.status != REQUEST_REDIRECT && resp.status != REQUEST_SUCCESS && resp.status != REQUEST_HAVE_RES)
+        {
+            LOG_ERROR("跟随重定向失败: curl_code=%d, status=%d", resp.curl_code, resp.status);
+        }
+    }
 
     g_prog_status[tl_thread_idx].last_location_lock = true;
     LOG_DEBUG("配置 %" PRIu8 " 获取认证配置 URL: %s", g_prog_status[tl_thread_idx].login_cfg.idx, g_prog_status[tl_thread_idx].last_location);
