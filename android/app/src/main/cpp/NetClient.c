@@ -415,14 +415,14 @@ http_resp_t get(const char* url)
     LOG_VERBOSE("设置 curl 选项");
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+    curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 5L);
     if (tl_thread_idx != -1)
     {
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
         curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-        curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
         curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
         curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
@@ -439,6 +439,20 @@ http_resp_t get(const char* url)
         return resp;
     }
 
+    // libcurl 已自动跟随所有重定向 — 检测是否发生过跳转
+    long redirect_count = 0;
+    curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
+    if (redirect_count > 0)
+    {
+        LOG_DEBUG("自动跟随了 %ld 次重定向", redirect_count);
+        if (tl_thread_idx != -1) LOG_VERBOSE("最终重定向至: %s", g_prog_status[tl_thread_idx].last_location);
+        if (resp.body_data) { free(resp.body_data); resp.body_data = NULL; }
+        resp.status = REQUEST_REDIRECT;
+        curl_easy_cleanup(curl);
+        curl_slist_free_all(headers);
+        return resp;
+    }
+
     LOG_VERBOSE("获取响应码");
     long resp_code;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &resp_code);
@@ -446,13 +460,6 @@ http_resp_t get(const char* url)
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
 
-    if (resp_code == 302)
-    {
-        LOG_DEBUG("重定向, 响应码: 302");
-        if (tl_thread_idx != -1) LOG_VERBOSE("重定向至: %s", g_prog_status[tl_thread_idx].last_location);
-        resp.status = REQUEST_REDIRECT;
-        return resp;
-    }
     if (resp_code == 200)
     {
         LOG_DEBUG("有响应体, 响应码: 200");
@@ -536,17 +543,6 @@ NetworkStatus get_last_location()
             break;
         }
     } while (resp.status != REQUEST_REDIRECT);
-
-    while (resp.status == REQUEST_REDIRECT)
-    {
-        LOG_DEBUG("跟随重定向至: %s", g_prog_status[tl_thread_idx].last_location);
-        resp = get(g_prog_status[tl_thread_idx].last_location);
-        if (resp.status != REQUEST_REDIRECT && resp.status != REQUEST_SUCCESS && resp.status != REQUEST_HAVE_RES)
-        {
-            LOG_ERROR("跟随重定向失败: curl_code=%d, status=%d — 状态机安全退避，等待下一轮心跳", resp.curl_code, resp.status);
-            return REQUEST_ERROR;
-        }
-    }
 
     g_prog_status[tl_thread_idx].last_location_lock = true;
     LOG_DEBUG("配置 %" PRIu8 " 获取认证配置 URL: %s", g_prog_status[tl_thread_idx].login_cfg.idx, g_prog_status[tl_thread_idx].last_location);
