@@ -527,11 +527,14 @@ static RunStatus run()
     static uint8_t retry_auth = 1;
     static uint64_t retry_auth_time = 0;
 
-    switch (check_network_status()) // 检测网络状态
+    const NetworkStatus net_status = check_network_status(); // 检测网络状态
+    LOG_DEBUG("run: check_network_status 返回 %d", net_status);
+    switch (net_status)
     {
     case REQUEST_SUCCESS: // 返回响应成功 (204 响应码)
         retry_timeout = 1;
         retry_auth = 1;
+        LOG_INFO("已连接至互联网");
         /**
          * 检测是否初始化会话和认证登录
          * 如果已经初始化会话和认证登录, 则进入, 否则按已连接互联网处理
@@ -577,10 +580,21 @@ static RunStatus run()
     case REQUEST_REDIRECT: // 返回重定向 (302 响应码)
         retry_timeout = 1;
         LOG_INFO("需要认证");
-        if (g_prog_status[tl_thread_idx].runtime_status.is_initialized) // 进入认证流程的时候如果会话已经初始化, 重置认证配置参数
+        // 如果刚认证成功不到 30 秒就又检测到重定向，可能是网络状态未稳定
+        // 此时不 reset()（避免 term() 主动登出），而是直接重试 auth()
+        if (g_prog_status[tl_thread_idx].runtime_status.is_initialized)
         {
-            reset();
-            g_prog_status[tl_thread_idx].runtime_status.is_running = true;
+            if (g_prog_status[tl_thread_idx].runtime_status.is_authed &&
+                get_cur_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.auth_time < 30000)
+            {
+                LOG_WARN("认证后短时间内再次检测到 captive portal (auth_time=%" PRIu64 "), 跳过 reset 直接重试 auth",
+                    g_prog_status[tl_thread_idx].auth_cfg.auth_time);
+            }
+            else
+            {
+                reset();
+                g_prog_status[tl_thread_idx].runtime_status.is_running = true;
+            }
         }
         if (auth() != AUTH_SUCCESS)
         {
