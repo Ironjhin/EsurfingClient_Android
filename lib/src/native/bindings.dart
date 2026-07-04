@@ -12,6 +12,7 @@ typedef start_c = Int32 Function(Int32);
 typedef stop_c = Void Function();
 typedef is_stopped_c = Int32 Function();
 typedef destroy_c = Void Function();
+typedef init_native_env_c = Void Function(Pointer<Utf8>);
 
 /// Dart 侧函数签名
 typedef InitDart = int Function(Pointer<Utf8>, Pointer<Utf8>);
@@ -19,6 +20,7 @@ typedef StartDart = int Function(int);
 typedef StopDart = void Function();
 typedef IsStoppedDart = int Function();
 typedef DestroyDart = void Function();
+typedef InitNativeEnvDart = void Function(Pointer<Utf8>);
 
 // ============================================================
 //  Native 库加载与符号绑定
@@ -34,6 +36,7 @@ class NativeBindings {
   late final StopDart esurfingClientStop;
   late final IsStoppedDart esurfingClientIsStopped;
   late final DestroyDart esurfingClientDestroy;
+  late final InitNativeEnvDart initNativeEnv;
 
   static NativeBindings get instance {
     _instance ??= NativeBindings._();
@@ -67,6 +70,8 @@ class NativeBindings {
         .lookupFunction<is_stopped_c, IsStoppedDart>('esurfing_client_is_stopped');
     esurfingClientDestroy = l
         .lookupFunction<destroy_c, DestroyDart>('esurfing_client_destroy');
+    initNativeEnv = l
+        .lookupFunction<init_native_env_c, InitNativeEnvDart>('init_native_env');
   }
 
   bool get isLoaded => _lib != null;

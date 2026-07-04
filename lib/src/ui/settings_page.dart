@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../model/config.dart';
+import '../i18n/app_localizations.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -22,6 +23,14 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _loadConfig();
+  }
+
+  @override
+  void dispose() {
+    for (final c in _usernameControllers) c.dispose();
+    for (final c in _passwordControllers) c.dispose();
+    for (final c in _markControllers) c.dispose();
+    super.dispose();
   }
 
   Future<void> _loadConfig() async {
@@ -54,6 +63,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _saveConfig() async {
     if (_config == null) return;
+    final i18n = AppLocalizations.of(context);
 
     final accounts = <AccountConfig>[];
     for (int i = 0; i < _config!.accounts.length; i++) {
@@ -77,11 +87,9 @@ class _SettingsPageState extends State<SettingsPage> {
     await configManager.saveConfig(newConfig);
 
     if (mounted) {
-      setState(() {
-        _config = newConfig;
-      });
+      setState(() => _config = newConfig);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Configuration saved')),
+        SnackBar(content: Text(i18n.configSavedSnack)),
       );
     }
   }
@@ -111,42 +119,37 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   @override
-  void dispose() {
-    for (final c in _usernameControllers) c.dispose();
-    for (final c in _passwordControllers) c.dispose();
-    for (final c in _markControllers) c.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final i18n = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Settings')),
+        appBar: AppBar(title: Text(i18n.settingsTitle)),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(i18n.settingsTitle),
         actions: [
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _saveConfig,
-            tooltip: 'Save',
+            tooltip: i18n.btnSave,
           ),
         ],
       ),
       body: _config == null
-          ? const Center(child: Text('Failed to load config'))
+          ? Center(child: Text(i18n.loadConfigFailed))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 // Global Enabled Switch
                 SwitchListTile(
-                  title: const Text('Enable Service'),
-                  subtitle: const Text('Start authentication on app launch'),
+                  title: Text(i18n.enableService),
+                  subtitle: Text(i18n.enableServiceSub),
                   value: _config!.enabled,
                   onChanged: (value) {
                     setState(() {
@@ -162,8 +165,8 @@ class _SettingsPageState extends State<SettingsPage> {
 
                 // Log Level
                 ListTile(
-                  title: const Text('Log Level'),
-                  subtitle: Text(_logLevelLabel(_config!.logLevel)),
+                  title: Text(i18n.logLevel),
+                  subtitle: Text(i18n.logLevelLabel(_config!.logLevel)),
                   trailing: DropdownButton<int>(
                     value: _config!.logLevel,
                     items: const [
@@ -191,38 +194,41 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(),
 
                 // Accounts
-                const Text('Accounts', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text(i18n.accountsTitle,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
                 ..._formKeys.asMap().entries.map((entry) {
                   final i = entry.key;
-                  return _buildAccountCard(i);
+                  return _buildAccountCard(i, i18n);
                 }),
                 const SizedBox(height: 16),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.add),
-                  label: const Text('Add Account'),
+                  label: Text(i18n.btnAddAccount),
                   onPressed: _addAccount,
                 ),
                 const SizedBox(height: 24),
 
                 // Info
                 Card(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  color: theme.colorScheme.surfaceContainerHighest,
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Channel Options:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(i18n.channelOptionsHint,
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        const Text('• phone - Mobile client (CCTP/android64_vpn/2093)'),
-                        const Text('• pc - PC client (CCTP/Linux64/1003)'),
+                        Text(i18n.channelPhoneDesc),
+                        Text(i18n.channelPcDesc),
                         const SizedBox(height: 16),
-                        const Text('Mark (SO_MARK):', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(i18n.markHelpTitle,
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
-                        const Text('• Optional routing mark for multi-WAN setups'),
-                        const Text('• Leave empty for auto-assignment (0x100, 0x200, ...)'),
-                        const Text('• Format: hex without 0x prefix (e.g., "100")'),
+                        Text(i18n.markHelp1),
+                        Text(i18n.markHelp2),
+                        Text(i18n.markHelp3),
                       ],
                     ),
                   ),
@@ -232,7 +238,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _buildAccountCard(int index) {
+  Widget _buildAccountCard(int index, AppLocalizations i18n) {
     final theme = Theme.of(context);
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -252,7 +258,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Account ${index + 1}',
+                      i18n.accountLabel.replaceAll('{n}', '${index + 1}'),
                       style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -260,21 +266,21 @@ class _SettingsPageState extends State<SettingsPage> {
                     IconButton(
                       icon: const Icon(Icons.delete_outline),
                       onPressed: () => _removeAccount(index),
-                      tooltip: 'Remove account',
+                      tooltip: i18n.btnRemoveAccount,
                     ),
                 ],
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _usernameControllers[index],
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  prefixIcon: Icon(Icons.person),
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: i18n.fieldUsername,
+                  prefixIcon: const Icon(Icons.person),
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (value) {
                   if (value == null || value.trim().isEmpty) {
-                    return 'Username is required';
+                    return i18n.validateUsername;
                   }
                   return null;
                 },
@@ -282,15 +288,15 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _passwordControllers[index],
-                decoration: const InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: Icon(Icons.lock),
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: i18n.fieldPassword,
+                  prefixIcon: const Icon(Icons.lock),
+                  border: const OutlineInputBorder(),
                 ),
                 obscureText: true,
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Password is required';
+                    return i18n.validatePassword;
                   }
                   return null;
                 },
@@ -298,31 +304,29 @@ class _SettingsPageState extends State<SettingsPage> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: _channelValues[index],
-                decoration: const InputDecoration(
-                  labelText: 'Channel',
-                  prefixIcon: Icon(Icons.router),
-                  border: OutlineInputBorder(),
+                decoration: InputDecoration(
+                  labelText: i18n.fieldChannel,
+                  prefixIcon: const Icon(Icons.router),
+                  border: const OutlineInputBorder(),
                 ),
-                items: const [
-                  DropdownMenuItem(value: 'phone', child: Text('Phone (Mobile)')),
-                  DropdownMenuItem(value: 'pc', child: Text('PC (Desktop)')),
+                items: [
+                  DropdownMenuItem(value: 'phone', child: Text(i18n.channelPhone)),
+                  DropdownMenuItem(value: 'pc', child: Text(i18n.channelPc)),
                 ],
                 onChanged: (value) {
                   if (value != null) {
-                    setState(() {
-                      _channelValues[index] = value;
-                    });
+                    setState(() => _channelValues[index] = value);
                   }
                 },
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _markControllers[index],
-                decoration: const InputDecoration(
-                  labelText: 'Mark (Optional)',
-                  prefixIcon: Icon(Icons.tag),
-                  border: OutlineInputBorder(),
-                  hintText: 'Hex without 0x (e.g., 100)',
+                decoration: InputDecoration(
+                  labelText: i18n.fieldMark,
+                  prefixIcon: const Icon(Icons.tag),
+                  border: const OutlineInputBorder(),
+                  hintText: i18n.hintMark,
                 ),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]')),
@@ -333,18 +337,5 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     );
-  }
-
-  String _logLevelLabel(int level) {
-    switch (level) {
-      case 0: return 'OFF';
-      case 1: return 'FATAL';
-      case 2: return 'ERROR';
-      case 3: return 'WARN';
-      case 4: return 'INFO';
-      case 5: return 'DEBUG';
-      case 6: return 'VERBOSE';
-      default: return 'UNKNOWN';
-    }
   }
 }

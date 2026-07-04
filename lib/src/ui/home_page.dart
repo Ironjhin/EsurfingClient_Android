@@ -5,6 +5,9 @@ import 'package:permission_handler/permission_handler.dart';
 import '../model/config.dart';
 import '../native/bindings.dart';
 import '../native/auth_controller.dart';
+import '../services/log_reader.dart';
+import '../widgets/log_viewer.dart';
+import '../i18n/app_localizations.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -14,23 +17,44 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ESurfingConfig? _config;
   bool _isLoading = true;
   bool _isRunning = false;
-  String _statusText = 'Initializing...';
+  String _statusText = '';
   String _statusDetail = '';
   final AuthController _authCtrl = AuthController.instance;
+  final LogReader _logReader = LogReader();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initApp();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _logReader.stop();
+    _authCtrl.onStatusChanged = null;
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _logReader.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _logReader.resume();
+    }
+  }
+
   Future<void> _initApp() async {
+    final i18nLocal = AppLocalizations.of(context);
     await _loadConfig();
     await _checkPermissions();
+    _logReader.start();
 
     // 注册状态回调
     _authCtrl.onStatusChanged = (running, text) {
@@ -43,7 +67,10 @@ class _HomePageState extends State<HomePage> {
     };
 
     if (mounted) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _statusText = (_config?.enabled ?? false) ? i18nLocal.ready : i18nLocal.disabledHint;
+      });
     }
   }
 
@@ -51,13 +78,7 @@ class _HomePageState extends State<HomePage> {
     final configManager = await ConfigManager.getInstance();
     final config = await configManager.loadConfig();
     if (mounted) {
-      setState(() {
-        _config = config;
-        _statusText = config.enabled ? 'Ready' : 'Disabled';
-        _statusDetail = config.enabled
-            ? '${config.accounts.length} account(s) configured'
-            : 'Please configure accounts in settings';
-      });
+      setState(() => _config = config);
     }
   }
 
@@ -85,38 +106,36 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    final i18n = AppLocalizations.of(context);
     setState(() {
       _isRunning = true;
-      _statusText = 'Initializing native layer...';
+      _statusText = i18n.initializing;
       _statusDetail = '';
     });
 
     try {
-      // 获取 Android 沙盒路径
       final appDir = await getApplicationDocumentsDirectory();
-
-      // 构建 JSON 配置
       final configJson = jsonEncode(_config!.toJson());
 
-      // 初始化 C 层（传入沙盒路径和配置）
+      _authCtrl.initNativeEnv(appDir.path);
       final ok = await _authCtrl.initialize(appDir.path, configJson);
       if (!ok) {
-        if (mounted) setState(() => _statusText = 'Native init failed');
+        if (mounted) setState(() => _statusText = i18n.nativeInitFailed);
         return;
       }
 
-      // 启动认证（C 层内部创建 pthread 运行 dialer_app）
       final started = await _authCtrl.start();
       if (mounted) {
         if (started) {
           setState(() {
-            _statusText = 'Authenticated — heartbeat active';
-            _statusDetail = 'Running in background thread';
+            _statusText = i18n.authenticatedHeartbeat;
+            _statusDetail = i18n.runningDetail;
           });
+          _logReader.resume();
         } else {
           setState(() {
             _isRunning = false;
-            _statusText = 'Failed to start authentication';
+            _statusText = i18n.startFailed;
           });
         }
       }
@@ -124,15 +143,16 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() {
           _isRunning = false;
-          _statusText = 'Error: $e';
+          _statusText = '${i18n.errorPrefix}: $e';
         });
       }
     }
   }
 
   Future<void> _stopAuth() async {
+    final i18n = AppLocalizations.of(context);
     setState(() {
-      _statusText = 'Stopping...';
+      _statusText = i18n.stopRequested;
     });
 
     await _authCtrl.stop(waitForExit: true);
@@ -140,7 +160,7 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       setState(() {
         _isRunning = false;
-        _statusText = 'Stopped';
+        _statusText = i18n.stopped;
         _statusDetail = '';
       });
     }
@@ -148,17 +168,16 @@ class _HomePageState extends State<HomePage> {
 
   void _showConfigRequiredDialog() {
     if (!mounted) return;
+    final i18n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Configuration Required'),
-        content: const Text(
-          'Please add at least one account with both username and password in Settings.',
-        ),
+        title: Text(i18n.configRequiredTitle),
+        content: Text(i18n.configRequiredBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(i18n.btnCancel),
           ),
           TextButton(
             onPressed: () {
@@ -168,7 +187,7 @@ class _HomePageState extends State<HomePage> {
                 MaterialPageRoute(builder: (_) => const SettingsPage()),
               );
             },
-            child: const Text('Open Settings'),
+            child: Text(i18n.btnOpenSettings),
           ),
         ],
       ),
@@ -177,17 +196,18 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final i18n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ESurfing Client'),
+        title: Text(i18n.appTitle),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
+            tooltip: i18n.settingsTitle,
             onPressed: () async {
               await Navigator.push(
                 context,
@@ -200,15 +220,14 @@ class _HomePageState extends State<HomePage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(24),
+          : SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   // Status icon
                   Container(
-                    width: 120,
-                    height: 120,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
                       color: _isRunning
                           ? colorScheme.primaryContainer
@@ -217,40 +236,41 @@ class _HomePageState extends State<HomePage> {
                     ),
                     child: Icon(
                       _isRunning ? Icons.wifi : Icons.wifi_off,
-                      size: 60,
+                      size: 50,
                       color: _isRunning
                           ? colorScheme.onPrimaryContainer
                           : colorScheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
                   // Status text
                   Text(
                     _statusText,
-                    style: theme.textTheme.headlineMedium?.copyWith(
+                    style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: _isRunning ? colorScheme.primary : colorScheme.onSurface,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
                   Text(
                     _statusDetail,
-                    style: theme.textTheme.bodyLarge?.copyWith(
+                    style: theme.textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 32),
 
                   // Start / Stop button
                   SizedBox(
                     width: double.infinity,
-                    height: 56,
+                    height: 52,
                     child: FilledButton.icon(
                       icon: Icon(_isRunning ? Icons.stop : Icons.play_arrow),
                       label: Text(
-                        _isRunning ? 'Stop Authentication' : 'Start Authentication',
+                        _isRunning ? i18n.btnStopAuth : i18n.btnStartAuth,
                         style: theme.textTheme.titleMedium,
                       ),
                       onPressed: _toggleAuth,
@@ -262,10 +282,10 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
 
                   // Account summary
-                  if (_config != null && _config!.accounts.isNotEmpty) ...[
+                  if (_config != null && _config!.accounts.isNotEmpty)
                     Card(
                       child: Padding(
                         padding: const EdgeInsets.all(16),
@@ -273,7 +293,7 @@ class _HomePageState extends State<HomePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Configured Accounts',
+                              i18n.configuredAccounts,
                               style: theme.textTheme.titleSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -285,9 +305,11 @@ class _HomePageState extends State<HomePage> {
                               return ListTile(
                                 dense: true,
                                 leading: CircleAvatar(child: Text('${i + 1}')),
-                                title: Text(a.username.isEmpty ? '(empty)' : a.username),
+                                title: Text(
+                                  a.username.isEmpty ? i18n.emptyAccount : a.username,
+                                ),
                                 subtitle: Text(
-                                  'Channel: ${a.channel} • ${a.userAgent}',
+                                  '${i18n.fieldChannel}: ${a.channel}',
                                   style: theme.textTheme.bodySmall,
                                 ),
                               );
@@ -296,12 +318,15 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
-                  ],
+                  const SizedBox(height: 24),
 
-                  const Spacer(),
+                  // ======== Log Viewer Panel ========
+                  LogViewer(reader: _logReader),
+                  const SizedBox(height: 16),
 
+                  // Version
                   Text(
-                    'ESurfing Client v1.0.0\nFlutter + NDK FFI',
+                    i18n.versionInfo,
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),

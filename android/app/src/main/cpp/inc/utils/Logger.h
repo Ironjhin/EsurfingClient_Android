@@ -78,6 +78,12 @@ LogLevel get_logger_level();
 void set_logger_level(LogLevel lv);
 
 /**
+ * @brief 设置日志沙盒路径（Android 私有数据目录）
+ * @param dir 沙盒目录路径，会在此目录下创建 run.log
+ */
+void set_log_dir(const char* dir);
+
+/**
  * @brief 初始化日志系统
  * @return 初始化状态
  */

@@ -34,6 +34,21 @@ class AuthController {
   bool get isRunning => _running;
 
   /// ================================================================
+  ///  注入 Android 沙盒路径到 C 层（应在 initialize 前调用）
+  /// ================================================================
+  void initNativeEnv(String sandboxPath) {
+    final bindings = NativeBindings.instance;
+    if (!bindings.isLoaded) return;
+
+    final pathPtr = sandboxPath.toNativeUtf8();
+    try {
+      bindings.initNativeEnv(pathPtr);
+    } finally {
+      calloc.free(pathPtr);
+    }
+  }
+
+  /// ================================================================
   ///  初始化 C 层：传入 Android 沙盒路径与 JSON 配置
   /// ================================================================
   Future<bool> initialize(String dataDir, String configJson) async {

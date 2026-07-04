@@ -18,6 +18,16 @@ typedef struct { int idx; sim_thread_t* t; } thread_wrap_t;
 static thread_wrap_t* g_threads = NULL;
 static int g_started = 0;
 
+void init_native_env(const char* sandbox_path)
+{
+    if (sandbox_path)
+    {
+        strncpy(g_data_dir, sandbox_path, sizeof(g_data_dir) - 1);
+        g_data_dir[sizeof(g_data_dir) - 1] = '\0';
+        set_log_dir(g_data_dir);
+    }
+}
+
 static int parse_json(const char* json) {
     cJSON* root = cJSON_Parse(json);
     if (!root) return -1;
@@ -61,6 +71,7 @@ static int parse_json(const char* json) {
 int32_t esurfing_client_init(const char* data_dir, const char* config_json) {
     if (!data_dir||!config_json) return -1;
     strncpy(g_data_dir,data_dir,sizeof(g_data_dir)-1);
+    set_log_dir(g_data_dir);
     g_need_exit=0; g_thread_keep_alive=1; g_start_run_tm=get_cur_tm_ms(); tl_thread_idx=-1;
     init_logger();
     if (parse_json(config_json)!=0) return -1;

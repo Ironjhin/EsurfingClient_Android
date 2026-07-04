@@ -15,6 +15,8 @@
 static const char s_file_name[] = "run.log";
 static const char s_rotate_file_name[] = ".rotate.log";
 
+char g_sandbox_path[PATH_MAX] = {0};
+
 static log_cfg_t s_logger_cfg = {
     .lv = LOG_LEVEL_INFO,
     .log_dir = "",
@@ -59,8 +61,24 @@ static void rotate()
     if (s_logger_cfg.file_handle == NULL) fprintf(stderr, "[ERROR] 无法在轮转后重新打开日志文件 %s\n", s_logger_cfg.log_file);
 }
 
+void set_log_dir(const char* dir)
+{
+    if (dir)
+    {
+        strncpy(g_sandbox_path, dir, sizeof(g_sandbox_path) - 1);
+        g_sandbox_path[sizeof(g_sandbox_path) - 1] = '\0';
+    }
+}
+
 static bool get_log_dir(char* out)
 {
+    /* 优先使用通过 set_log_dir() 注入的沙盒路径（Android 私有目录） */
+    if (strlen(g_sandbox_path) > 0)
+    {
+        const uint16_t len = snprintf(out, PATH_MAX, "%s", safe_str(g_sandbox_path));
+        if ((size_t)len >= PATH_MAX) return false;
+        return true;
+    }
 #ifdef _WIN32
     char dir[PATH_MAX];
     if (get_exec_dir(dir) == false) return false;
