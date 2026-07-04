@@ -496,7 +496,24 @@ NetworkStatus check_network_status()
 static void get_school_ip_symbol()
 {
     const char* school_ip = extract_url_param(g_prog_status[0].last_location, "wlanuserip");
-    snprintf(g_school_network_symbol, SCHOOL_NETWORK_SYMBOL, "%s", safe_str(extract_between_tags(school_ip, "", strchr(strchr(school_ip, '.') + 1, '.'))));
+    if (school_ip == NULL)
+    {
+        LOG_WARN("获取校园网标志失败: 无法从 last_location 中提取 wlanuserip");
+        return;
+    }
+    const char* first_dot = strchr(school_ip, '.');
+    if (first_dot == NULL)
+    {
+        LOG_WARN("获取校园网标志失败: IP 格式异常");
+        return;
+    }
+    const char* second_dot = strchr(first_dot + 1, '.');
+    if (second_dot == NULL)
+    {
+        LOG_WARN("获取校园网标志失败: IP 格式异常 (缺少第二个点)");
+        return;
+    }
+    snprintf(g_school_network_symbol, SCHOOL_NETWORK_SYMBOL, "%s", safe_str(extract_between_tags(school_ip, "", second_dot)));
     LOG_INFO("获取到校园网标志: %s", g_school_network_symbol);
 }
 

@@ -466,8 +466,8 @@ char* extract_between_tags(const char* text, const char* start_tag, const char* 
     char* end = strstr(start, end_tag);
     if (!end)
     {
-        LOG_WARN("未找到结尾标签: %s, 返回", end_tag);
-        return NULL;
+        LOG_WARN("未找到结尾标签: %s, 将使用字符串末尾作为结尾", end_tag);
+        end = start + strlen(start);
     }
     const size_t len = end - start;
     if (len == 0) LOG_WARN("提取到空内容 (标签: %s...%s)", start_tag, end_tag);
