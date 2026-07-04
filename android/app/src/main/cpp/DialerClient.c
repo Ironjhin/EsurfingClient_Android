@@ -365,11 +365,50 @@ static AuthStatus auth()
     const char portal_start_tag[] = "<!--//config.campus.js.chinatelecom.com";
     const char portal_end_tag[] = "//config.campus.js.chinatelecom.com-->";
 
-    const http_resp_t resp = get(g_prog_status[tl_thread_idx].last_location); // curl GET last_location 获取认证配置
+    const char* location = g_prog_status[tl_thread_idx].last_location;
+    http_resp_t resp = get(location); // curl GET last_location 获取认证配置
     if (resp.status != REQUEST_HAVE_RES || resp.body_size == 0 || resp.body_data == NULL) // 如果响应体没有内容 (非 200 响应码), 则返回
     {
-        LOG_ERROR("响应体为空, 无法提取认证配置");
-        return AUTH_FAILED;
+        // 尝试用 AC IP 替换域名作为 DNS 回退
+        char* ac_ip = extract_url_param(location, "wlanacip");
+        if (ac_ip)
+        {
+            const char* scheme_end = strstr(location, "://");
+            if (scheme_end)
+            {
+                const char* host_start = scheme_end + 3;
+                const char* path_start = strchr(host_start, '/');
+                if (path_start)
+                {
+                    // 提取端口号（如果有）
+                    char port_part[16] = "";
+                    for (const char* p = host_start; p < path_start && (size_t)(p - host_start) < 256; p++)
+                    {
+                        if (*p == ':')
+                        {
+                            const size_t port_len = (size_t)(path_start - p);
+                            if (port_len < sizeof(port_part)) { memcpy(port_part, p, port_len); port_part[port_len] = '\0'; }
+                            break;
+                        }
+                    }
+                    char ip_url[LAST_LOCATION_LEN];
+                    const int n = snprintf(ip_url, sizeof(ip_url), "http://%s%s%s", ac_ip, port_part, path_start);
+                    if (n > 0 && (size_t)n < sizeof(ip_url))
+                    {
+                        LOG_WARN("域名解析失败，尝试用 AC IP 替代: %s", ip_url);
+                        // 释放旧响应体（如果有）
+                        if (resp.body_data) { free(resp.body_data); resp.body_data = NULL; }
+                        resp = get(ip_url);
+                    }
+                }
+            }
+            free(ac_ip);
+        }
+        if (resp.status != REQUEST_HAVE_RES || resp.body_size == 0 || resp.body_data == NULL)
+        {
+            LOG_ERROR("响应体为空, 无法提取认证配置");
+            return AUTH_FAILED;
+        }
     }
 
     char* portal_config = extract_between_tags(resp.body_data, portal_start_tag, portal_end_tag); // 从响应体内容中提取指定内容

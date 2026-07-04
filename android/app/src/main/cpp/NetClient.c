@@ -430,8 +430,26 @@ http_resp_t get(const char* url)
 
     LOG_VERBOSE("执行 CURL");
     const CURLcode curl_code = curl_easy_perform(curl);
+
+    // 即使 curl_easy_perform 失败（如 FOLLOWLOCATION 后目标 DNS 解析失败），
+    // 也要检查是否发生过重定向（有重定向说明 captive portal 已拦截探测请求）
+    long redirect_count = 0;
+    curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
+
     if (curl_code != CURLE_OK)
     {
+        if (redirect_count > 0)
+        {
+            LOG_DEBUG("自动跟随了 %ld 次重定向后出错 (%s)，判定为 captive portal 已拦截",
+                      redirect_count, curl_easy_strerror(curl_code));
+            if (tl_thread_idx != -1) LOG_VERBOSE("最后的 last_location: %s", g_prog_status[tl_thread_idx].last_location);
+            if (resp.body_data) { free(resp.body_data); resp.body_data = NULL; }
+            resp.status = REQUEST_REDIRECT;
+            curl_easy_cleanup(curl);
+            curl_slist_free_all(headers);
+            return resp;
+        }
+        LOG_ERROR("curl 执行失败: curl_code=%d(%s)", curl_code, curl_easy_strerror(curl_code));
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
         resp.status = curl_err_msg_out(curl_code);
@@ -439,9 +457,7 @@ http_resp_t get(const char* url)
         return resp;
     }
 
-    // libcurl 已自动跟随所有重定向 — 检测是否发生过跳转
-    long redirect_count = 0;
-    curl_easy_getinfo(curl, CURLINFO_REDIRECT_COUNT, &redirect_count);
+    // libcurl 已自动跟随所有重定向
     if (redirect_count > 0)
     {
         LOG_DEBUG("自动跟随了 %ld 次重定向", redirect_count);

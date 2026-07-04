@@ -74,6 +74,8 @@ jobs:
             "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
             "" \
             "本轮修复：" \
+            "- 修复 FOLLOWLOCATION 跟随重定向后目标域名 DNS 解析失败时，重定向被忽略的问题（check_network 超时/502 后永远检测不到 captive portal）" \
+            "- Portal 域名（如 enet.10000.gd.cn）DNS 解析失败时，自动用 AC IP 替换域名重试" \
             "- 恢复原版 PC 客户端 User-Agent（CCTP/Linux64/1003），修复广东电信 Portal 因移动端 UA 返回手机版页面导致配置提取失败" \
             "- 主探测 URL 恢复为原版 PC 配置 connect.rom.miui.com；备用 edge-http.microsoft.com" \
             "- 修复探测 URL 返回 502 等异常时不会自动尝试备用 URL 的问题" \
