@@ -246,93 +246,99 @@ class _SettingsPageState extends State<SettingsPage> {
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKeys[index],
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+          child: IntrinsicHeight(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 220),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircleAvatar(
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Text('${index + 1}'),
+                  Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: theme.colorScheme.primaryContainer,
+                        child: Text('${index + 1}'),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          i18n.accountLabel.replaceAll('{n}', '${index + 1}'),
+                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      if (_formKeys.length > 1)
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _removeAccount(index),
+                          tooltip: i18n.btnRemoveAccount,
+                        ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      i18n.accountLabel.replaceAll('{n}', '${index + 1}'),
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _usernameControllers[index],
+                    decoration: InputDecoration(
+                      labelText: i18n.fieldUsername,
+                      prefixIcon: const Icon(Icons.person),
+                      border: const OutlineInputBorder(),
                     ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return i18n.validateUsername;
+                      }
+                      return null;
+                    },
                   ),
-                  if (_formKeys.length > 1)
-                    IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _removeAccount(index),
-                      tooltip: i18n.btnRemoveAccount,
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _passwordControllers[index],
+                    decoration: InputDecoration(
+                      labelText: i18n.fieldPassword,
+                      prefixIcon: const Icon(Icons.lock),
+                      border: const OutlineInputBorder(),
                     ),
+                    obscureText: true,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return i18n.validatePassword;
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _channelValues[index],
+                    decoration: InputDecoration(
+                      labelText: i18n.fieldChannel,
+                      prefixIcon: const Icon(Icons.router),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: [
+                      DropdownMenuItem(value: 'phone', child: Text(i18n.channelPhone)),
+                      DropdownMenuItem(value: 'pc', child: Text(i18n.channelPc)),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _channelValues[index] = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _markControllers[index],
+                    decoration: InputDecoration(
+                      labelText: i18n.fieldMark,
+                      prefixIcon: const Icon(Icons.tag),
+                      border: const OutlineInputBorder(),
+                      hintText: i18n.hintMark,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]')),
+                    ],
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _usernameControllers[index],
-                decoration: InputDecoration(
-                  labelText: i18n.fieldUsername,
-                  prefixIcon: const Icon(Icons.person),
-                  border: const OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return i18n.validateUsername;
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passwordControllers[index],
-                decoration: InputDecoration(
-                  labelText: i18n.fieldPassword,
-                  prefixIcon: const Icon(Icons.lock),
-                  border: const OutlineInputBorder(),
-                ),
-                obscureText: true,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return i18n.validatePassword;
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _channelValues[index],
-                decoration: InputDecoration(
-                  labelText: i18n.fieldChannel,
-                  prefixIcon: const Icon(Icons.router),
-                  border: const OutlineInputBorder(),
-                ),
-                items: [
-                  DropdownMenuItem(value: 'phone', child: Text(i18n.channelPhone)),
-                  DropdownMenuItem(value: 'pc', child: Text(i18n.channelPc)),
-                ],
-                onChanged: (value) {
-                  if (value != null) {
-                    setState(() => _channelValues[index] = value);
-                  }
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _markControllers[index],
-                decoration: InputDecoration(
-                  labelText: i18n.fieldMark,
-                  prefixIcon: const Icon(Icons.tag),
-                  border: const OutlineInputBorder(),
-                  hintText: i18n.hintMark,
-                ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]')),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
       ),
