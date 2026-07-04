@@ -554,7 +554,7 @@ static RunStatus run()
         {
             LOG_INFO("已连接至互联网");
         }
-        sleep_ms(1000, false);
+        sleep_ms(10000, false);
         return RUN_SUCCESS;
     case REQUEST_REDIRECT: // 返回重定向 (302 响应码)
         retry_timeout = 1;
