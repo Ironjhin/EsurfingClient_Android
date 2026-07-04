@@ -617,6 +617,34 @@ NetworkStatus get_last_location()
         }
     } while (resp.status != REQUEST_REDIRECT);
 
+    // rewrite known portal domains to IPs (internal DNS unreachable on unauthenticated devices)
+    const char* portal_map[][2] = {{"enet.10000.gd.cn", "125.88.59.131"}, {NULL, NULL}};
+    for (int pm = 0; portal_map[pm][0] != NULL; pm++)
+    {
+        char sf[128];
+        const int sl = snprintf(sf, sizeof(sf), "://%s", portal_map[pm][0]);
+        if (sl > 0 && (size_t)sl < sizeof(sf))
+        {
+            char* fp = strstr(g_prog_status[tl_thread_idx].last_location, sf);
+            if (fp)
+            {
+                const size_t pl = (size_t)(fp - g_prog_status[tl_thread_idx].last_location);
+                char nl[LAST_LOCATION_LEN];
+                const int nn = snprintf(nl, sizeof(nl), "%.*s%s%s", (int)pl,
+                    g_prog_status[tl_thread_idx].last_location,
+                    portal_map[pm][1], fp + sl);
+                if (nn > 0 && (size_t)nn < sizeof(nl))
+                {
+                    strncpy(g_prog_status[tl_thread_idx].last_location, nl, LAST_LOCATION_LEN - 1);
+                    g_prog_status[tl_thread_idx].last_location[LAST_LOCATION_LEN - 1] = '\0';
+                }
+                LOG_VERBOSE("portal domain %s -> IP %s, fixed url: %s",
+                    portal_map[pm][0], portal_map[pm][1], g_prog_status[tl_thread_idx].last_location);
+                break;
+            }
+        }
+    }
+
     g_prog_status[tl_thread_idx].last_location_lock = true;
     LOG_DEBUG("配置 %" PRIu8 " 获取认证配置 URL: %s", g_prog_status[tl_thread_idx].login_cfg.idx, g_prog_status[tl_thread_idx].last_location);
 

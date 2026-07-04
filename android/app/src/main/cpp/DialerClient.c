@@ -369,93 +369,9 @@ static AuthStatus auth()
     http_resp_t resp = get(location); // curl GET last_location 获取认证配置
     if (resp.status != REQUEST_HAVE_RES || resp.body_size == 0 || resp.body_data == NULL) // 如果响应体没有内容 (非 200 响应码), 则返回
     {
-        // 尝试从 URL 中提取端口并替换域名宿主 IP（某些校园网内部域名在未认证设备上无法解析）
-        const char* scheme_end = strstr(location, "://");
-        if (scheme_end)
-        {
-            const char* host_start = scheme_end + 3;
-            const char* path_start = strchr(host_start, '/');
-            if (path_start)
-            {
-                // 提取端口号
-                char port_part[16] = "";
-                for (const char* p = host_start; p < path_start && (size_t)(p - host_start) < 256; p++)
-                {
-                    if (*p == ':')
-                    {
-                        const size_t port_len = (size_t)(path_start - p);
-                        if (port_len < sizeof(port_part)) { memcpy(port_part, p, port_len); port_part[port_len] = '\0'; }
-                        break;
-                    }
-                }
-
-                // 提取 Host 值（域名+端口），用于注入虚拟主机头
-                char host_value[256] = "";
-                {
-                    const size_t host_len = (size_t)(path_start - host_start);
-                    if (host_len > 0 && host_len < sizeof(host_value))
-                    {
-                        memcpy(host_value, host_start, host_len);
-                        host_value[host_len] = '\0';
-                    }
-                }
-
-                // 已知校园网 portal 域名 → IP 映射（DNS 在校内网段外不可解析）
-                const char* fallback_ip = NULL;
-                const char* known_portals[][2] = {
-                    {"enet.10000.gd.cn", "125.88.59.131"},
-                    {NULL, NULL}
-                };
-                for (int k = 0; known_portals[k][0] != NULL; k++)
-                {
-                    if (strstr(host_value, known_portals[k][0]) != NULL)
-                    {
-                        fallback_ip = known_portals[k][1];
-                        break;
-                    }
-                }
-
-                if (fallback_ip)
-                {
-                    char ip_url[LAST_LOCATION_LEN];
-                    const int n = snprintf(ip_url, sizeof(ip_url), "http://%s%s%s", fallback_ip, port_part, path_start);
-                    if (n > 0 && (size_t)n < sizeof(ip_url))
-                    {
-                        LOG_WARN("域名 [%s] 解析失败，尝试用已知 IP [%s] 替代: %s", host_value, fallback_ip, ip_url);
-                        char host_hdr[280];
-                        const int hn = snprintf(host_hdr, sizeof(host_hdr), "Host: %s", host_value);
-                        if (hn > 0 && (size_t)hn < sizeof(host_hdr)) set_next_get_header(host_hdr);
-                        if (resp.body_data) { free(resp.body_data); resp.body_data = NULL; }
-                        resp = get(ip_url);
-                    }
-                }
-                else
-                {
-                    // 未知域名，尝试用 wlanacip 作为最后手段
-                    char* ac_ip = extract_url_param(location, "wlanacip");
-                    if (ac_ip)
-                    {
-                        char ip_url[LAST_LOCATION_LEN];
-                        const int n2 = snprintf(ip_url, sizeof(ip_url), "http://%s%s%s", ac_ip, port_part, path_start);
-                        if (n2 > 0 && (size_t)n2 < sizeof(ip_url))
-                        {
-                            LOG_WARN("域名 [%s] 解析失败，尝试用 AC IP [%s] 替代: %s", host_value, ac_ip, ip_url);
-                            char host_hdr[280];
-                            const int hn = snprintf(host_hdr, sizeof(host_hdr), "Host: %s", host_value);
-                            if (hn > 0 && (size_t)hn < sizeof(host_hdr)) set_next_get_header(host_hdr);
-                            if (resp.body_data) { free(resp.body_data); resp.body_data = NULL; }
-                            resp = get(ip_url);
-                        }
-                        free(ac_ip);
-                    }
-                }
-            }
-        }
-        if (resp.status != REQUEST_HAVE_RES || resp.body_size == 0 || resp.body_data == NULL)
-        {
-            LOG_ERROR("响应体为空, 无法提取认证配置");
-            return AUTH_FAILED;
-        }
+        // get_last_location() 已尝试将内部域名替换为 IP，若仍有解析失败则放弃
+        LOG_ERROR("响应体为空, 无法提取认证配置 (last_location: %s)", location);
+        return AUTH_FAILED;
     }
 
     char* portal_config = extract_between_tags(resp.body_data, portal_start_tag, portal_end_tag); // 从响应体内容中提取指定内容
