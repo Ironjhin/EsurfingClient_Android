@@ -42,6 +42,13 @@ class _HomePageState extends State<HomePage> {
       }
     };
 
+    // 如果启用了自动启动，立即进入认证流程
+    if (_config?.enabled == true) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _toggleAuth();
+      });
+    }
+
     if (mounted) {
       setState(() => _isLoading = false);
     }
