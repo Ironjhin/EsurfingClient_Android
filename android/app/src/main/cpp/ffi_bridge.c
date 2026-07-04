@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
 static char g_data_dir[512];
 static int  g_thread_count = 0;
