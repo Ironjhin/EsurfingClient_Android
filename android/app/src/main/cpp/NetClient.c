@@ -336,12 +336,12 @@ http_resp_t post(const char* url, const char* data)
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
     curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
-    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
 
     LOG_VERBOSE("执行 CURL");
     const CURLcode curl_code = curl_easy_perform(curl);
     if (curl_code != CURLE_OK)
     {
+        LOG_ERROR("POST curl 执行失败: curl_code=%d(%s)", curl_code, curl_easy_strerror(curl_code));
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
         resp.status = curl_err_msg_out(curl_code);
@@ -425,7 +425,7 @@ http_resp_t get(const char* url)
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
         curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
         curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, g_prog_status[tl_thread_idx].login_cfg.user_agent);
     }
 
     LOG_VERBOSE("执行 CURL");
