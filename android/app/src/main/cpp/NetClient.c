@@ -27,8 +27,8 @@
 
 static const char s_req_content_type[] = "Content-Type: application/x-www-form-urlencoded";
 static const char s_req_accept[] = "Accept: text/html,text/xml,application/xhtml+xml,application/x-javascript,*/*";
-static const char s_generate_url[] = "http://connect.rom.miui.com/generate_204";
-static const char s_backup_generate_url[] = "http://192.0.2.1";
+static const char s_generate_url[] = "http://edge-http.microsoft.com/captiveportal/generate_204";
+static const char s_backup_generate_url[] = "http://connect.rom.miui.com/generate_204";
 
 static char s_school_id[SCHOOL_ID_LENGTH];
 static char s_domain[DOMAIN_LENGTH];
