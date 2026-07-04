@@ -80,10 +80,26 @@ int32_t esurfing_client_init(const char* data_dir, const char* config_json) {
     tl_thread_idx=-1;
     return 0;
 }
+static bool _is_thread_alive(int idx)
+{
+    return g_threads && g_threads[idx].t && g_prog_status && g_prog_status[idx].runtime_status.is_running;
+}
+
 int32_t esurfing_client_start(int32_t idx) {
     if (!g_prog_status||idx<0||idx>=g_prog_cnt) return -1;
     if (!g_threads){ g_threads=(thread_wrap_t*)calloc(g_prog_cnt,sizeof(thread_wrap_t)); if(!g_threads)return -1; }
-    if (g_threads[idx].t) return 0;
+    if (g_threads[idx].t) {
+        if (_is_thread_alive(idx)) {
+            LOG_VERBOSE("esurfing_client_start(%d): thread already running, skipping", idx);
+            return 0;
+        }
+        LOG_WARN("esurfing_client_start(%d): stale thread handle detected, cleaning up", idx);
+        int ret = 0;
+        sim_thread_join(g_threads[idx].t, &ret);
+        sim_thread_destroy(g_threads[idx].t);
+        g_threads[idx].t = NULL;
+        g_started--;
+    }
     g_threads[idx].idx=idx;
     g_threads[idx].t=sim_thread_create(dialer_app,(void*)(intptr_t)(int8_t)idx);
     if(!g_threads[idx].t) {
@@ -92,7 +108,19 @@ int32_t esurfing_client_start(int32_t idx) {
     }
     g_started++; return 0;
 }
-void esurfing_client_stop(void){ g_need_exit=1; g_thread_keep_alive=0; for(int i=0;i<g_prog_cnt;i++){ g_prog_status[i].runtime_status.is_need_reset=1; g_prog_status[i].runtime_status.is_running=0; } }
+void esurfing_client_stop(void){
+    LOG_DEBUG("esurfing_client_stop() called — setting is_need_reset for all threads");
+    g_need_exit=1; g_thread_keep_alive=0;
+    for(int i=0;i<g_prog_cnt;i++){
+        g_prog_status[i].runtime_status.is_need_reset=1;
+        g_prog_status[i].runtime_status.is_running=0;
+    }
+}
 void esurfing_client_clear_log(void){ clear_log_file(); }
-int32_t esurfing_client_is_stopped(void){ int r=0; for(int i=0;i<g_prog_cnt;i++)if(g_threads&&g_threads[i].t&&g_prog_status&&g_prog_status[i].runtime_status.is_running)r++; return r==0?1:0; }
+int32_t esurfing_client_is_stopped(void){
+    for(int i=0;i<g_prog_cnt;i++){
+        if (g_prog_status && g_prog_status[i].runtime_status.is_running) return 0;
+    }
+    return 1;
+}
 void esurfing_client_destroy(void){ esurfing_client_stop(); if(g_threads){ for(int i=0;i<g_prog_cnt;i++){ if(g_threads[i].t){ int ret=0; sim_thread_join(g_threads[i].t,&ret); sim_thread_destroy(g_threads[i].t); }} free(g_threads); g_threads=NULL; } if(g_prog_status){ for(int i=0;i<g_prog_cnt;i++)if(g_prog_status[i].auth_cfg.cipher)destroy_cipher_factory(); free(g_prog_status); g_prog_status=NULL; } clean_logger(); g_started=0; g_prog_cnt=0; }
