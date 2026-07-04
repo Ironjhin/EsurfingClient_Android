@@ -8,6 +8,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -61,9 +64,13 @@ jobs:
       - name: Build Universal Release APK
         run: flutter build apk --release --android-skip-build-dependency-validation --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
-      # 归档通用 APK 产物
-      - name: Upload Universal APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: surfing-client-universal
-          path: build/app/outputs/flutter-apk/app-release.apk
+      # 发布独立不重名的 Release APK
+      - name: Create Unique Release and Upload Raw APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="v1.0.${{ github.run_number }}"
+          gh release create "$TAG_NAME" \
+            build/app/outputs/flutter-apk/app-release.apk \
+            --title "Esurfing Client $TAG_NAME" \
+            --notes "自动构建交付：基于提交记录 ${{ github.sha }}"

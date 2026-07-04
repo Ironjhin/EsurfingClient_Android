@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pthread.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -16,6 +17,8 @@ static const char s_file_name[] = "run.log";
 static const char s_rotate_file_name[] = ".rotate.log";
 
 char g_sandbox_path[PATH_MAX] = {0};
+
+static pthread_mutex_t s_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static log_cfg_t s_logger_cfg = {
     .lv = LOG_LEVEL_INFO,
@@ -206,6 +209,34 @@ bool init_logger()
     LOG_DEBUG("日志系统初始化完成");
     LOG_DEBUG("日志等级: %s", get_level_str(s_logger_cfg.lv));
     return true;
+}
+
+void clear_log_file(void)
+{
+    pthread_mutex_lock(&s_log_mutex);
+
+    if (strlen(s_logger_cfg.log_file) == 0 || s_logger_cfg.file_handle == NULL)
+    {
+        pthread_mutex_unlock(&s_log_mutex);
+        return;
+    }
+
+    fclose(s_logger_cfg.file_handle);
+    s_logger_cfg.file_handle = NULL;
+
+    /* 以 "w" 模式打开即截断为零字节 */
+    FILE* tmp = fopen(s_logger_cfg.log_file, "w");
+    if (tmp) fclose(tmp);
+
+    /* 恢复追加写入 */
+    s_logger_cfg.file_handle = fopen(s_logger_cfg.log_file, "a");
+    if (!s_logger_cfg.file_handle)
+    {
+        fprintf(stderr, "[ERROR] 清空日志后重新打开文件失败\n");
+    }
+    s_logger_cfg.cur_lines = 0;
+
+    pthread_mutex_unlock(&s_log_mutex);
 }
 
 void clean_logger()

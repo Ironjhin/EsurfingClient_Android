@@ -93,5 +93,6 @@ int32_t esurfing_client_start(int32_t idx) {
     g_started++; return 0;
 }
 void esurfing_client_stop(void){ g_need_exit=1; g_thread_keep_alive=0; for(int i=0;i<g_prog_cnt;i++){ g_prog_status[i].runtime_status.is_need_reset=1; g_prog_status[i].runtime_status.is_running=0; } }
+void esurfing_client_clear_log(void){ clear_log_file(); }
 int32_t esurfing_client_is_stopped(void){ int r=0; for(int i=0;i<g_prog_cnt;i++)if(g_threads&&g_threads[i].t&&g_prog_status&&g_prog_status[i].runtime_status.is_running)r++; return r==0?1:0; }
 void esurfing_client_destroy(void){ esurfing_client_stop(); if(g_threads){ for(int i=0;i<g_prog_cnt;i++){ if(g_threads[i].t){ int ret=0; sim_thread_join(g_threads[i].t,&ret); sim_thread_destroy(g_threads[i].t); }} free(g_threads); g_threads=NULL; } if(g_prog_status){ for(int i=0;i<g_prog_cnt;i++)if(g_prog_status[i].auth_cfg.cipher)destroy_cipher_factory(); free(g_prog_status); g_prog_status=NULL; } clean_logger(); g_started=0; g_prog_cnt=0; }

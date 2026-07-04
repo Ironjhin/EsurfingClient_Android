@@ -3,12 +3,16 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import '../native/bindings.dart';
 
-/// 实时日志读取器 — 每秒轮询沙盒中的 run.log
+/// 实时日志读取器 — 基于字节偏移量的增量轮询
 class LogReader extends ChangeNotifier {
   Timer? _timer;
   String _content = '';
   bool _paused = false;
+
+  /// 上次清除时文件末尾的字节偏移，下次轮询只读取此偏移之后的新数据
+  int _clearByteOffset = 0;
 
   String get content => _content;
   bool get isRunning => _timer != null;
@@ -35,10 +39,35 @@ class LogReader extends ChangeNotifier {
     _paused = false;
   }
 
-  /// 清空当前缓存内容
+  /// 清空日志：C 层同源物理截断 + 偏移量重置
   void clear() {
     _content = '';
+
+    // 1. C 层同源进程内截断（持有文件句柄，100% 成功）
+    final bindings = NativeBindings.instance;
+    if (bindings.isLoaded) {
+      try {
+        bindings.esurfingClientClearLog();
+      } catch (_) {}
+    }
+
+    // 2. 截断后文件应为 0 字节，偏移归零
+    _clearByteOffset = 0;
+
+    // 3. 异步确认实际文件长度（兜底，防止 C 层未加载时偏移不准）
+    _syncClearOffset();
+
     notifyListeners();
+  }
+
+  Future<void> _syncClearOffset() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/run.log');
+      if (await file.exists()) {
+        _clearByteOffset = await file.length();
+      }
+    } catch (_) {}
   }
 
   Future<void> _poll() async {
@@ -54,25 +83,44 @@ class LogReader extends ChangeNotifier {
         }
         return;
       }
-      // 只读末尾 512KB 避免 OOM
+
       final length = await file.length();
-      final int offset = length > 524288 ? length - 524288 : 0;
-      raf = await file.open(mode: FileMode.read);
-      await raf.setPosition(offset);
-      final bytes = await raf.read((length - offset).toInt());
-      final newContent = utf8.decode(bytes, allowMalformed: true);
-      if (newContent != _content) {
-        _content = newContent;
-        notifyListeners();
+
+      // 文件被轮转/重建（新文件小于记录的偏移），从头开始
+      if (length < _clearByteOffset) {
+        _clearByteOffset = 0;
       }
+
+      // 无新数据，跳过
+      if (length <= _clearByteOffset) {
+        return;
+      }
+
+      // 只读偏移之后的增量字节
+      raf = await file.open(mode: FileMode.read);
+      await raf.setPosition(_clearByteOffset);
+      final bytes = await raf.read((length - _clearByteOffset).toInt());
+      final chunk = utf8.decode(bytes, allowMalformed: true);
+
+      _content += chunk;
+
+      // 内存上限保护：只保留尾部 524288 字符
+      if (_content.length > 524288) {
+        _content = _content.substring(_content.length - 524288);
+        // 丢弃对应字节数，下次从头读以防止截断行被重复拼接
+        _clearByteOffset = 0;
+      } else {
+        // 正常前进偏移
+        _clearByteOffset = length;
+      }
+
+      notifyListeners();
     } catch (_) {
       // 文件可能被日志系统轮转锁定，静默忽略
     } finally {
       try {
         await raf?.close();
-      } catch (_) {
-        // 关闭文件句柄时的异常不影响下一轮轮询
-      }
+      } catch (_) {}
     }
   }
 

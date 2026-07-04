@@ -94,4 +94,13 @@ bool init_logger();
  */
 void clean_logger();
 
+/**
+ * @brief 物理截断日志文件为零字节（线程安全）
+ *
+ * 在互斥锁保护下关闭当前文件句柄，以 "w" 模式重新打开以清空内容，
+ * 再以 "a" 模式重开恢复追加写入。由于在同进程 C 层内部操作，
+ * 持有文件句柄的源线程不会遭遇权限拒绝。
+ */
+void clear_log_file(void);
+
 #endif //ESURFINGCLIENT_LOGGER_H
