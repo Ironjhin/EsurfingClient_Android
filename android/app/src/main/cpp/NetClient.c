@@ -335,6 +335,8 @@ http_resp_t post(const char* url, const char* data)
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
     curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
+    curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
 
     LOG_VERBOSE("执行 CURL");
     const CURLcode curl_code = curl_easy_perform(curl);
@@ -384,22 +386,18 @@ http_resp_t get(const char* url)
 
     http_resp_t resp = {0};
 
-    char ua[MAX_LEN] = {0};
     char c_id[MAX_LEN] = {0};
 
     struct curl_slist* headers = NULL;
 
     if (tl_thread_idx != -1)
     {
-        snprintf(ua, MAX_LEN, "User-Agent: %s", safe_str(g_prog_status[tl_thread_idx].login_cfg.user_agent));
         snprintf(c_id, MAX_LEN, "Client-ID: %s", safe_str(g_prog_status[tl_thread_idx].auth_cfg.client_id));
 
-        LOG_VERBOSE("GET 添加头 %s", ua);
         LOG_VERBOSE("GET 添加头 %s", s_req_accept);
         LOG_VERBOSE("GET 添加头 %s", c_id);
         LOG_VERBOSE("线程下标: %" PRId8, tl_thread_idx);
 
-        headers = curl_slist_append(headers, ua);
         headers = curl_slist_append(headers, s_req_accept);
         headers = curl_slist_append(headers, c_id);
     }
@@ -426,6 +424,8 @@ http_resp_t get(const char* url)
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
         curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 10L);
         curl_easy_setopt(curl, CURLOPT_OPENSOCKETFUNCTION, open_socket_callback);
+        curl_easy_setopt(curl, CURLOPT_COOKIEFILE, "");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
     }
 
     LOG_VERBOSE("执行 CURL");
@@ -543,7 +543,8 @@ NetworkStatus get_last_location()
         resp = get(g_prog_status[tl_thread_idx].last_location);
         if (resp.status != REQUEST_REDIRECT && resp.status != REQUEST_SUCCESS && resp.status != REQUEST_HAVE_RES)
         {
-            LOG_ERROR("跟随重定向失败: curl_code=%d, status=%d", resp.curl_code, resp.status);
+            LOG_ERROR("跟随重定向失败: curl_code=%d, status=%d — 状态机安全退避，等待下一轮心跳", resp.curl_code, resp.status);
+            return REQUEST_ERROR;
         }
     }
 

@@ -73,4 +73,10 @@ jobs:
           gh release create "$TAG_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \
             --title "Esurfing Client $TAG_NAME" \
-            --notes "自动构建交付：基于提交记录 ${{ github.sha }}"
+            --notes "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）
+
+本次修复：
+- 204 状态码探测间隔恢复为 10 秒，消除高频暴刷
+- 日志清空改用 C 层同源物理截断 + Dart 字节偏移读取，彻底解决日志复活和磁盘膨胀
+- 重定向跟随注入 Cookie 引擎 + 标准浏览器 UA 指纹伪装，修复 curl_code=56 网关重置
+- 重定向失败时状态机熔断返回，防止无效 auth 占用线程"
