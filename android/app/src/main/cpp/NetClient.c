@@ -27,8 +27,8 @@
 
 static const char s_req_content_type[] = "Content-Type: application/x-www-form-urlencoded";
 static const char s_req_accept[] = "Accept: text/html,text/xml,application/xhtml+xml,application/x-javascript,*/*";
-static const char s_generate_url[] = "http://edge-http.microsoft.com/captiveportal/generate_204";
-static const char s_backup_generate_url[] = "http://connect.rom.miui.com/generate_204";
+static const char s_generate_url[] = "http://connect.rom.miui.com/generate_204";
+static const char s_backup_generate_url[] = "http://edge-http.microsoft.com/captiveportal/generate_204";
 
 static char s_school_id[SCHOOL_ID_LENGTH];
 static char s_domain[DOMAIN_LENGTH];
@@ -483,11 +483,21 @@ NetworkStatus check_network_status()
     http_resp_t resp = get(s_generate_url);
     if (resp.curl_code == CURLE_COULDNT_RESOLVE_HOST)
     {
-        LOG_WARN("DNS 解析错误, 使用备用超时方案重试");
+        LOG_WARN("DNS 解析错误, 使用备用 URL 重试");
         resp = get(s_backup_generate_url);
         if (resp.status == REQUEST_WARN)
         {
             resp.status = REQUEST_SUCCESS;
+        }
+    }
+    else if (resp.status != REQUEST_REDIRECT && resp.status != REQUEST_SUCCESS)
+    {
+        LOG_WARN("探测 URL 返回非预期结果 (status=%d), 尝试备用 URL", resp.status);
+        const http_resp_t backup = get(s_backup_generate_url);
+        if (backup.status == REQUEST_REDIRECT || backup.status == REQUEST_SUCCESS)
+        {
+            if (resp.body_data) free(resp.body_data);
+            resp = backup;
         }
     }
     return resp.status;
@@ -527,11 +537,22 @@ NetworkStatus get_last_location()
         resp = get(s_generate_url); // 检测响应码
         if (resp.curl_code == CURLE_COULDNT_RESOLVE_HOST)
         {
-            LOG_WARN("DNS 解析错误, 使用备用超时方案重试");
+            LOG_WARN("DNS 解析错误, 使用备用 URL 重试");
             resp = get(s_backup_generate_url);
             if (resp.status == REQUEST_WARN)
             {
                 resp.status = REQUEST_SUCCESS;
+            }
+        }
+        else if (resp.status != REQUEST_REDIRECT && resp.status != REQUEST_SUCCESS)
+        {
+            // 主 URL 返回了错误（如 502），尝试备用 URL
+            LOG_WARN("主探测 URL 返回非预期结果 (status=%d), 尝试备用 URL", resp.status);
+            const http_resp_t backup = get(s_backup_generate_url);
+            if (backup.status == REQUEST_REDIRECT || backup.status == REQUEST_SUCCESS)
+            {
+                if (resp.body_data) free(resp.body_data);
+                resp = backup;
             }
         }
         switch (resp.status)

@@ -75,13 +75,12 @@ jobs:
             "" \
             "本轮修复：" \
             "- 恢复原版 PC 客户端 User-Agent（CCTP/Linux64/1003），修复广东电信 Portal 因移动端 UA 返回手机版页面导致配置提取失败" \
+            "- 主探测 URL 恢复为原版 PC 配置 connect.rom.miui.com；备用 edge-http.microsoft.com" \
+            "- 修复探测 URL 返回 502 等异常时不会自动尝试备用 URL 的问题" \
             "- 启用服务开关现在能真正自动启动认证线程" \
             "- Portal 配置提取增加结尾标签缺失容错，消除 NULL 解引用闪退" \
             "- 校园网标志提取增加三层判空保护" \
-            "- 探测 URL 切换为微软 CDN 节点 + 小米备用，移除不可路由 IP" \
             "- 恢复 libcurl FOLLOWLOCATION 原生重定向，修复相对路径崩溃" \
-            "- CURLINFO_REDIRECT_COUNT 替代手动 302 拦截" \
-            "- 204 探测间隔恢复为 10 秒" \
             "- Cookie 引擎 + 浏览器 UA 伪装修复 curl_code=56 网关重置" \
             > /tmp/release-notes.md
           gh release create "$TAG_NAME" \
