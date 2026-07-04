@@ -34,6 +34,18 @@ static char s_school_id[SCHOOL_ID_LENGTH];
 static char s_domain[DOMAIN_LENGTH];
 static char s_area[AREA_LENGTH];
 
+/* 线程本地存储：允许调用方在 get() 前注入一个额外 HTTP 头（如 Host） */
+static __thread char tls_extra_header[512] = {0};
+
+void set_next_get_header(const char* header)
+{
+    if (header)
+    {
+        strncpy(tls_extra_header, header, sizeof(tls_extra_header) - 1);
+        tls_extra_header[sizeof(tls_extra_header) - 1] = '\0';
+    }
+}
+
 char* extract_url_param(const char* url, const char* search_str_start)
 {
     if (url == NULL)
@@ -400,6 +412,13 @@ http_resp_t get(const char* url)
 
         headers = curl_slist_append(headers, s_req_accept);
         headers = curl_slist_append(headers, c_id);
+
+        if (tls_extra_header[0])
+        {
+            LOG_VERBOSE("GET 添加额外头 %s", tls_extra_header);
+            headers = curl_slist_append(headers, tls_extra_header);
+            tls_extra_header[0] = '\0';
+        }
     }
 
     CURL* curl = curl_easy_init();

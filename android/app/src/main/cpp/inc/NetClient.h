@@ -55,4 +55,10 @@ NetworkStatus check_network_status();
  */
 NetworkStatus get_last_location();
 
+/**
+ * @brief 设置下一个 get() 请求的额外 HTTP 头（线程本地，一次有效）
+ * @param header 完整的 HTTP 头字符串，例如 "Host: example.com:8080"
+ */
+void set_next_get_header(const char* header);
+
 #endif //ESURFINGCLIENT_NETCLIENT_H

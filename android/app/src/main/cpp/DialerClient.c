@@ -396,6 +396,17 @@ static AuthStatus auth()
                     if (n > 0 && (size_t)n < sizeof(ip_url))
                     {
                         LOG_WARN("域名解析失败，尝试用 AC IP 替代: %s", ip_url);
+                        // 注入原始 Host 头（部分 Web 服务器需要虚拟主机匹配）
+                        const size_t host_len = (size_t)(path_start - host_start);
+                        if (host_len > 0 && host_len < 256)
+                        {
+                            char host_hdr[280];
+                            const int hn = snprintf(host_hdr, sizeof(host_hdr), "Host: %.*s", (int)host_len, host_start);
+                            if (hn > 0 && (size_t)hn < sizeof(host_hdr))
+                            {
+                                set_next_get_header(host_hdr);
+                            }
+                        }
                         // 释放旧响应体（如果有）
                         if (resp.body_data) { free(resp.body_data); resp.body_data = NULL; }
                         resp = get(ip_url);
