@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:path_provider/path_provider.dart';
 import 'src/model/config.dart';
 import 'src/ui/home_page.dart';
@@ -63,6 +64,9 @@ class ESurfingClientApp extends StatelessWidget {
       title: 'ESurfing Client',
       // i18n
       localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
         AppLocalizationsDelegate(),
       ],
       supportedLocales: AppLocalizations.supportedLocales,
