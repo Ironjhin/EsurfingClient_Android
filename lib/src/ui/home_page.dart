@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
@@ -26,6 +27,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   final AuthController _authCtrl = AuthController.instance;
   final LogReader _logReader = LogReader();
 
+  // 运行时间相关
+  DateTime? _startTime;
+  Timer? _uptimeTimer;
+  String _uptimeText = '';
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +44,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _logReader.stop();
     _authCtrl.onStatusChanged = null;
+    _uptimeTimer?.cancel();
     super.dispose();
   }
 
@@ -99,6 +106,46 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     ].request();
   }
 
+  void _startUptimeTimer() {
+    _startTime = DateTime.now();
+    _uptimeTimer?.cancel();
+    _uptimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _startTime != null) {
+        setState(() {
+          _uptimeText = _formatUptime(DateTime.now().difference(_startTime!));
+        });
+      }
+    });
+  }
+
+  void _stopUptimeTimer() {
+    _uptimeTimer?.cancel();
+    _uptimeTimer = null;
+    _startTime = null;
+    if (mounted) {
+      setState(() {
+        _uptimeText = '';
+      });
+    }
+  }
+
+  String _formatUptime(Duration duration) {
+    final days = duration.inDays;
+    final hours = duration.inHours % 24;
+    final minutes = duration.inMinutes % 60;
+    final seconds = duration.inSeconds % 60;
+
+    if (days > 0) {
+      return '$days天 $hours时 $minutes分 $seconds秒';
+    } else if (hours > 0) {
+      return '$hours时 $minutes分 $seconds秒';
+    } else if (minutes > 0) {
+      return '$minutes分 $seconds秒';
+    } else {
+      return '$seconds秒';
+    }
+  }
+
   Future<void> _toggleAuth() async {
     if (_config == null) return;
 
@@ -141,6 +188,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             _statusDetail = i18n.runningDetail;
           });
           _logReader.resume();
+          _startUptimeTimer();
         } else {
           setState(() {
             _isRunning = false;
@@ -172,6 +220,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _statusText = i18n.stopped;
         _statusDetail = '';
       });
+      _stopUptimeTimer();
     }
   }
 
@@ -270,6 +319,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 4),
+                  // 运行时间显示
+                  if (_isRunning && _uptimeText.isNotEmpty)
+                    Text(
+                      '运行时间: $_uptimeText',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
                   const SizedBox(height: 32),
 
                   // Start / Stop button
