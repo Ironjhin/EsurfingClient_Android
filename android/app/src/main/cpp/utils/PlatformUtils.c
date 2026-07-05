@@ -620,9 +620,6 @@ bool load_cfg()
         cJSON_Delete(cfg_json);
         return true;
     }
-            sleep_ms(10000, true);
-        }
-    }
 
     const uint8_t cnt = cJSON_GetArraySize(accounts);
 
