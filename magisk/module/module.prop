@@ -1,7 +1,5 @@
 id=esurfing-daemon
 name=ESurfing Daemon
-# 版本号由 CI 自动覆写: version=1.1.{run_number}
-# 本地保留 1.1.0 作为开发默认值
 version=1.1.0
 versionCode=0
 author=EsurfingClient

@@ -78,9 +78,9 @@ jobs:
           AUTO_VERSION="1.1.${{ github.run_number }}"
           AUTO_VERSION_CODE="${{ github.run_number }}"
 
-          # 覆写 module.prop 中的版本号
-          sed -i "s/^version=.*/${AUTO_VERSION}/" "$MODULE_DIR/module.prop"
-          sed -i "s/^versionCode=.*/${AUTO_VERSION_CODE}/" "$MODULE_DIR/module.prop"
+          # 精确覆写 module.prop 中的版本号(仅匹配以 version= 或 versionCode= 开头的行)
+          sed -i "s/^version=.*/version=${AUTO_VERSION}/" "$MODULE_DIR/module.prop"
+          sed -i "s/^versionCode=.*/versionCode=${AUTO_VERSION_CODE}/" "$MODULE_DIR/module.prop"
 
           echo "AUTO_VERSION=$AUTO_VERSION"
           echo "AUTO_VERSION_CODE=$AUTO_VERSION_CODE"
