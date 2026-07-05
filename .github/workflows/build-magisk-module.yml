@@ -73,18 +73,22 @@ jobs:
         run: |
           MODULE_DIR="magisk/module"
 
-          # 从 module.prop 读取版本号
-          VERSION=$(grep "^version=" "$MODULE_DIR/module.prop" | cut -d'=' -f2)
-          VERSION_CODE=$(grep "^versionCode=" "$MODULE_DIR/module.prop" | cut -d'=' -f2)
+          # 自动生成唯一版本号,避免 tag 冲突
+          # 版本号格式: 1.1.{run_number},确保每次构建都递增
+          AUTO_VERSION="1.1.${{ github.run_number }}"
+          AUTO_VERSION_CODE="${{ github.run_number }}"
 
-          echo "Raw VERSION output: $(grep "^version=" "$MODULE_DIR/module.prop")"
-          echo "Parsed VERSION: '$VERSION'"
-          echo "Parsed VERSION_CODE: '$VERSION_CODE'"
+          # 覆写 module.prop 中的版本号
+          sed -i "s/^version=.*/${AUTO_VERSION}/" "$MODULE_DIR/module.prop"
+          sed -i "s/^versionCode=.*/${AUTO_VERSION_CODE}/" "$MODULE_DIR/module.prop"
 
-          if [ -z "$VERSION" ]; then
-            echo "ERROR: VERSION is empty!" >&2
-            exit 1
-          fi
+          echo "AUTO_VERSION=$AUTO_VERSION"
+          echo "AUTO_VERSION_CODE=$AUTO_VERSION_CODE"
+          echo "Updated module.prop:"
+          cat "$MODULE_DIR/module.prop"
+
+          VERSION="$AUTO_VERSION"
+          VERSION_CODE="$AUTO_VERSION_CODE"
 
           # 确保 portal 文件存在
           if [ ! -f "$MODULE_DIR/portal/index.html" ]; then
