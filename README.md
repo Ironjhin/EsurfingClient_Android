@@ -1,11 +1,15 @@
-# 天翼校园网认证客户端 — Magisk 模块
+# 天翼校园网认证客户端 — Magisk/KernelSU 模块
 
 氛围编程的产物，我是小白一枚
 
-纯 C 守护进程的 Magisk 模块，认证核心与 Flutter 版完全一致，去掉 Flutter UI，内存占用 ~1-2MB。安装后桌面出现 **ESurfing** 图标，点进去就是管理页面。
+纯 C 守护进程的 Magisk 模块，认证核心与 Flutter 版完全一致，去掉 Flutter UI，内存占用 ~1-2MB。
+
+支持 **Magisk** 和 **KernelSU** 双平台：
+- **Magisk**: 安装后桌面出现 **ESurfing** 图标，点击进入 Web 管理页面
+- **KernelSU**: KernelSU Manager → 模块 → WebUI 入口直接打开管理页面
 
 ------
-本分支 `magisk` — Magisk 模块版本。
+本分支 `magisk` — Magisk/KernelSU 模块版本。
 另有 **Flutter APK 版本** 在 [main 分支](https://github.com/Ironjhin/EsurfingClient_Android/tree/main)，带原生 UI 界面。
 
 ## 与原版 CVersion 的差异修复
@@ -34,22 +38,23 @@
 ### 从 Release 安装
 
 1. 前往 [Releases](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk) 下载 `esurfing-daemon-arm64-v8a.zip`
-2. Magisk Manager → 模块 → 从本地安装 → 选择 zip
-3. 重启手机
-
-重启后桌面会出现 **ESurfing** 应用图标，打开即可管理。
+2. **Magisk**: Magisk Manager → 模块 → 从本地安装 → 选择 zip
+3. **KernelSU**: KernelSU Manager → 模块 → 从本地安装 → 选择 zip
+4. 重启手机
 
 ### 首次配置
 
-打开桌面的 **ESurfing** 应用，或 Magisk Manager 里点击「打开」，在 Web 管理页面填好账号密码点击保存。
+**Magisk**: 桌面会出现 **ESurfing** 应用图标，打开即可管理。
+**KernelSU**: 打开 KernelSU Manager → 模块 → 点击 **ESurfing Daemon** 的 **WebUI** 按钮。
+或在浏览器中打开 `http://127.0.0.1:8888/`。
 
 ## 与原版的差异
 
 | 方面 | 原版 CVersion | 本模块 |
 |------|--------------|--------|
-| 平台 | Windows/Linux x64 | Android arm64 Magisk 模块 |
-| 部署 | 手动编译或下载可执行文件 | Magisk Manager 一键安装 |
-| 管理 | 控制台命令行 | Web 管理后台 + 桌面 APK |
+| 平台 | Windows/Linux x64 | Android arm64 Magisk/KernelSU 模块 |
+| 部署 | 手动编译或下载可执行文件 | Magisk/KernelSU Manager 一键安装 |
+| 管理 | 控制台命令行 | Web 管理后台 + WebUI（Magisk桌面APK / KernelSU内置） |
 | 守护 | 需 systemd 或任务计划 | 开机自动启动，root 级守护 |
 | 日志 | 终端输出 | 文件日志 + Web 页面实时查看 |
 | DNS | 未处理校园网 DNS 不可达 | 域名重写 + 公网 IP 直连 |
@@ -66,10 +71,18 @@
 ├── esurfingd.pid           # PID 文件
 ├── run.log                 # 运行日志
 ├── *.rotate.log            # 轮转归档
-└── portal/
-    ├── index.html          # Web 前端
-    └── run.log -> ../run.log
+├── portal/
+│   ├── index.html          # Web 前端（Magisk 桌面图标使用，相对路径）
+│   └── run.log -> ../run.log
+└── webroot/
+    └── index.html          # WebUI 前端（KernelSU 管理器内置使用，绝对路径）
 ```
+
+### portal vs webroot 说明
+
+- **portal/** — Magisk 使用。由 daemon 内置的 mongoose 服务器以相对路径方式 serve。URL 为 `http://127.0.0.1:8888/`。
+- **webroot/** — KernelSU 使用。由 KernelSU Manager 在容器中 serve。API 请求使用绝对路径 `http://127.0.0.1:8888/api/...` 跨容器通信。
+- 两者功能完全一致，仅 API 调用方式不同（相对路径 vs 绝对路径）。
 
 ## 常见问题
 
@@ -82,6 +95,9 @@ su -c "ps -A | grep esurfingd"
 ```bash
 su -c "killall esurfingd && sleep 1 && /data/adb/esurfing/esurfingd &"
 ```
+
+**Q: KernelSU WebUI 打开后看不到内容？**
+A: 确认 daemon 正在运行（参考上一条命令）。WebUI 页面需要 daemon 的 API 在 `127.0.0.1:8888` 正常响应。
 
 **Q: 卸载模块后会残留文件吗？**
 A: 卸载脚本会清理 `/data/adb/esurfing/` 下所有数据。

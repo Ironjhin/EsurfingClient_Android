@@ -14,5 +14,5 @@ if [ -f /data/adb/esurfing/portal/index.html ]; then
 fi
 
 ui_print "安装完成"
-ui_print "Web 管理后台: http://192.168.100.1:8888/"
+ui_print "Web 管理后台: http://127.0.0.1:8888/"
 ui_print "日志文件: /data/adb/esurfing/run.log"

@@ -138,24 +138,25 @@ jobs:
           echo "Release zip: $(ls -lh release/)"
 
           printf '%s\n' \
-            "## 🤖 Magisk 模块版（Root 设备用这个）" \
-            "纯 C 守护进程 ~1-2MB，开机自启。" \
+            "## 🔌 ESurfing Daemon — Magisk / KernelSU 模块" \
+            "纯 C 守护进程 ~1-2MB，开机自启。支持 Magisk 和 KernelSU 双平台。" \
             "" \
-            "[👉 点此查看 Flutter APK 版（无 Root 设备用）](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=v1.0.)" \
+            "[👉 Flutter APK 版（无 Root 设备用）](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=v1.0.)" \
             "" \
             "---" \
             "" \
             "### 安装" \
             "1. 下载 zip 文件" \
-            "2. Magisk Manager → 模块 → 从本地安装" \
+            "2. Magisk Manager 或 KernelSU Manager → 模块 → 从本地安装" \
             "3. 重启" \
             "" \
             "### Web 管理" \
-            "- 桌面 ESurfing 应用图标" \
-            "- 或浏览器访问 http://127.0.0.1:8888/" \
+            "- **Magisk**: 桌面 ESurfing 应用图标 / 浏览器 http://127.0.0.1:8888/" \
+            "- **KernelSU**: KernelSU Manager → 模块 → ESurfing Daemon → WebUI" \
+            "> 浏览器访问需要 ADB 端口转发" \
             > /tmp/release-notes.md
 
           gh release create "$TAG_NAME" \
             release/*.zip \
-            --title "🤖 ESurfing Daemon $TAG_NAME（Magisk）" \
+            --title "🔌 ESurfing Daemon $TAG_NAME（Magisk/KernelSU）" \
             --notes-file /tmp/release-notes.md

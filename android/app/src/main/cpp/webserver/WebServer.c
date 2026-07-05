@@ -17,19 +17,29 @@ static const char* portal_root = "/data/adb/esurfing/portal";
 static const char* portal_root = "portal";
 #endif
 
+// CORS headers for KernelSU WebUI cross-origin API access
+static const char* cors_hdrs = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n";
+
 static void fn(struct mg_connection *c, const int ev, void *ev_data)
 {
     if (ev == MG_EV_HTTP_MSG)
     {
         struct mg_http_message* hm = ev_data;
-        struct mg_http_serve_opts opts = { .root_dir = portal_root };
+        struct mg_http_serve_opts opts = { .root_dir = portal_root, .extra_headers = cors_hdrs };
+
+        // Handle CORS preflight (KernelSU WebUI cross-origin requests)
+        if (mg_strcmp(hm->method, mg_str("OPTIONS")) == 0)
+        {
+            mg_http_reply(c, 204, cors_hdrs, "");
+            return;
+        }
         // GET 请求
         if (mg_strcmp(hm->method, mg_str("GET")) == 0)
         {
             // 根目录转发到 index.html
             if (mg_match(hm->uri, mg_str("/"), NULL))
             {
-                mg_http_reply(c, 302, "Location: /index.html\r\n", "");
+                mg_http_reply(c, 302, "Location: /index.html\r\nAccess-Control-Allow-Origin: *\r\n", "");
                 return;
             }
             // 获取认证状态
@@ -38,7 +48,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 cJSON* auth = cJSON_CreateObject();
                 cJSON_AddBoolToObject(auth, "status", g_prog_status[0].runtime_status.is_authed);
                 char* status_str = cJSON_Print(auth);
-                mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", status_str);
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);
             }
             // 获取联网状态
@@ -47,15 +57,15 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 const NetworkStatus status = check_network_status();
                 if (status == REQUEST_SUCCESS)
                 {
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                 }
                 else if (status == REQUEST_REDIRECT)
                 {
-                    mg_http_reply(c, 302, "", "");
+                    mg_http_reply(c, 302, "Access-Control-Allow-Origin: *\r\n", "");
                 }
                 else
                 {
-                    mg_http_reply(c, 503, "", "");
+                    mg_http_reply(c, 503, "Access-Control-Allow-Origin: *\r\n", "");
                 }
             }
             // 获取配置
@@ -78,7 +88,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 char* config_str = cJSON_Print(configs);
 
-                mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", config_str);
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", config_str);
 
                 free(config_str);
                 cJSON_Delete(configs);
@@ -96,7 +106,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (body->len == 0)
                 {
-                    mg_http_reply(c, 400, "", "");
+                    mg_http_reply(c, 400, "Access-Control-Allow-Origin: *\r\n", "");
                     return;
                 }
 
@@ -106,11 +116,11 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (save_cfg(data))
                 {
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                 }
                 else
                 {
-                    mg_http_reply(c, 500, "", "");
+                    mg_http_reply(c, 500, "Access-Control-Allow-Origin: *\r\n", "");
                 }
 
                 free(data);
@@ -122,7 +132,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (body->len == 0)
                 {
-                    mg_http_reply(c, 400, "", "");
+                    mg_http_reply(c, 400, "Access-Control-Allow-Origin: *\r\n", "");
                     return;
                 }
 
@@ -136,12 +146,12 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (apply->valueint)
                 {
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                     g_need_restart = true;
                 }
                 else
                 {
-                    mg_http_reply(c, 500, "", "");
+                    mg_http_reply(c, 500, "Access-Control-Allow-Origin: *\r\n", "");
                 }
 
                 free(data);
