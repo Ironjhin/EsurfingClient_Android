@@ -32,9 +32,6 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _initApp() async {
-    if (Platform.isAndroid) {
-      _accessibilityEnabled = await KeepAliveChannel.isAccessibilityEnabled;
-    }
     await _loadConfig();
     await _checkPermissions();
 
@@ -80,12 +77,22 @@ class _HomePageState extends State<HomePage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _toggleAuth());
   }
 
+  /// 查询无障碍服务是否启用的真实状态 — 通过原生 MethodChannel.
+  Future<void> _refreshAccessibility() async {
+    if (!Platform.isAndroid) return;
+    final enabled = await KeepAliveChannel.isAccessibilityEnabled;
+    if (!mounted) return;
+    setState(() => _accessibilityEnabled = enabled);
+  }
+
   Future<void> _checkPermissions() async {
     await [
       Permission.location,
       Permission.locationWhenInUse,
       Permission.notification,
     ].request();
+    // 权限请求完毕后顺便查一次无障碍状态 — 初次查询在这里避免启动阻塞.
+    await _refreshAccessibility();
   }
 
   Future<void> _toggleAuth() async {
@@ -206,13 +213,16 @@ class _HomePageState extends State<HomePage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
             onPressed: () async {
               await Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsPage()),
               );
               _loadConfig();
+              // 从 Settings 返回后也刷一遍 — /settings 可能开启了自动启动之类.
+              if (Platform.isAndroid) {
+                await _refreshAccessibility();
+              }
             },
           ),
         ],
@@ -222,18 +232,10 @@ class _HomePageState extends State<HomePage> {
           : ListView(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
               children: [
-                // ── 状态 Hero 卡 ──
-                _buildStatusHero(theme, cs),
-                const SizedBox(height: 16),
-
-                // ── 黄色警告卡 ──
-                _buildWarningCard(theme, cs),
-                const SizedBox(height: 12),
-
                 // ── 增强保活卡 (Android only) ──
                 if (Platform.isAndroid) ...[
                   _buildAccessibilityTile(theme, cs),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
                 ],
 
                 // ── 主操作区 ──
@@ -311,31 +313,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildWarningCard(ThemeData theme, ColorScheme cs) {
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: cs.errorContainer.withOpacity(0.5),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.info_outline, size: 20, color: cs.error),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Flutter 版注意:熄屏约 30 分钟以上 Android 会回收进程,需重新打开 APP 才能继续守护。Magisk 版无此限制。',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: cs.onErrorContainer),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildPrimaryButton(ThemeData theme, ColorScheme cs) {
     final isUp = _isRunning;
     return SizedBox(
@@ -390,6 +367,7 @@ class _HomePageState extends State<HomePage> {
   /// 无障碍保活引导卡片 — Android 专属
   Widget _buildAccessibilityTile(ThemeData theme, ColorScheme cs) {
     final enabled = _accessibilityEnabled;
+    // null = 还在查(首次启动) — 显示引导态,和未开启一样的行动按钮.
     final isOn = enabled == true;
 
     return Card(
@@ -428,30 +406,38 @@ class _HomePageState extends State<HomePage> {
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: cs.onSurfaceVariant),
                   ),
-                  if (!isOn) ...[
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: () async {
+                  const SizedBox(height: 8),
+                  // 无论是否开启都显示按钮:开启时用于"重新检查/管理",未开启时用于跳转.
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      if (isOn) {
+                        // 已开启:刷新状态并告知用户当前真实情况.
+                        await _refreshAccessibility();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('无障碍服务仍在运行中 ✓'),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      } else {
+                        // 未开启:直接跳转到无障碍系统页.
                         await KeepAliveChannel.openAccessibilitySettings();
-                        if (!mounted) return;
-                        // 原生 channel 失败时弹出 toast 告知用户手动操作
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('请在系统设置 → 无障碍 → ESurfing Client 开启服务'),
-                            duration: Duration(seconds: 3),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.open_in_new, size: 16),
-                      label: const Text('去开启'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: cs.tertiary,
-                        side: BorderSide(
-                            color: cs.tertiary.withOpacity(0.5)),
-                        visualDensity: VisualDensity.compact,
-                      ),
+                        // 从设置页返回后 Flutter 会走到这里,需要刷新状态.
+                        // 不立刻刷 — 等用户下一次 onResume 或点击.
+                      }
+                    },
+                    icon: Icon(isOn ? Icons.check : Icons.open_in_new, size: 16),
+                    label: Text(isOn ? '检查状态' : '去开启'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isOn ? cs.primary : cs.tertiary,
+                      side: BorderSide(
+                          color: (isOn ? cs.primary : cs.tertiary)
+                              .withOpacity(0.5)),
+                      visualDensity: VisualDensity.compact,
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),

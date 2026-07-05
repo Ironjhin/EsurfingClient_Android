@@ -6,31 +6,28 @@ class KeepAliveChannel {
   static const MethodChannel _channel =
       MethodChannel('com.example.esurfing_client/keepalive');
 
-  /// 本 APP 的无障碍服务是否已开启
-  ///
-  /// 采用纯 Dart 返回 false 策略:
-  /// Flutter 默认已有 MainActivity.kt(kotlin/ 目录),
-  /// 手写 Kotlin MainActivity 会与它冲突(Redeclaration 编译错误)。
-  /// 所以我们不依赖原生检测,始终返回 false 让 UI 显示引导按钮,
-  /// 用户手动开启无障碍后下次再点"去开启"会进入同一设置页。
+  /// 本 APP 的无障碍服务是否已开启 — 调用原生查询。
   static Future<bool> get isAccessibilityEnabled async {
-    return false;
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _channel.invokeMethod<bool>('isAccessibilityEnabled') ?? false;
+    } on PlatformException {
+      return false;
+    } on MissingPluginException {
+      // MainActivity 未覆盖旧的默认实现或纯 Dart 构建时降级 — 返回 false 让 UI 显示引导按钮
+      return false;
+    }
   }
 
-  /// 跳转到无障碍设置页 — 纯 Dart 降级方案
-  ///
-  /// 依赖 flutter 默认的 MainActivity 不处理我们的 channel method,
-  /// 所以 MISS 时直接 fallback 为 android.provider.settings.ACTION_SETTINGS Intent,
-  /// 由用户手动进入无障碍 > ESurfing Client。
+  /// 跳转到无障碍系统页 — 由 MainActivity 直接调 Settings.ACTION_ACCESSIBILITY_SETTINGS.
   static Future<void> openAccessibilitySettings() async {
     if (!Platform.isAndroid) return;
     try {
-      // MainActivity 未自定义 → Method 'openAccessibilitySettings' not implemented
       await _channel.invokeMethod<void>('openAccessibilitySettings');
     } on PlatformException {
-      // ignore — 用户通过提示手动打开设置
+      // 即使原生侧 start Activity 失败也忽略 — 用户会停留在当前页面,不会闪退
     } on MissingPluginException {
-      // ignore — 不会到这里,PlatformException 优先
+      // ignore
     }
   }
 }

@@ -66,8 +66,12 @@ class AppLocalizations {
   String get logPanelExpand => _t('Show Log', '显示日志');
   String get logPanelCollapse => _t('Hide Log', '隐藏日志');
   String get logPanelAutoScroll => _t('Auto-scroll', '自动滚动');
+  String get logPanelPauseScroll => _t('Pause', '暂停');
   String get logPanelClear => _t('Clear', '清空');
   String get logPanelExport => _t('Export', '导出');
+  String get logPanelFontDec => _t('Decrease font size', '调小字体');
+  String get logPanelFontInc => _t('Increase font size', '调大字体');
+  String get logPanelLinesSuffix => _t('lines', '行');
 
   // ============================================================
   //  设置页 (Settings)

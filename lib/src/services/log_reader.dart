@@ -60,6 +60,19 @@ class LogReader extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 行数超限触发的内部重置 — 不调用 notifyListeners(调用方自己决定)
+  /// 复用 clear() 的 C 端物理截断 + 偏移重置,仅内存 _content 一并清空。
+  void _clearLogAndReset() {
+    _content = '';
+    final bindings = NativeBindings.instance;
+    if (bindings.isLoaded) {
+      try {
+        bindings.esurfingClientClearLog();
+      } catch (_) {}
+    }
+    _clearByteOffset = 0;
+  }
+
   Future<void> _syncClearOffset() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -103,6 +116,17 @@ class LogReader extends ChangeNotifier {
       final chunk = utf8.decode(bytes, allowMalformed: true);
 
       _content += chunk;
+
+      // ── 行数上限:超过 1000 行即截断,清掉前面的内容 ──
+      if (_content.isNotEmpty) {
+        final lines = '\n'.allMatches(_content).length + 1;
+        if (lines > 1000) {
+          // 磁盘 + 内存 同步清空,C 端下一次写又从零开始,规模可控
+          _clearLogAndReset();
+          notifyListeners();
+          return;
+        }
+      }
 
       // 内存上限保护：只保留尾部 524288 字符
       if (_content.length > 524288) {

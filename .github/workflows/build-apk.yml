@@ -66,14 +66,14 @@ jobs:
 
       # 执行全架构通用包编译（动态版本号：github.run_number 绝对递增）
       - name: Build Universal Release APK
-        run: flutter build apk --release --android-skip-build-dependency-validation --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
+        run: flutter build apk --release --android-skip-build-dependency-validation --build-name=1.1.${{ github.run_number }} --build-number=${{ github.run_number }}
 
       # 发布独立不重名的 Release APK
       - name: Create Unique Release and Upload Raw APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="v1.0.${{ github.run_number }}"
+          TAG_NAME="v1.1.${{ github.run_number }}"
           git fetch --tags --force 2>/dev/null || true
           printf '%s\n' \
             "## 📱 Flutter APK 版（无 Root 用这个）" \
@@ -86,7 +86,7 @@ jobs:
             "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
             "" \
             "### 更新内容" \
-            "$(git log --oneline v1.0.$(( ${{ github.run_number }} - 1 ))..HEAD 2>/dev/null || echo '首次发布')" \
+            "$(git log --oneline v1.1.$(( ${{ github.run_number }} - 1 ))..HEAD 2>/dev/null || echo '首次发布')" \
             > /tmp/release-notes.md
           gh release create "$TAG_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \
