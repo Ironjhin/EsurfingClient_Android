@@ -94,6 +94,10 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
   <!-- Log -->
   <div class="card">
     <h2>运行日志</h2>
+    <div class="actions" style="margin-top:0;margin-bottom:12px;">
+      <button class="btn btn-primary" onclick="refreshLog()">刷新日志</button>
+      <button class="btn btn-primary" onclick="exportLog()">导出日志</button>
+    </div>
     <div class="log-box" id="logBox">等待日志...</div>
   </div>
 </div>
@@ -117,6 +121,8 @@ async function refreshStatus() {
     const el = document.getElementById('authStatus');
     if (authData.status) {
       el.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
+    } else if (authData.connected) {
+      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（未通过本工具认证）</span>';
     } else {
       el.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
     }
@@ -133,6 +139,27 @@ async function refreshStatus() {
       el.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
     }
   } catch { document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+
+  // 更新运行时间
+  try {
+    const uptimeRes = await fetch('/api/status/uptime');
+    const uptimeData = await uptimeRes.json();
+    const el = document.getElementById('uptime');
+    if (uptimeData.uptime_ms > 0) {
+      const seconds = Math.floor(uptimeData.uptime_ms / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      let timeStr = '';
+      if (days > 0) timeStr += days + '天 ';
+      if (hours % 24 > 0) timeStr += (hours % 24) + '小时 ';
+      if (minutes % 60 > 0) timeStr += (minutes % 60) + '分钟 ';
+      timeStr += (seconds % 60) + '秒';
+      el.textContent = timeStr.trim();
+    } else {
+      el.textContent = '-';
+    }
+  } catch { document.getElementById('uptime').textContent = '-'; }
 }
 
 // Load config into form
@@ -193,19 +220,12 @@ async function saveAndApply() {
 }
 
 // Log polling — fetch from /run.log (served by mongoose static file serving)
-// Since mongoose serves the portal dir, we use a workaround: the daemon log is
-// at /data/adb/esurfing/run.log, which isn't directly served. We'll poll /api/getConfigs
-// as a keepalive and periodically prompt the user to check log via ADB.
-// Better: set up a symlink or log endpoint. For now we show a note.
-
 async function pollLog() {
-  // Attempt to fetch run.log through the web server.
-  // If the log symlink is set up: ln -sf /data/adb/esurfing/run.log /data/adb/esurfing/portal/run.log
   try {
     const res = await fetch('/run.log');
     if (res.ok) {
       const text = await res.text();
-      const lines = text.split('\n').filter(l => l).slice(-50);
+      const lines = text.split('\n').filter(l => l).slice(-100);
       document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
     }
   } catch {
@@ -213,19 +233,42 @@ async function pollLog() {
   }
 }
 
-// Setup: symlink run.log into portal dir on page load
-async function setupLogLink() {
-  // Can't create symlink from browser; user must run once:
-  // ln -sf /data/adb/esurfing/run.log /data/adb/esurfing/portal/run.log
-  // Try reading it anyway — if symlink exists, it works.
+// Refresh log manually
+function refreshLog() {
   pollLog();
+  showToast('日志已刷新');
+}
+
+// Export log as file download
+async function exportLog() {
+  try {
+    const res = await fetch('/run.log');
+    if (res.ok) {
+      const text = await res.text();
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'esurfing-run.log';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('日志已导出');
+    } else {
+      showToast('获取日志失败', true);
+    }
+  } catch {
+    showToast('导出失败: 网络错误', true);
+  }
 }
 
 // Init
 refreshStatus();
 loadConfig();
-setupLogLink();
+pollLog();
 setInterval(refreshStatus, 5000);
+setInterval(pollLog, 10000);  // 每10秒自动刷新日志
 </script>
 </body>
 </html>
