@@ -50,6 +50,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 char* status_str = cJSON_Print(auth);
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);
+                return;
             }
             // 获取联网状态
             if (mg_match(hm->uri, mg_str("/api/status/online"), NULL))
@@ -67,6 +68,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 {
                     mg_http_reply(c, 503, "Access-Control-Allow-Origin: *\r\n", "");
                 }
+                return;
             }
             // 获取配置
             if (mg_match(hm->uri, mg_str("/api/getConfigs"), NULL))
@@ -92,6 +94,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 free(config_str);
                 cJSON_Delete(configs);
+                return;
             }
             mg_http_serve_dir(c, hm, &opts);
             return;
@@ -124,6 +127,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 }
 
                 free(data);
+                return;
             }
             // 仅应用
             if (mg_match(hm->uri, mg_str("/api/applyConfigs"), NULL))
@@ -156,6 +160,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 free(data);
                 cJSON_Delete(operation_json);
+                return;
             }
         }
     }
