@@ -48,18 +48,22 @@ jobs:
         continue-on-error: true
         run: |
           echo "=== Setting up Android SDK for APK build ==="
-          # Accept licenses and install required SDK components
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-            "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+          export ANDROID_HOME=${ANDROID_SDK_ROOT:-$ANDROID_HOME}
+          if [ -z "$ANDROID_HOME" ] || [ ! -d "$ANDROID_HOME/platforms/android-34" ]; then
+            echo "SDK platform 34 not found, trying to install..."
+            yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+          fi
 
-          echo "=== Generating Gradle wrapper ==="
+          echo "=== Downloading Gradle ==="
           cd magisk/app
-          gradle wrapper --gradle-version=8.4 2>&1 || { echo "gradle wrapper failed, trying manual setup"; exit 1; }
+          wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
+          unzip -q gradle-8.4-bin.zip
+
+          # 生成 local.properties 指向 Android SDK
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
 
           echo "=== Building APK ==="
-          export ANDROID_HOME=$ANDROID_SDK_ROOT
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon 2>&1 || {
+          ./gradle-8.4/bin/gradle assembleDebug --no-daemon 2>&1 || {
             echo "APK build failed (non-fatal)"
             exit 0
           }

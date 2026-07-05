@@ -30,6 +30,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             if (mg_match(hm->uri, mg_str("/"), NULL))
             {
                 mg_http_reply(c, 302, "Location: /index.html\r\n", "");
+                return;
             }
             // 获取认证状态
             if (mg_match(hm->uri, mg_str("/api/status/auth"), NULL))
