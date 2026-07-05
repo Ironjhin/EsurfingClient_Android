@@ -121,7 +121,6 @@ target_compile_options(esurfingd PRIVATE
     -Wno-pointer-sign
     -DANDROID
     -D__ANDROID__
-    -D__OPENWRT__=0
     -D__MAGISK__
 )
 
