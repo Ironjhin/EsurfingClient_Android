@@ -72,6 +72,15 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
         _statusText = (_config?.enabled ?? false) ? i18nLocal.ready : i18nLocal.disabledHint;
       });
     }
+
+    // 首次打开 app 自动开始认证
+    if (_config?.enabled == true) {
+      final validAccounts =
+          _config!.accounts.where((a) => a.username.isNotEmpty && a.password.isNotEmpty).toList();
+      if (validAccounts.isNotEmpty) {
+        _toggleAuth();
+      }
+    }
   }
 
   Future<void> _loadConfig() async {
