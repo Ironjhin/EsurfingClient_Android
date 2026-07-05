@@ -1,4 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/log_reader.dart';
 import '../i18n/app_localizations.dart';
 
@@ -48,6 +51,37 @@ class _LogViewerState extends State<LogViewer> {
         );
       }
     });
+  }
+
+  Future<void> _exportLog() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/run.log');
+      if (!await file.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(AppLocalizations.of(context).logPanelEmpty)),
+          );
+        }
+        return;
+      }
+
+      // 复制到临时文件，避免分享时被日志系统锁定
+      final tmpDir = await getTemporaryDirectory();
+      final tmpFile = File('${tmpDir.path}/esurfing_run_log.txt');
+      await file.copy(tmpFile.path);
+
+      await Share.shareXFiles(
+        [XFile(tmpFile.path)],
+        text: 'ESurfing Client Run Log',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${AppLocalizations.of(context).errorPrefix}: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -127,6 +161,12 @@ class _LogViewerState extends State<LogViewer> {
                   label: i18n.logPanelClear,
                   active: false,
                   onTap: () => widget.reader.clear(),
+                ),
+                _toolBtn(
+                  icon: Icons.file_upload_outlined,
+                  label: i18n.logPanelExport,
+                  active: false,
+                  onTap: _exportLog,
                 ),
                 const Spacer(),
                 Text(

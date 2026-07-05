@@ -67,6 +67,7 @@ class AppLocalizations {
   String get logPanelCollapse => _t('Hide Log', '隐藏日志');
   String get logPanelAutoScroll => _t('Auto-scroll', '自动滚动');
   String get logPanelClear => _t('Clear', '清空');
+  String get logPanelExport => _t('Export', '导出');
 
   // ============================================================
   //  设置页 (Settings)
