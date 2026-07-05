@@ -34,6 +34,19 @@
             </intent-filter>
         </activity>
 
+        <!-- 无障碍保活服务 — 仅作为系统级重要性锚点,不做任何 UI 操作 -->
+        <service
+            android:name=".KeepAliveService"
+            android:exported="false"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_keepalive" />
+        </service>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
