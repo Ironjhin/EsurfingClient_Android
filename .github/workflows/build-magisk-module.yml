@@ -72,13 +72,12 @@ jobs:
       - name: Package module
         run: |
           MODULE_DIR="magisk/module"
-          VERSION="v1.0.${{ github.run_number }}"
-          VERSION_CODE="${{ github.run_number }}"
 
-          # 注入版本号到 module.prop
-          sed -i "s/^version=.*/version=$VERSION/" "$MODULE_DIR/module.prop"
-          sed -i "s/^versionCode=.*/versionCode=$VERSION_CODE/" "$MODULE_DIR/module.prop"
-          echo "Module version set to $VERSION (code $VERSION_CODE)"
+          # 从 module.prop 读取版本号
+          VERSION=$(grep "^version=" "$MODULE_DIR/module.prop" | cut -d'=' -f2)
+          VERSION_CODE=$(grep "^versionCode=" "$MODULE_DIR/module.prop" | cut -d'=' -f2)
+
+          echo "Module version: $VERSION (code $VERSION_CODE)"
 
           # 确保 portal 文件存在
           if [ ! -f "$MODULE_DIR/portal/index.html" ]; then
@@ -101,6 +100,10 @@ jobs:
           cd "$MODULE_DIR"
           zip -r9 "$GITHUB_WORKSPACE/magisk/output/esurfing-daemon-arm64-v8a.zip" . -x ".*" "*/.*"
           ls -la "$GITHUB_WORKSPACE/magisk/output/"
+
+          # 输出版本信息供后续步骤使用
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
 
       - name: Upload module dir
         uses: actions/upload-artifact@v4
@@ -126,7 +129,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="magisk-v1.0.${{ github.run_number }}"
+          TAG_NAME="magisk-${{ env.VERSION }}"
           ZIP_NAME="esurfing-daemon-arm64-v8a.zip"
 
           # 从 module 目录打包 zip（避免 upload-artifact 的双重 zip 问题）
@@ -144,6 +147,11 @@ jobs:
             "[👉 Flutter APK 版（无 Root 设备用）](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=v1.0.)" \
             "" \
             "---" \
+            "" \
+            "### ✨ 本次更新 (v1.1.0)" \
+            "- **WebUI/浏览器**: 修复运行时间不显示的问题" \
+            "- **KernelSU WebUI**: 同步 Magisk portal 功能（运行时间、日志刷新/导出）" \
+            "- **认证状态**: 优化状态检测逻辑，避免误显示'未认证'" \
             "" \
             "### 安装" \
             "1. 下载 zip 文件" \
