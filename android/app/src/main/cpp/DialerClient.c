@@ -529,6 +529,17 @@ static RunStatus run()
 
     const NetworkStatus net_status = check_network_status(); // 检测网络状态
     LOG_DEBUG("run: check_network_status 返回 %d", net_status);
+
+    // 更新联网状态
+    if (net_status == REQUEST_SUCCESS)
+    {
+        g_prog_status[tl_thread_idx].runtime_status.is_connected = true;
+    }
+    else
+    {
+        g_prog_status[tl_thread_idx].runtime_status.is_connected = false;
+    }
+
     switch (net_status)
     {
     case REQUEST_SUCCESS: // 返回响应成功 (204 响应码)

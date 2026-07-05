@@ -47,6 +47,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             {
                 cJSON* auth = cJSON_CreateObject();
                 cJSON_AddBoolToObject(auth, "status", g_prog_status[0].runtime_status.is_authed);
+                cJSON_AddBoolToObject(auth, "connected", g_prog_status[0].runtime_status.is_connected);
                 char* status_str = cJSON_Print(auth);
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);

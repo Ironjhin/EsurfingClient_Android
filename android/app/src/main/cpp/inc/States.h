@@ -94,6 +94,8 @@ typedef struct
     bool is_running;
     /** @brief 认证状态 */
     bool is_authed;
+    /** @brief 联网状态 (互联网可达) */
+    bool is_connected;
     /** @brief 需要重置 */
     bool is_need_reset;
 } runtime_status_t;

@@ -121,6 +121,8 @@ async function refreshStatus() {
     const el = document.getElementById('authStatus');
     if (authData.status) {
       el.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
+    } else if (authData.connected) {
+      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（未通过本工具认证）</span>';
     } else {
       el.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
     }
