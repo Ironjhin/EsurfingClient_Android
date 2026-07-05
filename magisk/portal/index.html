@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESurfing Daemon</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #e6edf3; padding: 20px; }
+.container { max-width: 720px; margin: 0 auto; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 24px; }
+.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+.card h2 { font-size: 1rem; margin-bottom: 16px; color: #58a6ff; }
+.row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
+.row:last-child { border-bottom: none; }
+.label { color: #8b949e; font-size: 0.9rem; }
+.value { font-size: 0.9rem; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+.badge-ok { background: #1a3a2a; color: #3fb950; }
+.badge-fail { background: #3a1a1a; color: #f85149; }
+.badge-warn { background: #3a2e1a; color: #d29922; }
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 0.85rem; color: #8b949e; margin-bottom: 4px; }
+.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 0.9rem; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #58a6ff; }
+.check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.check-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #58a6ff; }
+.btn { padding: 8px 20px; border: none; border-radius: 6px; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
+.btn-primary { background: #238636; color: #fff; }
+.btn-primary:hover { background: #2ea043; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-danger { background: #da3633; color: #fff; }
+.btn-danger:hover { background: #f85149; }
+.actions { display: flex; gap: 8px; margin-top: 16px; }
+.toast { visibility: hidden; min-width: 200px; background: #238636; color: #fff; text-align: center; padding: 10px 16px; border-radius: 6px; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 0.85rem; z-index: 100; }
+.toast.error { background: #da3633; }
+.toast.show { visibility: visible; animation: fadeInOut 2.5s; }
+@keyframes fadeInOut { 0% { opacity: 0; bottom: 0; } 10% { opacity: 1; bottom: 24px; } 80% { opacity: 1; } 100% { opacity: 0; bottom: 0; } }
+.log-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; max-height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #7ee787; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🔌 ESurfing Daemon</h1>
+  <p class="subtitle">广东天翼校园网认证守护进程 — 管理后台</p>
+
+  <!-- Status -->
+  <div class="card">
+    <h2>运行状态</h2>
+    <div class="row"><span class="label">认证状态</span><span class="value" id="authStatus">检测中...</span></div>
+    <div class="row"><span class="label">网络状态</span><span class="value" id="onlineStatus">检测中...</span></div>
+    <div class="row"><span class="label">运行时间</span><span class="value" id="uptime">-</span></div>
+  </div>
+
+  <!-- Config -->
+  <div class="card">
+    <h2>配置</h2>
+    <div class="check-row">
+      <input type="checkbox" id="enabled">
+      <label for="enabled">启用自动认证</label>
+    </div>
+    <div class="form-group">
+      <label for="logLevel">日志等级</label>
+      <select id="logLevel">
+        <option value="2">ERROR</option>
+        <option value="3">WARN</option>
+        <option value="4" selected>INFO</option>
+        <option value="5">DEBUG</option>
+        <option value="6">VERBOSE</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="username">用户名</label>
+      <input type="text" id="username" placeholder="校园网账号">
+    </div>
+    <div class="form-group">
+      <label for="password">密码</label>
+      <input type="password" id="password" placeholder="校园网密码">
+    </div>
+    <div class="form-group">
+      <label for="channel">通道</label>
+      <select id="channel">
+        <option value="phone">手机端</option>
+        <option value="pc">电脑端</option>
+      </select>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" onclick="saveConfig()">保存</button>
+      <button class="btn btn-danger" onclick="saveAndApply()">保存并重启</button>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="card">
+    <h2>运行日志</h2>
+    <div class="log-box" id="logBox">等待日志...</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// Toast helper
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast' + (isError ? ' error' : '') + ' show';
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+// Status polling
+async function refreshStatus() {
+  try {
+    const authRes = await fetch('/api/status/auth');
+    const authData = await authRes.json();
+    const el = document.getElementById('authStatus');
+    if (authData.status) {
+      el.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
+    } else {
+      el.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
+    }
+  } catch { document.getElementById('authStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+
+  try {
+    const onlineRes = await fetch('/api/status/online');
+    const el = document.getElementById('onlineStatus');
+    if (onlineRes.status === 204) {
+      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span>';
+    } else if (onlineRes.status === 302) {
+      el.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
+    } else {
+      el.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
+    }
+  } catch { document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+}
+
+// Load config into form
+async function loadConfig() {
+  try {
+    const res = await fetch('/api/getConfigs');
+    const data = await res.json();
+    document.getElementById('enabled').checked = data.enabled;
+    document.getElementById('logLevel').value = data.log_lv;
+    if (data.accounts && data.accounts.length > 0) {
+      document.getElementById('username').value = data.accounts[0].username;
+      document.getElementById('password').value = data.accounts[0].password;
+      document.getElementById('channel').value = data.accounts[0].channel || 'phone';
+    }
+  } catch { showToast('加载配置失败', true); }
+}
+
+// Save config
+async function saveConfig() {
+  const cfg = {
+    enabled: document.getElementById('enabled').checked,
+    log_lv: parseInt(document.getElementById('logLevel').value),
+    accounts: [{
+      username: document.getElementById('username').value.trim(),
+      password: document.getElementById('password').value,
+      channel: document.getElementById('channel').value,
+      mark: ''
+    }]
+  };
+  if (!cfg.accounts[0].username) { showToast('请输入用户名', true); return; }
+  if (!cfg.accounts[0].password) { showToast('请输入密码', true); return; }
+
+  try {
+    const res = await fetch('/api/saveConfigs', {
+      method: 'POST',
+      body: JSON.stringify(cfg)
+    });
+    if (res.status === 204) {
+      showToast('配置已保存');
+    } else {
+      showToast('保存失败', true);
+    }
+  } catch { showToast('保存失败: 网络错误', true); }
+}
+
+// Save + apply (restart threads)
+async function saveAndApply() {
+  await saveConfig();
+  try {
+    const res = await fetch('/api/applyConfigs', {
+      method: 'POST',
+      body: JSON.stringify({ apply: true })
+    });
+    if (res.status === 204) {
+      showToast('配置已应用，认证线程即将重启');
+    }
+  } catch { showToast('应用失败', true); }
+}
+
+// Log polling — fetch from /run.log (served by mongoose static file serving)
+// Since mongoose serves the portal dir, we use a workaround: the daemon log is
+// at /data/adb/esurfing/run.log, which isn't directly served. We'll poll /api/getConfigs
+// as a keepalive and periodically prompt the user to check log via ADB.
+// Better: set up a symlink or log endpoint. For now we show a note.
+
+async function pollLog() {
+  // Attempt to fetch run.log through the web server.
+  // If the log symlink is set up: ln -sf /data/adb/esurfing/run.log /data/adb/esurfing/portal/run.log
+  try {
+    const res = await fetch('/run.log');
+    if (res.ok) {
+      const text = await res.text();
+      const lines = text.split('\n').filter(l => l).slice(-50);
+      document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
+    }
+  } catch {
+    // Silently fail — log may not be accessible via HTTP
+  }
+}
+
+// Setup: symlink run.log into portal dir on page load
+async function setupLogLink() {
+  // Can't create symlink from browser; user must run once:
+  // ln -sf /data/adb/esurfing/run.log /data/adb/esurfing/portal/run.log
+  // Try reading it anyway — if symlink exists, it works.
+  pollLog();
+}
+
+// Init
+refreshStatus();
+loadConfig();
+setupLogLink();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>

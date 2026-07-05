@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "log_lv": 5,
+  "accounts": [
+    {
+      "username": "",
+      "password": "",
+      "channel": "phone",
+      "mark": ""
+    }
+  ]
+}

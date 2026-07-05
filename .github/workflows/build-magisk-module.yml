@@ -1,0 +1,101 @@
+name: Build Magisk Module
+
+on:
+  push:
+    branches:
+      - magisk
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cmake ninja-build zip unzip
+
+      - name: Cache NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: magisk/.ndk
+          key: ndk-r27c-${{ runner.os }}
+
+      - name: Build daemon binary (${{ matrix.abi }})
+        run: |
+          cd magisk
+          bash build.sh --abi ${{ matrix.abi }}
+
+      - name: Upload module artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esurfing-daemon-${{ matrix.abi }}
+          path: magisk/output/esurfing-daemon-${{ matrix.abi }}.zip
+
+  create-release:
+    needs: build
+    if: github.ref == 'refs/heads/magisk'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          for dir in esurfing-daemon-*/; do
+            cp "$dir"/*.zip release/
+          done
+          ls -la release/
+
+      - name: Create Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="magisk-v1.0.${{ github.run_number }}"
+          cat > /tmp/release-notes.md << 'NOTES'
+          ESurfing Daemon — Magisk Module
+
+          ## 安装
+          1. 下载对应架构的 zip 文件
+          2. Magisk Manager → 模块 → 从本地安装
+          3. 重启
+
+          ## 首次使用
+          1. 编辑 /data/adb/esurfing/ESurfingClient.json 填入账号密码
+          2. 重启 daemon: `killall esurfingd && /data/adb/esurfing/esurfingd`
+          3. 或直接重启手机
+
+          ## Web 管理
+          - 浏览器打开 http://192.168.100.1:8888/
+          - 可查看状态、修改配置
+
+          ## 日志
+          - /data/adb/esurfing/run.log
+          NOTES
+
+          gh release create "$TAG_NAME" \
+            release/*.zip \
+            --title "ESurfing Daemon $TAG_NAME" \
+            --notes-file /tmp/release-notes.md

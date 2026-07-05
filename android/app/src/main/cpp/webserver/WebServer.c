@@ -11,12 +11,18 @@
 static const char* listenAddr = "http://0.0.0.0:8888";
 static sim_thread_t* web_thread;
 
+#ifdef __MAGISK__
+static const char* portal_root = "/data/adb/esurfing/portal";
+#else
+static const char* portal_root = "portal";
+#endif
+
 static void fn(struct mg_connection *c, const int ev, void *ev_data)
 {
     if (ev == MG_EV_HTTP_MSG)
     {
         struct mg_http_message* hm = ev_data;
-        struct mg_http_serve_opts opts = { .root_dir = "portal" };
+        struct mg_http_serve_opts opts = { .root_dir = portal_root };
         // GET 请求
         if (mg_strcmp(hm->method, mg_str("GET")) == 0)
         {

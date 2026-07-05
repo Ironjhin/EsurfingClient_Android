@@ -19,7 +19,9 @@
 
 #endif
 
-#ifdef __OPENWRT__
+#ifdef __MAGISK__
+static const char config_file[] = "/data/adb/esurfing/ESurfingClient.json";
+#elif defined(__OPENWRT__)
 static const char config_file[] = "/etc/config/esurfingclient";
 #else
 #define DIALER_CONFIG_FILE "ESurfingClient.json"
