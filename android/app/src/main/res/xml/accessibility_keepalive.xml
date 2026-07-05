@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    无障碍服务配置 — 尽量精简,仅挂名为系统服务,不订阅任何事件。
+    由于不使用 onAccessibilityEvent,eventTypes 设为 typeWindowStateChanged 作为占位。
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="com.example.esurfing_client.MainActivity" />
