@@ -76,19 +76,19 @@ jobs:
           TAG_NAME="v1.0.${{ github.run_number }}"
           git fetch --tags --force 2>/dev/null || true
           printf '%s\n' \
-            "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
-            "" \
-            "## Flutter APK" \
+            "## 📱 Flutter APK 版（无 Root 用这个）" \
             "适用于无 Root 的 Android 设备，直接下载 APK 安装。" \
             "" \
-            "## Magisk 模块（Root 设备）" \
-            "如果手机已 Root，推荐使用 Magisk 模块版（纯 C daemon, ~1-2MB, 开机自启）:" \
-            "https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk" \
+            "[👉 点此查看 Magisk 模块版（Root 设备用）](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk)" \
             "" \
-            "## 更新内容" \
+            "---" \
+            "" \
+            "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
+            "" \
+            "### 更新内容" \
             "$(git log --oneline v1.0.$(( ${{ github.run_number }} - 1 ))..HEAD 2>/dev/null || echo '首次发布')" \
             > /tmp/release-notes.md
           gh release create "$TAG_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \
-            --title "Esurfing Client $TAG_NAME" \
+            --title "📱 Esurfing Client $TAG_NAME（APK）" \
             --notes-file /tmp/release-notes.md
