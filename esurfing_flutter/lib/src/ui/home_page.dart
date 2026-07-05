@@ -384,7 +384,7 @@ class _HomePageState extends State<HomePage> {
         border: Border.all(
           color: isOn
               ? colorScheme.primary.withOpacity(0.3)
-              : colorScheme.tertiary.withOpacity(0.3),
+              : colorScheme.tertiaryContainer.withOpacity(0.3),
         ),
       ),
       child: Row(
