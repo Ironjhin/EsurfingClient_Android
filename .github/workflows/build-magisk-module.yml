@@ -15,6 +15,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      esurfing_version: ${{ steps.version.outputs.esurfing_version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,6 +72,7 @@ jobs:
           ls -la app/build/outputs/apk/debug/ 2>/dev/null && echo "APK build SUCCESS" || echo "No APK output found"
 
       - name: Package module
+        id: version
         run: |
           MODULE_DIR="magisk/module"
 
@@ -86,9 +89,6 @@ jobs:
           echo "AUTO_VERSION_CODE=$AUTO_VERSION_CODE"
           echo "Updated module.prop:"
           cat "$MODULE_DIR/module.prop"
-
-          VERSION="$AUTO_VERSION"
-          VERSION_CODE="$AUTO_VERSION_CODE"
 
           # 确保 portal 文件存在
           if [ ! -f "$MODULE_DIR/portal/index.html" ]; then
@@ -112,9 +112,9 @@ jobs:
           zip -r9 "$GITHUB_WORKSPACE/magisk/output/esurfing-daemon-arm64-v8a.zip" . -x ".*" "*/.*"
           ls -la "$GITHUB_WORKSPACE/magisk/output/"
 
-          # 输出版本信息供后续步骤使用
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "VERSION_CODE=$VERSION_CODE" >> $GITHUB_ENV
+          # 把版本号传给后续 step 和 job
+          echo "ESURFING_VERSION=$AUTO_VERSION" >> $GITHUB_ENV
+          echo "esurfing_version=$AUTO_VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload module dir
         uses: actions/upload-artifact@v4
@@ -139,9 +139,13 @@ jobs:
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.esurfing_version }}
         run: |
-          # 从 module-dir/module.prop 读取版本号
-          VERSION=$(grep "^version=" module-dir/module.prop | cut -d'=' -f2)
+          if [ -z "$VERSION" ]; then
+            echo "ERROR: VERSION is empty!" >&2
+            exit 1
+          fi
+
           TAG_NAME="magisk-$VERSION"
           ZIP_NAME="esurfing-daemon-arm64-v8a.zip"
 
