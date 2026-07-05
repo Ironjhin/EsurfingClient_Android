@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - magisk
+    paths-ignore:
+      - 'README.md'
+      - 'magisk/README.md'
   workflow_dispatch:
 
 permissions:
