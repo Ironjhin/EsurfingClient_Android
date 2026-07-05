@@ -254,6 +254,24 @@ class _HomePageState extends State<HomePage> {
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 12),
+
+                  // Flutter APK caveat — pthread 无法逃脱 Android 进程回收
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: colorScheme.errorContainer.withOpacity(0.4),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: colorScheme.error.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      'Flutter 版注意：熄屏约 30 分钟以上 Android 会回收进程，需重新打开 APP 才能继续守护。Magisk 版无此限制。',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onErrorContainer,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                   const SizedBox(height: 48),
 
                   // Start / Stop button
