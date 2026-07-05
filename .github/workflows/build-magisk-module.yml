@@ -136,8 +136,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="magisk-${{ env.VERSION }}"
+          # 从 module-dir/module.prop 读取版本号
+          VERSION=$(grep "^version=" module-dir/module.prop | cut -d'=' -f2)
+          TAG_NAME="magisk-$VERSION"
           ZIP_NAME="esurfing-daemon-arm64-v8a.zip"
+
+          echo "Release version: $VERSION"
+          echo "Tag name: $TAG_NAME"
 
           # 从 module 目录打包 zip（避免 upload-artifact 的双重 zip 问题）
           cd module-dir
@@ -155,7 +160,7 @@ jobs:
             "" \
             "---" \
             "" \
-            "### ✨ 本次更新 (v1.1.0)" \
+            "### ✨ 本次更新 ($VERSION)" \
             "- **WebUI/浏览器**: 修复运行时间不显示的问题" \
             "- **KernelSU WebUI**: 同步 Magisk portal 功能（运行时间、日志刷新/导出）" \
             "- **认证状态**: 优化状态检测逻辑，避免误显示'未认证'" \
