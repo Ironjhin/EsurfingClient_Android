@@ -47,11 +47,23 @@ jobs:
       - name: Build WebView APK (optional)
         continue-on-error: true
         run: |
+          echo "=== Setting up Android SDK for APK build ==="
+          # Accept licenses and install required SDK components
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+            "platforms;android-34" "build-tools;34.0.0" > /dev/null 2>&1 || true
+
+          echo "=== Generating Gradle wrapper ==="
           cd magisk/app
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
-          gradle wrapper --gradle-version=8.4 2>/dev/null || true
-          chmod +x gradlew 2>/dev/null || true
-          ./gradlew assembleDebug --no-daemon 2>&1 || echo "APK build skipped"
+          gradle wrapper --gradle-version=8.4 2>&1 || { echo "gradle wrapper failed, trying manual setup"; exit 1; }
+
+          echo "=== Building APK ==="
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon 2>&1 || {
+            echo "APK build failed (non-fatal)"
+            exit 0
+          }
+          ls -la build/outputs/apk/debug/ 2>/dev/null && echo "APK build SUCCESS" || echo "No APK output found"
 
       - name: Package module
         run: |
@@ -59,14 +71,20 @@ jobs:
           VERSION="v1.0.${{ github.run_number }}"
           VERSION_CODE="${{ github.run_number }}"
 
-          # 注入版本号到 module.prop，方便 Magisk Manager 显示正确版本
+          # 注入版本号到 module.prop
           sed -i "s/^version=.*/version=$VERSION/" "$MODULE_DIR/module.prop"
           sed -i "s/^versionCode=.*/versionCode=$VERSION_CODE/" "$MODULE_DIR/module.prop"
           echo "Module version set to $VERSION (code $VERSION_CODE)"
 
-          mkdir -p "$MODULE_DIR/system/app/ESurfingUI"
+          # 确保 portal 文件存在
+          if [ ! -f "$MODULE_DIR/portal/index.html" ]; then
+            echo "ERROR: portal files missing at $MODULE_DIR/portal/" >&2
+            exit 1
+          fi
+          echo "Portal files OK"
 
           # Inject WebView APK if built
+          mkdir -p "$MODULE_DIR/system/app/ESurfingUI"
           if [ -f magisk/app/build/outputs/apk/debug/app-debug.apk ]; then
             cp magisk/app/build/outputs/apk/debug/app-debug.apk "$MODULE_DIR/system/app/ESurfingUI/"
             echo "WebView APK included"

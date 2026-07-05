@@ -14,10 +14,9 @@ mkdir -p /data/adb/esurfing/portal
 cp "$MODDIR/esurfingd" /data/adb/esurfing/esurfingd
 chmod 755 /data/adb/esurfing/esurfingd
 
-# Copy portal files if not present (first install or after wipe)
-if [ ! -f /data/adb/esurfing/portal/index.html ]; then
-  cp -r $MODDIR/portal/* /data/adb/esurfing/portal/
-fi
+# Copy portal files (always, to pick up updates)
+cp -r $MODDIR/portal/* /data/adb/esurfing/portal/
+chmod 644 /data/adb/esurfing/portal/* 2>/dev/null || true
 
 # Copy default config if not present
 if [ ! -f /data/adb/esurfing/ESurfingClient.json ]; then
