@@ -697,6 +697,7 @@ int dialer_app(void* arg)
 void work()
 {
     g_thread_keep_alive = true;
+    g_start_run_tm = get_cur_tm_ms(); // 记录守护进程启动时间
 
     g_prog_status = calloc(1, sizeof(prog_status_t)); // 初始化 g_prog_status 指针并分配 1 个空间
 
