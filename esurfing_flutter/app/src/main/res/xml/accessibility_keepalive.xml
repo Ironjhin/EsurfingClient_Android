@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
     无障碍服务配置 — 尽量精简,仅挂名为系统服务,不订阅任何事件。
-    由于不使用 onAccessibilityEvent,eventTypes 设为 typeWindowStateChanged 作为占位,
-    实际不会触发任何回调。
+    由于不使用 onAccessibilityEvent,eventTypes 设为 typeWindowStateChanged 作为占位。
 -->
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"

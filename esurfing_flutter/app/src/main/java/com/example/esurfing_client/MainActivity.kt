@@ -1,10 +1,7 @@
 package com.example.esurfing_client
 
-import android.accessibilityservice.AccessibilityService
 import android.content.ComponentName
-import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils.SimpleStringSplitter
 import io.flutter.embedding.android.FlutterActivity
@@ -28,22 +25,16 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    /**
-     * 检测本 APP 的无障碍服务是否已开启
-     */
     private fun isAccessibilityServiceEnabled(): Boolean {
-        val expectedComponentName = ComponentName(this, KeepAliveService::class.java)
-        val enabledServicesSetting = Settings.Secure.getString(
+        val expected = ComponentName(this, KeepAliveService::class.java).flattenToString()
+        val enabledServices = Settings.Secure.getString(
             contentResolver,
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
         val splitter = SimpleStringSplitter(':')
-        splitter.setString(enabledServicesSetting)
+        splitter.setString(enabledServices)
         while (splitter.hasNext()) {
-            val accessibilityService = splitter.next()
-            if (accessibilityService.equals(expectedComponentName.flattenToString(), ignoreCase = true)) {
-                return true
-            }
+            if (splitter.next().equals(expected, ignoreCase = true)) return true
         }
         return false
     }
