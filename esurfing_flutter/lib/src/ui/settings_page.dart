@@ -68,7 +68,8 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final newConfig = ESurfingConfig(
-      enabled: _config!.enabled && accounts.isNotEmpty,
+      // 有有效账号就视为启用(用户来填账号就是想让服务跑起来)
+      enabled: _config!.enabled || accounts.isNotEmpty,
       logLevel: _config!.logLevel,
       accounts: accounts,
     );

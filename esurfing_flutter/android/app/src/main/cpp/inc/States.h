@@ -20,7 +20,7 @@
 #define ALGO_ID_LEN 37
 #define TICKET_LEN 40
 
-#define USR_LEN 16
+#define USR_LEN 64
 #define PWD_LEN 128
 #define CHN_LEN 8
 
