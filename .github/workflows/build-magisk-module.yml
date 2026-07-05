@@ -55,7 +55,7 @@ jobs:
           fi
 
           echo "=== Downloading Gradle ==="
-          cd magisk/app
+          cd magisk
           wget -q https://services.gradle.org/distributions/gradle-8.4-bin.zip
           unzip -q gradle-8.4-bin.zip
 
@@ -63,11 +63,11 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
 
           echo "=== Building APK ==="
-          ./gradle-8.4/bin/gradle assembleDebug --no-daemon 2>&1 || {
+          ./gradle-8.4/bin/gradle :app:assembleDebug --no-daemon 2>&1 || {
             echo "APK build failed (non-fatal)"
             exit 0
           }
-          ls -la build/outputs/apk/debug/ 2>/dev/null && echo "APK build SUCCESS" || echo "No APK output found"
+          ls -la app/build/outputs/apk/debug/ 2>/dev/null && echo "APK build SUCCESS" || echo "No APK output found"
 
       - name: Package module
         run: |
