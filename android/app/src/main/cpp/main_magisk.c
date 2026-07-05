@@ -27,7 +27,7 @@ int main(int argc, char* argv[])
 {
     // Parse args
     if (argc > 1 && (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0)) {
-        printf("esurfingd " PROGRAM_FULL_VERSION "\n");
+        printf("esurfingd 1.0.0\n");
         return 0;
     }
 
