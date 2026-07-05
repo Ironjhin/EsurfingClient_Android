@@ -110,22 +110,6 @@ if [ "$MODULE_ONLY" -eq 0 ]; then
   echo "Binary size: $(stat -c%s "$BINARY" 2>/dev/null || stat -f%z "$BINARY" 2>/dev/null) bytes"
 fi
 
-# Build WebView APK
-APK="$SCRIPT_DIR/output/ESurfingUI-release.apk"
-if [ "$MODULE_ONLY" -eq 0 ] && [ -n "${ANDROID_SDK_ROOT:-}" -o -n "${ANDROID_HOME:-}" ]; then
-  echo ""
-  echo "Building WebView APK..."
-  APK_SRC="$SCRIPT_DIR/app"
-  cd "$APK_SRC"
-  if command -v gradle &>/dev/null; then
-    if command -v gradle &>/dev/null; then
-    gradle assembleDebug --no-daemon 2>&1 | tail -5
-    cp "$APK_SRC/build/outputs/apk/debug/app-debug.apk" "$APK" 2>/dev/null || true
-  fi
-  fi
-  cd "$SCRIPT_DIR"
-fi
-
 # Package module
 echo ""
 echo "Packaging Magisk module..."
@@ -149,9 +133,9 @@ fi
 cp "$SCRIPT_DIR/portal/index.html" "$MODULE_DIR/portal/"
 
 # Copy WebView APK if built
-if [ -f "$APK" ]; then
-  cp "$APK" "$MODULE_DIR/system/app/ESurfingUI/"
-  echo "Included WebView APK ($(stat -c%s "$APK" 2>/dev/null || stat -f%z "$APK" 2>/dev/null) bytes)"
+if [ -f "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" ]; then
+  cp "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" "$MODULE_DIR/system/app/ESurfingUI/"
+  echo "WebView APK included"
 fi
 
 # Set permissions

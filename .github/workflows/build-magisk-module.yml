@@ -12,13 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        abi: [arm64-v8a]
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,33 +24,56 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install dependencies
+      - name: Install tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake ninja-build zip unzip gradle
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-
-      - name: Install Android SDK components
-        run: |
-          yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+          sudo apt-get install -y -qq cmake ninja-build zip unzip
 
       - name: Cache NDK
         id: cache-ndk
         uses: actions/cache@v4
         with:
           path: magisk/.ndk
-          key: ndk-r27c-${{ runner.os }}
+          key: ndk-r27c
 
-      - name: Build daemon binary (${{ matrix.abi }})
+      - name: Build daemon binary
         run: |
           cd magisk
-          bash build.sh --abi ${{ matrix.abi }}
+          bash build.sh
 
-      - name: Upload module artifact
+      - name: Build WebView APK (optional)
+        continue-on-error: true
+        run: |
+          cd magisk/app
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
+          gradle wrapper --gradle-version=8.4 2>/dev/null || true
+          chmod +x gradlew 2>/dev/null || true
+          ./gradlew assembleDebug --no-daemon 2>&1 || echo "APK build skipped"
+
+      - name: Package module
+        run: |
+          MODULE_DIR="magisk/module"
+          mkdir -p "$MODULE_DIR/system/app/ESurfingUI"
+
+          # Inject WebView APK if built
+          if [ -f magisk/app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp magisk/app/build/outputs/apk/debug/app-debug.apk "$MODULE_DIR/system/app/ESurfingUI/"
+            echo "WebView APK included"
+          else
+            echo "No WebView APK — module will use browser UI only"
+          fi
+
+          # Create final module zip
+          mkdir -p magisk/output
+          cd "$MODULE_DIR"
+          zip -r9 "$GITHUB_WORKSPACE/magisk/output/esurfing-daemon-arm64-v8a.zip" . -x ".*" "*/.*"
+          ls -la "$GITHUB_WORKSPACE/magisk/output/"
+
+      - name: Upload module
         uses: actions/upload-artifact@v4
         with:
-          name: esurfing-daemon-${{ matrix.abi }}
-          path: magisk/output/esurfing-daemon-${{ matrix.abi }}.zip
+          name: esurfing-daemon-arm64-v8a
+          path: magisk/output/esurfing-daemon-arm64-v8a.zip
 
   create-release:
     needs: build
@@ -63,24 +81,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download module
         uses: actions/download-artifact@v4
         with:
           name: esurfing-daemon-arm64-v8a
-
-      - name: Prepare release file
-        run: |
-          mkdir -p release
-          mv esurfing-daemon-arm64-v8a.zip release/
 
       - name: Create Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME="magisk-v1.0.${{ github.run_number }}"
+          mkdir -p release
+          mv esurfing-daemon-arm64-v8a.zip release/
           cat > /tmp/release-notes.md << 'NOTES'
           ESurfing Daemon — Magisk Module
 
@@ -95,8 +109,8 @@ jobs:
           3. 或直接重启手机
 
           ## Web 管理
-          - 浏览器打开 http://192.168.100.1:8888/
-          - 可查看状态、修改配置
+          - ESurfing 桌面应用图标（APK 构建可用时）
+          - 或浏览器打开 http://127.0.0.1:8888/
 
           ## 日志
           - /data/adb/esurfing/run.log
