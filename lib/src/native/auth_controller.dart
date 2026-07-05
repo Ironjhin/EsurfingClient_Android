@@ -154,6 +154,19 @@ class AuthController {
   }
 
   /// ================================================================
+  ///  强制重新认证 — 设置 is_need_reset, 后台工作循环立即重建拨号线程
+  /// ================================================================
+  Future<void> forceAuthReset() async {
+    if (!_running) return;
+    final bindings = NativeBindings.instance;
+    if (!bindings.isLoaded) return;
+    try {
+      bindings.esurfingClientForceAuthReset();
+      onStatusChanged?.call(true, '正在强制重新认证...');
+    } catch (_) {}
+  }
+
+  /// ================================================================
   ///  Isolate 入口 — 在此调用 FFI 启动 C 层认证线程
   /// ================================================================
   static void _workerEntryPoint(SendPort mainSendPort) {

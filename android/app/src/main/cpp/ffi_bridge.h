@@ -13,6 +13,7 @@ void   esurfing_client_stop(void);
 int32_t esurfing_client_is_stopped(void);
 void   esurfing_client_destroy(void);
 void   esurfing_client_clear_log(void);
+void   esurfing_client_force_auth_reset(void);
 
 /**
  * @brief 初始化原生层环境（注入 Android 沙盒路径）

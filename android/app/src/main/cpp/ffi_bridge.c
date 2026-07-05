@@ -124,3 +124,11 @@ int32_t esurfing_client_is_stopped(void){
     return 1;
 }
 void esurfing_client_destroy(void){ esurfing_client_stop(); if(g_threads){ for(int i=0;i<g_prog_cnt;i++){ if(g_threads[i].t){ int ret=0; sim_thread_join(g_threads[i].t,&ret); sim_thread_destroy(g_threads[i].t); }} free(g_threads); g_threads=NULL; } if(g_prog_status){ for(int i=0;i<g_prog_cnt;i++)if(g_prog_status[i].auth_cfg.cipher)destroy_cipher_factory(); free(g_prog_status); g_prog_status=NULL; } clean_logger(); g_started=0; g_prog_cnt=0; }
+
+/* 强制重新认证: 设置 is_need_reset 标志,轮询线程会在下一个 100ms 周期重建拨号线程 */
+void esurfing_client_force_auth_reset(void) {
+    if (!g_prog_status) return;
+    for (int i = 0; i < g_prog_cnt; i++) {
+        g_prog_status[i].runtime_status.is_need_reset = 1;
+    }
+}
