@@ -433,11 +433,14 @@ class _HomePageState extends State<HomePage> {
                     OutlinedButton.icon(
                       onPressed: () async {
                         await KeepAliveChannel.openAccessibilitySettings();
-                        if (mounted) {
-                          final newState =
-                              await KeepAliveChannel.isAccessibilityEnabled;
-                          setState(() => _accessibilityEnabled = newState);
-                        }
+                        if (!mounted) return;
+                        // 原生 channel 失败时弹出 toast 告知用户手动操作
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('请在系统设置 → 无障碍 → ESurfing Client 开启服务'),
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.open_in_new, size: 16),
                       label: const Text('去开启'),
