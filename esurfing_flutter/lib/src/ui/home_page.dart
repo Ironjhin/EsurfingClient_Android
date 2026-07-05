@@ -1,10 +1,12 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../model/config.dart';
 import '../native/bindings.dart';
 import '../native/auth_controller.dart';
+import '../native/keep_alive_channel.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -20,6 +22,7 @@ class _HomePageState extends State<HomePage> {
   bool _isRunning = false;
   String _statusText = 'Initializing...';
   String _statusDetail = '';
+  bool? _accessibilityEnabled; // null = 未查询, true/false = 结果
   final AuthController _authCtrl = AuthController.instance;
 
   @override
@@ -29,6 +32,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _initApp() async {
+    if (Platform.isAndroid) {
+      _accessibilityEnabled = await KeepAliveChannel.isAccessibilityEnabled;
+    }
     await _loadConfig();
     await _checkPermissions();
 
@@ -272,6 +278,13 @@ class _HomePageState extends State<HomePage> {
                       textAlign: TextAlign.center,
                     ),
                   ),
+
+                  // 增强保活引导 — 无障碍服务
+                  if (Platform.isAndroid) ...[
+                    const SizedBox(height: 12),
+                    _buildAccessibilityCaveat(theme, colorScheme),
+                  ],
+
                   const SizedBox(height: 48),
 
                   // Start / Stop button
@@ -353,6 +366,84 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
             ),
+    );
+  }
+
+  /// 无障碍保活引导卡片 — Android 专属
+  Widget _buildAccessibilityCaveat(ThemeData theme, ColorScheme colorScheme) {
+    final enabled = _accessibilityEnabled;
+    final isOn = enabled == true;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: isOn
+            ? colorScheme.primaryContainer.withOpacity(0.4)
+            : colorScheme.tertiaryContainer.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isOn
+              ? colorScheme.primary.withOpacity(0.3)
+              : colorScheme.tertiary.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isOn ? Icons.security : Icons.privacy_tip_outlined,
+            size: 20,
+            color: isOn ? colorScheme.primary : colorScheme.tertiary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isOn ? '已开启增强保活' : '开启增强保活',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isOn ? colorScheme.primary : colorScheme.tertiary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isOn
+                      ? '系统已放宽电池优化,守护进程不会被回收'
+                      : '开启无障碍服务后放宽电池优化限制,熄屏 30 分钟+ 仍保持在线。不会监听或操作你的界面。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (!isOn) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await KeepAliveChannel.openAccessibilitySettings();
+                      // 用户回来后重新查询
+                      if (mounted) {
+                        final newState =
+                            await KeepAliveChannel.isAccessibilityEnabled;
+                        setState(() => _accessibilityEnabled = newState);
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: const Text('去开启'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: colorScheme.tertiary,
+                      side: BorderSide(
+                        color: colorScheme.tertiary.withOpacity(0.5),
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
