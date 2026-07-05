@@ -103,11 +103,12 @@ set(ALL_SOURCES
 # ============================================================
 # Build static executable
 # ============================================================
+find_package(Threads REQUIRED)
 add_executable(esurfingd ${ALL_SOURCES})
 
 target_link_libraries(esurfingd
     libcurl
-    pthread
+    Threads::Threads
 )
 
 target_compile_options(esurfingd PRIVATE
