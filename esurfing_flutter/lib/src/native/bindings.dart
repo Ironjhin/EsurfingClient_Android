@@ -10,6 +10,7 @@ import 'package:ffi/ffi.dart';
 typedef init_c = Int32 Function(Pointer<Utf8>, Pointer<Utf8>);
 typedef start_c = Int32 Function(Int32);
 typedef stop_c = Void Function();
+typedef force_auth_reset_c = Void Function();
 typedef is_stopped_c = Int32 Function();
 typedef destroy_c = Void Function();
 
@@ -17,6 +18,7 @@ typedef destroy_c = Void Function();
 typedef InitDart = int Function(Pointer<Utf8>, Pointer<Utf8>);
 typedef StartDart = int Function(int);
 typedef StopDart = void Function();
+typedef ForceAuthResetDart = void Function();
 typedef IsStoppedDart = int Function();
 typedef DestroyDart = void Function();
 
@@ -32,6 +34,7 @@ class NativeBindings {
   late final InitDart esurfingClientInit;
   late final StartDart esurfingClientStart;
   late final StopDart esurfingClientStop;
+  late final ForceAuthResetDart esurfingClientForceAuthReset;
   late final IsStoppedDart esurfingClientIsStopped;
   late final DestroyDart esurfingClientDestroy;
 
@@ -63,6 +66,8 @@ class NativeBindings {
         .lookupFunction<start_c, StartDart>('esurfing_client_start');
     esurfingClientStop = l
         .lookupFunction<stop_c, StopDart>('esurfing_client_stop');
+    esurfingClientForceAuthReset = l
+        .lookupFunction<force_auth_reset_c, ForceAuthResetDart>('esurfing_client_force_auth_reset');
     esurfingClientIsStopped = l
         .lookupFunction<is_stopped_c, IsStoppedDart>('esurfing_client_is_stopped');
     esurfingClientDestroy = l

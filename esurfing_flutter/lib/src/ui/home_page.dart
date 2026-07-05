@@ -269,6 +269,18 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ),
+                  if (_isRunning) ...[
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () => _authCtrl.forceAuthReset(),
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('强制重新认证'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: colorScheme.error,
+                        textStyle: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
 
                   // Account summary

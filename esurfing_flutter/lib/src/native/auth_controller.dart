@@ -91,8 +91,17 @@ class AuthController {
   }
 
   /// ================================================================
-  ///  安全停止 — 调用 C 层 stop_dialer / esurfing_client_stop
+  ///  强制重新认证 — 设置 is_need_reset, 后台工作循环立即重建拨号线程
   /// ================================================================
+  Future<void> forceAuthReset() async {
+    if (!_running) return;
+    final bindings = NativeBindings.instance;
+    if (!bindings.isLoaded) return;
+    try {
+      bindings.esurfingClientForceAuthReset();
+      onStatusChanged?.call(true, '正在强制重新认证...');
+    } catch (_) {}
+  }
   Future<void> stop({bool waitForExit = true}) async {
     if (!_running) return;
 
