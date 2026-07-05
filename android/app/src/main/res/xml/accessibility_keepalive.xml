@@ -11,4 +11,4 @@
     android:canRetrieveWindowContent="false"
     android:description="@string/accessibility_service_description"
     android:notificationTimeout="100"
-    android:settingsActivity="com.example.esurfing_client.MainActivity" />
+    android:settingsActivity="com.example.esurfing_client.ESurfingMainActivity" />
