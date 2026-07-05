@@ -47,7 +47,14 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             {
                 cJSON* auth = cJSON_CreateObject();
                 cJSON_AddBoolToObject(auth, "status", g_prog_status[0].runtime_status.is_authed);
-                cJSON_AddBoolToObject(auth, "connected", g_prog_status[0].runtime_status.is_connected);
+                // 如果认证线程没有运行，直接检查网络状态
+                bool connected = g_prog_status[0].runtime_status.is_connected;
+                if (!connected && !g_prog_status[0].runtime_status.is_running)
+                {
+                    NetworkStatus net_status = check_network_status();
+                    connected = (net_status == REQUEST_SUCCESS);
+                }
+                cJSON_AddBoolToObject(auth, "connected", connected);
                 char* status_str = cJSON_Print(auth);
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);
