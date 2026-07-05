@@ -134,21 +134,24 @@ jobs:
           echo "Release zip: $(ls -lh release/)"
 
           printf '%s\n' \
-            "ESurfing Daemon — Magisk Module (构建 ${{ github.run_number }})" \
+            "## 🤖 Magisk 模块版（Root 设备用这个）" \
+            "纯 C 守护进程 ~1-2MB，开机自启。" \
             "" \
-            "## 安装" \
+            "[👉 点此查看 Flutter APK 版（无 Root 设备用）](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=v1.0.)" \
+            "" \
+            "---" \
+            "" \
+            "### 安装" \
             "1. 下载 zip 文件" \
             "2. Magisk Manager → 模块 → 从本地安装" \
             "3. 重启" \
             "" \
-            "## 首次使用" \
-            "打开桌面的 ESurfing 应用，或浏览器访问 http://127.0.0.1:8888/" \
-            "" \
-            "## Flutter APK（无 Root 设备用）" \
-            "https://github.com/Ironjhin/EsurfingClient_Android/releases?q=v1.0." \
+            "### Web 管理" \
+            "- 桌面 ESurfing 应用图标" \
+            "- 或浏览器访问 http://127.0.0.1:8888/" \
             > /tmp/release-notes.md
 
           gh release create "$TAG_NAME" \
             release/*.zip \
-            --title "ESurfing Daemon $TAG_NAME" \
+            --title "🤖 ESurfing Daemon $TAG_NAME（Magisk）" \
             --notes-file /tmp/release-notes.md
