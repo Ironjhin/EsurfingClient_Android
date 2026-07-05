@@ -34,6 +34,9 @@ int main(int argc, char* argv[])
     // Ensure data directory exists
     mkdir(DATA_DIR, 0755);
 
+    // Switch to data directory so relative paths (e.g. "portal" in WebServer.c) resolve correctly
+    chdir(DATA_DIR);
+
     // Set log directory BEFORE work() calls init_logger()
     set_log_dir(DATA_DIR);
     // Write PID file (removed by shut() -> exit() via atexit/cleanup)
