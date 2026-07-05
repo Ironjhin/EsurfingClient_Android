@@ -114,12 +114,17 @@ fi
 echo ""
 echo "Packaging Magisk module..."
 
-# 自动生成版本号（本地构建用日期，CI 会用 github.run_number）
-LOCAL_VERSION="v1.0.$(date +%Y%m%d)"
-LOCAL_VERSION_CODE="$(date +%Y%m%d)"
-sed -i "s/^version=.*/version=$LOCAL_VERSION/" "$MODULE_DIR/module.prop"
-sed -i "s/^versionCode=.*/versionCode=$LOCAL_VERSION_CODE/" "$MODULE_DIR/module.prop"
-echo "Module version set to $LOCAL_VERSION (code $LOCAL_VERSION_CODE)"
+# 在 CI 环境中，保留 module.prop 中的版本号
+# 在本地构建时，使用日期生成版本号
+if [ -z "${CI:-}" ]; then
+  LOCAL_VERSION="v1.0.$(date +%Y%m%d)"
+  LOCAL_VERSION_CODE="$(date +%Y%m%d)"
+  sed -i "s/^version=.*/version=$LOCAL_VERSION/" "$MODULE_DIR/module.prop"
+  sed -i "s/^versionCode=.*/versionCode=$LOCAL_VERSION_CODE/" "$MODULE_DIR/module.prop"
+  echo "Module version set to $LOCAL_VERSION (code $LOCAL_VERSION_CODE)"
+else
+  echo "CI environment detected, keeping module.prop version as-is"
+fi
 
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$MODULE_DIR/portal"
