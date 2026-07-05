@@ -9,14 +9,19 @@ sleep 15
 
 # Ensure data directory exists
 mkdir -p /data/adb/esurfing/portal
+mkdir -p /data/adb/esurfing/webroot
 
 # Copy daemon binary (on module update the old binary is replaced)
 cp "$MODDIR/esurfingd" /data/adb/esurfing/esurfingd
 chmod 755 /data/adb/esurfing/esurfingd
 
 # Copy portal files (always, to pick up updates)
-cp -r $MODDIR/portal/* /data/adb/esurfing/portal/
+cp -r $MODDIR/portal/* /data/adb/esurfing/portal/ 2>/dev/null || true
 chmod 644 /data/adb/esurfing/portal/* 2>/dev/null || true
+
+# Copy KernelSU WebUI files
+cp -r $MODDIR/webroot/* /data/adb/esurfing/webroot/ 2>/dev/null || true
+chmod 644 /data/adb/esurfing/webroot/* 2>/dev/null || true
 
 # Copy default config if not present
 if [ ! -f /data/adb/esurfing/ESurfingClient.json ]; then
@@ -25,6 +30,7 @@ fi
 
 # Create log symlink for web UI
 ln -sf /data/adb/esurfing/run.log /data/adb/esurfing/portal/run.log 2>/dev/null || true
+ln -sf /data/adb/esurfing/run.log /data/adb/esurfing/webroot/run.log 2>/dev/null || true
 
 # Start the daemon
 # Note: work() handles logger init, web server, config load, and thread supervisor.
