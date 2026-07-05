@@ -51,6 +51,10 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
     <div class="row"><span class="label">认证状态</span><span class="value" id="authStatus">检测中...</span></div>
     <div class="row"><span class="label">网络状态</span><span class="value" id="onlineStatus">检测中...</span></div>
     <div class="row"><span class="label">运行时间</span><span class="value" id="uptime">-</span></div>
+    <div class="actions" style="margin-top:12px;">
+      <button class="btn btn-danger" onclick="forceAuthReset()">🔄 强制重新认证</button>
+    </div>
+    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击此按钮立即重试，无需等 60s/300s/600s 回退计时。</p>
   </div>
 
   <!-- Config -->
@@ -214,6 +218,19 @@ async function saveAndApply() {
       showToast('配置已应用，认证线程即将重启');
     }
   } catch { showToast('应用失败', true); }
+}
+
+// Force auth reset — breaks the long retry sleep and restarts dialer now
+async function forceAuthReset() {
+  try {
+    const res = await fetch(API + '/api/auth/reset', { method: 'POST' });
+    const data = await res.json();
+    if (data && data.ok) {
+      showToast('已触发强制重新认证');
+    } else {
+      showToast(data && data.reason === 'no dialer' ? '守护进程未在运行' : '触发失败', true);
+    }
+  } catch { showToast('请求失败', true); }
 }
 
 async function pollLog() {
