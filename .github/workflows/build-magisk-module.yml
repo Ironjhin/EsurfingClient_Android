@@ -32,7 +32,12 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq cmake ninja-build zip unzip
+          sudo apt-get install -y -qq cmake ninja-build zip unzip gradle
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+
+      - name: Install Android SDK components
+        run: |
+          yes | sdkmanager "platforms;android-34" "build-tools;34.0.0" 2>/dev/null || true
 
       - name: Cache NDK
         id: cache-ndk

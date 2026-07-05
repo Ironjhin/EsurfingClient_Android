@@ -3,4 +3,5 @@ name=ESurfing Daemon
 version=v1.0.0
 versionCode=1
 author=EsurfingClient
-description=广东天翼校园网认证守护进程 — 启动后自动连接校园网，提供 Web 后台 (http://192.168.100.1:8888) 查看状态与修改配置
+description=广东天翼校园网认证守护进程 — 启动后自动连接校园网，提供 Web 后台查看状态与修改配置
+web: http://127.0.0.1:8888/

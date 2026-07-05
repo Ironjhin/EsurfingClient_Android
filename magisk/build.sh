@@ -22,6 +22,9 @@ OUTPUT_DIR="$SCRIPT_DIR/output"
 
 # Default ABI
 ABI="arm64-v8a"
+### Variables:
+# - ANDROID_HOME / ANDROID_SDK_ROOT: path to Android SDK (needed for APK build)
+# - ANDROID_NDK_HOME: path to Android NDK (auto-downloaded if not set)
 NDK_VERSION="r27c"
 CMAKE_VERSION="3.22.1"
 
@@ -107,13 +110,29 @@ if [ "$MODULE_ONLY" -eq 0 ]; then
   echo "Binary size: $(stat -c%s "$BINARY" 2>/dev/null || stat -f%z "$BINARY" 2>/dev/null) bytes"
 fi
 
+# Build WebView APK
+APK="$SCRIPT_DIR/output/ESurfingUI-release.apk"
+if [ "$MODULE_ONLY" -eq 0 ] && [ -n "${ANDROID_SDK_ROOT:-}" -o -n "${ANDROID_HOME:-}" ]; then
+  echo ""
+  echo "Building WebView APK..."
+  APK_SRC="$SCRIPT_DIR/app"
+  cd "$APK_SRC"
+  if command -v gradle &>/dev/null; then
+    if command -v gradle &>/dev/null; then
+    gradle assembleDebug --no-daemon 2>&1 | tail -5
+    cp "$APK_SRC/build/outputs/apk/debug/app-debug.apk" "$APK" 2>/dev/null || true
+  fi
+  fi
+  cd "$SCRIPT_DIR"
+fi
+
 # Package module
 echo ""
 echo "Packaging Magisk module..."
 
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$MODULE_DIR/portal"
-mkdir -p "$MODULE_DIR/system/bin"
+mkdir -p "$MODULE_DIR/system/app/ESurfingUI"
 
 # Copy binary
 BINARY_SRC="${BUILD_DIR}/esurfingd"
@@ -128,6 +147,12 @@ fi
 
 # Copy portal files
 cp "$SCRIPT_DIR/portal/index.html" "$MODULE_DIR/portal/"
+
+# Copy WebView APK if built
+if [ -f "$APK" ]; then
+  cp "$APK" "$MODULE_DIR/system/app/ESurfingUI/"
+  echo "Included WebView APK ($(stat -c%s "$APK" 2>/dev/null || stat -f%z "$APK" 2>/dev/null) bytes)"
+fi
 
 # Set permissions
 chmod 755 "$MODULE_DIR/service.sh" "$MODULE_DIR/uninstall.sh" "$MODULE_DIR/customize.sh" 2>/dev/null || true
