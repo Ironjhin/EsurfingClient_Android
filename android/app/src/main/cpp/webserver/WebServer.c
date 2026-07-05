@@ -78,6 +78,21 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 }
                 return;
             }
+            // 获取运行时间
+            if (mg_match(hm->uri, mg_str("/api/status/uptime"), NULL))
+            {
+                cJSON* uptime = cJSON_CreateObject();
+                uint64_t now = get_cur_tm_ms();
+                uint64_t start = g_start_run_tm;
+                uint64_t elapsed_ms = (start > 0) ? (now - start) : 0;
+                cJSON_AddNumberToObject(uptime, "uptime_ms", (double)elapsed_ms);
+                cJSON_AddNumberToObject(uptime, "start_ms", (double)start);
+                char* uptime_str = cJSON_Print(uptime);
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", uptime_str);
+                free(uptime_str);
+                cJSON_Delete(uptime);
+                return;
+            }
             // 获取配置
             if (mg_match(hm->uri, mg_str("/api/getConfigs"), NULL))
             {

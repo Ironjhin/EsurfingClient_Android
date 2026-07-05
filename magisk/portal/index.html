@@ -139,6 +139,27 @@ async function refreshStatus() {
       el.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
     }
   } catch { document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+
+  // 更新运行时间
+  try {
+    const uptimeRes = await fetch('/api/status/uptime');
+    const uptimeData = await uptimeRes.json();
+    const el = document.getElementById('uptime');
+    if (uptimeData.uptime_ms > 0) {
+      const seconds = Math.floor(uptimeData.uptime_ms / 1000);
+      const minutes = Math.floor(seconds / 60);
+      const hours = Math.floor(minutes / 60);
+      const days = Math.floor(hours / 24);
+      let timeStr = '';
+      if (days > 0) timeStr += days + '天 ';
+      if (hours % 24 > 0) timeStr += (hours % 24) + '小时 ';
+      if (minutes % 60 > 0) timeStr += (minutes % 60) + '分钟 ';
+      timeStr += (seconds % 60) + '秒';
+      el.textContent = timeStr.trim();
+    } else {
+      el.textContent = '-';
+    }
+  } catch { document.getElementById('uptime').textContent = '-'; }
 }
 
 // Load config into form
