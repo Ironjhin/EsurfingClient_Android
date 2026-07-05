@@ -73,17 +73,16 @@ jobs:
           printf '%s\n' \
             "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
             "" \
-            "本轮修复：" \
-            "- 关键修复：检测到 captive portal 重定向后，自动将已知内部 portal 域名（如 enet.10000.gd.cn）替换为公网可达 IP（125.88.59.131），彻底解决 Android 未认证状态下无法解析校园网内部 DNS 的问题" \
-            "- 第 2 次探测也走 DNS 出错路径时不再尝试 wlanacip（AC 不 serve portal 页面），避免无意义的 fallback 链" \
-            "- 恢复原版 PC 客户端 User-Agent（CCTP/Linux64/1003），修复广东电信 Portal 因移动端 UA 返回手机版页面导致配置提取失败" \
-            "- 主探测 URL 恢复为原版 PC 配置 connect.rom.miui.com；备用 edge-http.microsoft.com" \
-            "- 修复探测 URL 返回 502 等异常时不会自动尝试备用 URL 的问题" \
-            "- 修复 FOLLOWLOCATION 跟随重定向后目标域名 DNS 解析失败时，重定向被忽略的问题（curl_easy_perform 失败后先查 redirect_count）" \
-            "- 启用服务开关现在能真正自动启动认证线程" \
-            "- Portal 配置提取增加结尾标签缺失容错，消除 NULL 解引用闪退" \
-            "- 校园网标志提取增加三层判空保护" \
-            "- Cookie 引擎 + 浏览器 UA 伪装修复 curl_code=56 网关重置" \
+            "## Flutter APK" \
+            "适用于无 Root 的 Android 设备。" \
+            "直接下载 APK 安装即可。" \
+            "" \
+            "## Magisk 模块（Root 设备）" \
+            "如果手机已 Root，推荐使用 Magisk 模块版（纯 C daemon, ~1-2MB, 开机自启）:" \
+            "https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk" \
+            "" \
+            "## 更新内容" \
+            "$(git log --oneline v1.0.$(( ${{ github.run_number }} - 1 ))..HEAD 2>/dev/null || echo '首次发布')" \
             > /tmp/release-notes.md
           gh release create "$TAG_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \

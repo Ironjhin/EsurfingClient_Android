@@ -96,7 +96,7 @@ jobs:
           mkdir -p release
           mv esurfing-daemon-arm64-v8a.zip release/
           cat > /tmp/release-notes.md << 'NOTES'
-          ESurfing Daemon — Magisk Module
+          ESurfing Daemon — Magisk Module (构建 ${{ github.run_number }})
 
           ## 安装
           1. 下载 zip 文件
@@ -109,11 +109,14 @@ jobs:
           3. 或直接重启手机
 
           ## Web 管理
-          - ESurfing 桌面应用图标（APK 构建可用时）
+          - 桌面 ESurfing 应用图标（模块自带 WebView APK）
           - 或浏览器打开 http://127.0.0.1:8888/
 
           ## 日志
           - /data/adb/esurfing/run.log
+
+          ## Flutter APK（无 Root 设备用）
+          https://github.com/Ironjhin/EsurfingClient_Android/releases?q=v1.0.
           NOTES
 
           gh release create "$TAG_NAME" \
