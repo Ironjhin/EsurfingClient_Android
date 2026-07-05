@@ -124,6 +124,19 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
         // POST 请求
         if (mg_strcmp(hm->method, mg_str("POST")) == 0)
         {
+            // 强制重新认证: 设置 is_need_reset, 工作循环会立即重建拨号线程
+            if (mg_match(hm->uri, mg_str("/api/auth/reset"), NULL))
+            {
+                int forced = 0;
+                for (int8_t i = 0; i < g_prog_cnt; i++)
+                {
+                    g_prog_status[i].runtime_status.is_need_reset = true;
+                    forced = 1;
+                }
+                LOG_INFO("强制重新认证: 已触发重置标志");
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
+                              forced ? "{\"ok\":true}" : "{\"ok\":false,\"reason\":\"no dialer\"}");
+            }
             // 仅保存
             if (mg_match(hm->uri, mg_str("/api/saveConfigs"), NULL))
             {
