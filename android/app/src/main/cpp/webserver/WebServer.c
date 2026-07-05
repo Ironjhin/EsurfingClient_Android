@@ -245,7 +245,7 @@ int web_server(void* arg)
 {
     tl_thread_idx = (int8_t)(intptr_t)arg;
     struct mg_mgr mgr;
-    mg_log_level = MG_LL_VERBOSE;
+    mg_log_level = MG_LL_ERROR;  // 只输出错误日志，避免轮询刷屏
     mg_log_set_fn(logFn, NULL);
     mg_mgr_init(&mgr);
 
