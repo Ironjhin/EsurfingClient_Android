@@ -42,13 +42,6 @@ class _HomePageState extends State<HomePage> {
       }
     };
 
-    // 如果启用了自动启动，立即进入认证流程
-    if (_config?.enabled == true) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _toggleAuth();
-      });
-    }
-
     if (mounted) {
       setState(() => _isLoading = false);
     }
@@ -65,7 +58,20 @@ class _HomePageState extends State<HomePage> {
             ? '${config.accounts.length} account(s) configured'
             : 'Please configure accounts in settings';
       });
+      // 无论是冷启动还是从 Settings 返回,都尝试自动启动
+      _tryAutoStart();
     }
+  }
+
+  /// 配置有效且已启用时自动进入认证(共用:冷启动 + Settings 返回)
+  void _tryAutoStart() {
+    final c = _config;
+    if (c == null || !c.enabled) return;
+    final hasAccount = c.accounts.any(
+      (a) => a.username.isNotEmpty && a.password.isNotEmpty,
+    );
+    if (!hasAccount) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _toggleAuth());
   }
 
   Future<void> _checkPermissions() async {
