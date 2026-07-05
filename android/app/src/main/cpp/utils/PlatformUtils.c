@@ -528,7 +528,7 @@ bool save_cfg(char* configs_str)
 
 bool load_cfg()
 {
-#ifndef __OPENWRT__
+#if !defined(__OPENWRT__) && !defined(__MAGISK__) && !defined(__ANDROID__)
 
     char dir[PATH_MAX];
     if (get_exec_dir(dir) == false)
