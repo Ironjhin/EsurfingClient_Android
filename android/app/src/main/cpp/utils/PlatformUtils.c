@@ -534,14 +534,9 @@ bool load_cfg()
     if (get_exec_dir(dir) == false)
     {
         LOG_ERROR("获取可执行文件路径失败, 请检查权限后重启");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return false;
     }
     snprintf(config_file, PATH_MAX + 1 + sizeof(DIALER_CONFIG_FILE), "%s%c%s", safe_str(dir), SEP, DIALER_CONFIG_FILE);
 
@@ -556,26 +551,16 @@ bool load_cfg()
         if (!new_cfg)
         {
             LOG_FATAL("无法生成文件: %s, 请检查权限后重启", config_file);
-            while (true)
-            {
-                if (g_need_exit)
-                {
-                    return false;
-                }
-                sleep_ms(10000, true);
-            }
+            g_prog_enabled = false;
+            g_prog_cnt = 0;
+            return true;
         }
         fprintf(new_cfg, "%s", s_default_cfg);
         fclose(new_cfg);
-        LOG_INFO("创建完成, 请在 %s 填写账号数据, 然后重启");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        LOG_INFO("已创建默认配置, 请通过 WebUI 填写账号密码");
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
     }
 
     fseek(cfg_file, 0, SEEK_END);
@@ -591,15 +576,10 @@ bool load_cfg()
     free(cfg_data);
     if (!cfg_json)
     {
-        LOG_FATAL("JSON 解析失败, 请检查后重启");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        LOG_FATAL("JSON 解析失败, 请通过 WebUI 重新保存配置");
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
     }
 
     const cJSON* log_lv = cJSON_GetObjectItem(cfg_json, "log_lv");
@@ -615,43 +595,31 @@ bool load_cfg()
     const cJSON* enabled = cJSON_GetObjectItem(cfg_json, "enabled");
     if (enabled == NULL)
     {
-        LOG_WARN("enabled 参数不存在, 请填写后重启程序");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            g_prog_enabled = false;
-            sleep_ms(10000, true);
-        }
+        LOG_WARN("enabled 参数不存在, 请通过 WebUI 启用");
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        cJSON_Delete(cfg_json);
+        return true;
     }
     if (cJSON_IsFalse(enabled))
     {
-        LOG_WARN("配置文件中禁用了程序启动, 请开启后重启程序");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            g_prog_enabled = false;
-            sleep_ms(10000, true);
-        }
+        LOG_WARN("配置文件中禁用了程序启动, 请通过 WebUI 启用");
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        cJSON_Delete(cfg_json);
+        return true;
     }
     g_prog_enabled = true;
 
     const cJSON* accounts = cJSON_GetObjectItem(cfg_json, "accounts");
     if (accounts == NULL || cJSON_IsArray(accounts) == false || cJSON_GetArraySize(accounts) == 0)
     {
-        LOG_FATAL("没有找到账号数据, 请添加后重启程序");
+        LOG_WARN("没有找到账号数据, 请通过 WebUI 添加");
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
         cJSON_Delete(cfg_json);
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
+        return true;
+    }
             sleep_ms(10000, true);
         }
     }
@@ -867,15 +835,10 @@ bool load_cfg()
 
     if (valid_cnt == 0)
     {
-        LOG_FATAL("无可用配置, 请检查后重启程序");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        LOG_WARN("无可用配置, 请通过 WebUI �填配置账号密度");
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
     }
 
     g_prog_cnt = valid_cnt;
