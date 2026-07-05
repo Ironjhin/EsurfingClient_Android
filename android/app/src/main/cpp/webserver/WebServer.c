@@ -51,6 +51,8 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 NetworkStatus net_status = check_network_status();
                 bool connected = (net_status == REQUEST_SUCCESS);
                 cJSON_AddBoolToObject(auth, "connected", connected);
+                LOG_DEBUG("API /api/status/auth: is_authed=%d, net_status=%d, connected=%d",
+                    g_prog_status[0].runtime_status.is_authed, net_status, connected);
                 char* status_str = cJSON_Print(auth);
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);
@@ -60,6 +62,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             if (mg_match(hm->uri, mg_str("/api/status/online"), NULL))
             {
                 const NetworkStatus status = check_network_status();
+                LOG_DEBUG("API /api/status/online: net_status=%d", status);
                 if (status == REQUEST_SUCCESS)
                 {
                     mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
