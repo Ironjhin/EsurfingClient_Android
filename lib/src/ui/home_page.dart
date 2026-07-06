@@ -18,7 +18,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ESurfingConfig? _config;
   bool _isLoading = true;
   bool _isRunning = false;
@@ -33,14 +33,25 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initApp();
     _logReader.start();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _logReader.dispose();
     super.dispose();
+  }
+
+  // 切回前台时(从系统设置页 / 多任务回来)刷一次无障碍状态 —
+  // 系统若清理了后台进程,服务会断开,这里立刻反映到 UI.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && Platform.isAndroid) {
+      _refreshAccessibility();
+    }
   }
 
   Future<void> _initApp() async {
@@ -384,6 +395,7 @@ class _HomePageState extends State<HomePage> {
 
   /// 无障碍保活引导卡片 — Android 专属
   Widget _buildAccessibilityTile(ThemeData theme, ColorScheme cs) {
+    final i18n = AppLocalizations.of(context);
     final enabled = _accessibilityEnabled;
     // null = 还在查(首次启动) — 显示引导态,和未开启一样的行动按钮.
     final isOn = enabled == true;
@@ -424,6 +436,14 @@ class _HomePageState extends State<HomePage> {
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: cs.onSurfaceVariant),
                   ),
+                  const SizedBox(height: 2),
+                  Text(
+                    i18n.keepaliveKilledHint,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurfaceVariant.withOpacity(0.7),
+                      fontSize: 11,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   // 无论是否开启都显示按钮:开启时用于"重新检查/管理",未开启时用于跳转.
                   OutlinedButton.icon(
@@ -433,9 +453,9 @@ class _HomePageState extends State<HomePage> {
                         await _refreshAccessibility();
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('无障碍服务仍在运行中 ✓'),
-                              duration: Duration(seconds: 2),
+                            SnackBar(
+                              content: Text(i18n.keepaliveStatusRunning),
+                              duration: const Duration(seconds: 2),
                             ),
                           );
                         }

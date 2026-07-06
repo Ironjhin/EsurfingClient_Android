@@ -42,6 +42,18 @@ class AppLocalizations {
   String get btnStopAuth => _t('Stop Authentication', '停止认证');
   String get btnForceReset => _t('Force Re-Auth', '强制重新认证');
 
+  // 无障碍保活 (Accessibility keepalive)
+  String get keepaliveNeedsEnableTitle => _t('Keep-alive Needs Accessibility', '增强保活需要无障碍服务');
+  String get keepaliveNeedsEnableBody => _t(
+    'To prevent being killed by the system, please enable the accessibility service for this app in Settings.',
+    '为了防止被系统清理,请在系统设置里为本应用开启无障碍服务。',
+  );
+  String get keepaliveKilledHint => _t(
+    'If the system reclaims the process in the background, the service will disconnect — just come back here and tap the button below to turn it back on.',
+    '若系统后台回收了进程,服务会断开 — 回到这里点下方按钮重新开启即可。',
+  );
+  String get keepaliveStatusRunning => _t('Service is running normally ✓', '服务运行正常 ✓');
+
   // 配置缺失对话框
   String get configRequiredTitle => _t('Configuration Required', '需要配置');
   String get configRequiredBody => _t(
