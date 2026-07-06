@@ -7,6 +7,7 @@ import '../model/config.dart';
 import '../native/bindings.dart';
 import '../native/auth_controller.dart';
 import '../native/keep_alive_channel.dart';
+import '../i18n/app_localizations.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -20,7 +21,7 @@ class _HomePageState extends State<HomePage> {
   ESurfingConfig? _config;
   bool _isLoading = true;
   bool _isRunning = false;
-  String _statusText = 'Initializing...';
+  String _statusText = '';  // 由首帧 i18n 注入
   String _statusDetail = '';
   bool? _accessibilityEnabled; // null = 未查询, true/false = 结果
   final AuthController _authCtrl = AuthController.instance;
@@ -54,12 +55,13 @@ class _HomePageState extends State<HomePage> {
     final configManager = await ConfigManager.getInstance();
     final config = await configManager.loadConfig();
     if (mounted) {
+      final i18n = AppLocalizations.of(context);
       setState(() {
         _config = config;
-        _statusText = config.enabled ? 'Ready' : 'Disabled';
+        _statusText = config.enabled ? i18n.ready : i18n.disabledHint;
         _statusDetail = config.enabled
-            ? '${config.accounts.length} account(s) configured'
-            : 'Please configure accounts in settings';
+            ? i18n.accountCount.replaceAll('{n}', '${config.accounts.length}')
+            : i18n.configInSettings;
       });
       // 无论是冷启动还是从 Settings 返回,都尝试自动启动
       _tryAutoStart();
@@ -111,9 +113,10 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
+    final i18n = AppLocalizations.of(context);
     setState(() {
       _isRunning = true;
-      _statusText = 'Initializing native layer...';
+      _statusText = i18n.initializing;
       _statusDetail = '';
     });
 
@@ -124,25 +127,25 @@ class _HomePageState extends State<HomePage> {
       // 构建 JSON 配置
       final configJson = jsonEncode(_config!.toJson());
 
-      // 初始化 C 层（传入沙盒路径和配置）
+      // 初始化 C 层(传入沙盒路径和配置)
       final ok = await _authCtrl.initialize(appDir.path, configJson);
       if (!ok) {
-        if (mounted) setState(() => _statusText = 'Native init failed');
+        if (mounted) setState(() => _statusText = i18n.nativeInitFailed);
         return;
       }
 
-      // 启动认证（C 层内部创建 pthread 运行 dialer_app）
+      // 启动认证(C 层内部创建 pthread 运行 dialer_app)
       final started = await _authCtrl.start();
       if (mounted) {
         if (started) {
           setState(() {
-            _statusText = 'Authenticated — heartbeat active';
-            _statusDetail = 'Running in background thread';
+            _statusText = i18n.authenticatedHeartbeat;
+            _statusDetail = i18n.runningDetail;
           });
         } else {
           setState(() {
             _isRunning = false;
-            _statusText = 'Failed to start authentication';
+            _statusText = i18n.startFailed;
           });
         }
       }
@@ -150,15 +153,16 @@ class _HomePageState extends State<HomePage> {
       if (mounted) {
         setState(() {
           _isRunning = false;
-          _statusText = 'Error: $e';
+          _statusText = '${i18n.errorPrefix}: $e';
         });
       }
     }
   }
 
   Future<void> _stopAuth() async {
+    final i18n = AppLocalizations.of(context);
     setState(() {
-      _statusText = 'Stopping...';
+      _statusText = i18n.stopRequested;
     });
 
     await _authCtrl.stop(waitForExit: true);
@@ -166,7 +170,7 @@ class _HomePageState extends State<HomePage> {
     if (mounted) {
       setState(() {
         _isRunning = false;
-        _statusText = 'Stopped';
+        _statusText = i18n.stopped;
         _statusDetail = '';
       });
     }
@@ -174,17 +178,16 @@ class _HomePageState extends State<HomePage> {
 
   void _showConfigRequiredDialog() {
     if (!mounted) return;
+    final i18n = AppLocalizations.of(context);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Configuration Required'),
-        content: const Text(
-          'Please add at least one account with both username and password in Settings.',
-        ),
+        title: Text(i18n.configRequiredTitle),
+        content: Text(i18n.configRequiredBody),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(i18n.btnCancel),
           ),
           TextButton(
             onPressed: () {
@@ -194,7 +197,7 @@ class _HomePageState extends State<HomePage> {
                 MaterialPageRoute(builder: (_) => const SettingsPage()),
               );
             },
-            child: const Text('Open Settings'),
+            child: Text(i18n.btnOpenSettings),
           ),
         ],
       ),
@@ -240,13 +243,14 @@ class _HomePageState extends State<HomePage> {
 
                 // ── 主操作区 ──
                 _buildPrimaryButton(theme, cs),
+                // ── 强制重新认证 ──
                 if (_isRunning) ...[
                   const SizedBox(height: 8),
                   Center(
                     child: TextButton.icon(
                       onPressed: () => _authCtrl.forceAuthReset(),
                       icon: const Icon(Icons.refresh, size: 18),
-                      label: const Text('强制重新认证'),
+                      label: Text(i18n.btnForceReset),
                       style: TextButton.styleFrom(foregroundColor: cs.error),
                     ),
                   ),
@@ -261,7 +265,7 @@ class _HomePageState extends State<HomePage> {
 
                 Center(
                   child: Text(
-                    'ESurfing Client v1.0.0\nFlutter + NDK FFI',
+                    i18n.versionInfo,
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: cs.onSurfaceVariant),
                     textAlign: TextAlign.center,
@@ -314,13 +318,14 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildPrimaryButton(ThemeData theme, ColorScheme cs) {
+    final i18n = AppLocalizations.of(context);
     final isUp = _isRunning;
     return SizedBox(
       width: double.infinity,
       height: 52,
       child: FilledButton.icon(
         icon: Icon(isUp ? Icons.stop : Icons.play_arrow),
-        label: Text(isUp ? 'Stop Authentication' : 'Start Authentication'),
+        label: Text(isUp ? i18n.btnStopAuth : i18n.btnStartAuth),
         onPressed: _toggleAuth,
         style: FilledButton.styleFrom(
           backgroundColor: isUp ? cs.error : cs.primary,
@@ -333,6 +338,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildAccountCard(ThemeData theme, ColorScheme cs) {
+    final i18n = AppLocalizations.of(context);
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -342,7 +348,7 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Configured Accounts',
+              i18n.configuredAccounts,
               style: theme.textTheme.titleSmall
                   ?.copyWith(fontWeight: FontWeight.bold),
             ),
@@ -354,8 +360,8 @@ class _HomePageState extends State<HomePage> {
                 dense: true,
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(radius: 16, child: Text('${i + 1}')),
-                title: Text(a.username.isEmpty ? '(empty)' : a.username),
-                subtitle: Text('Channel: ${a.channel}'),
+                title: Text(a.username.isEmpty ? i18n.emptyAccount : a.username),
+                subtitle: Text('${i18n.fieldChannel}: ${a.channel}'),
               );
             }),
           ],

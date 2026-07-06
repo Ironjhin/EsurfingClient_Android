@@ -40,6 +40,7 @@ class AppLocalizations {
 
   String get btnStartAuth => _t('Start Authentication', '开始认证');
   String get btnStopAuth => _t('Stop Authentication', '停止认证');
+  String get btnForceReset => _t('Force Re-Auth', '强制重新认证');
 
   // 配置缺失对话框
   String get configRequiredTitle => _t('Configuration Required', '需要配置');
