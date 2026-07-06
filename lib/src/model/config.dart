@@ -15,10 +15,10 @@ class ESurfingConfig {
 
   factory ESurfingConfig.fromJson(Map<String, dynamic> json) {
     return ESurfingConfig(
-      enabled: json['enabled'] ?? false,
-      logLevel: json['log_lv'] ?? 4,
-      accounts: (json['accounts'] as List? ?? [])
-          .map((e) => AccountConfig.fromJson(e))
+      enabled: json['enabled'] as bool? ?? false,
+      logLevel: json['log_lv'] as int? ?? 4,
+      accounts: (json['accounts'] as List<dynamic>? ?? [])
+          .map((e) => AccountConfig.fromJson(e as Map<String, dynamic>))
           .toList(),
     );
   }
@@ -62,10 +62,10 @@ class AccountConfig {
 
   factory AccountConfig.fromJson(Map<String, dynamic> json) {
     return AccountConfig(
-      username: json['username'] ?? '',
-      password: json['password'] ?? '',
-      channel: json['channel'] ?? 'phone',
-      mark: json['mark'] ?? '',
+      username: json['username'] as String? ?? '',
+      password: json['password'] as String? ?? '',
+      channel: json['channel'] as String? ?? 'phone',
+      mark: json['mark'] as String? ?? '',
     );
   }
 
@@ -107,7 +107,7 @@ class ConfigManager {
       return defaultConfig;
     }
     return ESurfingConfig.fromJson(
-      Map<String, dynamic>.from(jsonDecode(jsonString)),
+      jsonDecode(jsonString) as Map<String, dynamic>,
     );
   }
 

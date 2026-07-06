@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../model/config.dart';
-import '../native/bindings.dart';
 import '../native/auth_controller.dart';
 import '../native/keep_alive_channel.dart';
 import '../i18n/app_localizations.dart';
@@ -179,9 +178,9 @@ class _HomePageState extends State<HomePage> {
   void _showConfigRequiredDialog() {
     if (!mounted) return;
     final i18n = AppLocalizations.of(context);
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(i18n.configRequiredTitle),
         content: Text(i18n.configRequiredBody),
         actions: [
@@ -191,10 +190,10 @@ class _HomePageState extends State<HomePage> {
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
+                dialogContext,
+                MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
               );
             },
             child: Text(i18n.btnOpenSettings),
@@ -218,9 +217,9 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
-              await Navigator.push(
+              await Navigator.push<void>(
                 context,
-                MaterialPageRoute(builder: (_) => const SettingsPage()),
+                MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
               );
               _loadConfig();
               // 从 Settings 返回后也刷一遍 — /settings 可能开启了自动启动之类.

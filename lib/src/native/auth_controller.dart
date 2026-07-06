@@ -1,5 +1,3 @@
-import 'dart:ffi';
-import 'dart:convert';
 import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import 'bindings.dart';
@@ -121,7 +119,7 @@ class AuthController {
         // 轮询等待 C 层线程退出（最多 5 秒）
         if (waitForExit) {
           for (int i = 0; i < 50; i++) {
-            await Future.delayed(const Duration(milliseconds: 100));
+            await Future<void>.delayed(const Duration(milliseconds: 100));
             if (bindings.esurfingClientIsStopped() == 1) break;
           }
         }
@@ -175,16 +173,11 @@ class AuthController {
 
     receivePort.listen((message) {
       if (message is _StartCommand) {
-        print('==== [DART LOG] ENTERING FFI CALL ====');
         final bindings = NativeBindings.instance;
         if (bindings.isLoaded) {
           for (int i = 0; i < message.accountCount; i++) {
-            print('==== [DART LOG] Calling esurfingClientStart(idx=$i) ====');
-            final res = bindings.esurfingClientStart(i);
-            print('==== [DART LOG] EXITING FFI CALL, RETURN: $res (idx=$i) ====');
+            bindings.esurfingClientStart(i);
           }
-        } else {
-          print('==== [DART LOG] NativeBindings NOT LOADED ====');
         }
       } else if (message is _StopCommand) {
         receivePort.close();
