@@ -241,6 +241,10 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 12),
                 ],
 
+                // ── 状态 Hero 卡 ──
+                _buildStatusHero(theme, cs),
+                const SizedBox(height: 16),
+
                 // ── 主操作区 ──
                 _buildPrimaryButton(theme, cs),
                 // ── 强制重新认证 ──
@@ -261,16 +265,7 @@ class _HomePageState extends State<HomePage> {
                 if (_config != null && _config!.accounts.isNotEmpty)
                   _buildAccountCard(theme, cs),
 
-                const Spacer(),
-
-                Center(
-                  child: Text(
-                    i18n.versionInfo,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
+                const SizedBox(height: 24),
               ],
             ),
     );
