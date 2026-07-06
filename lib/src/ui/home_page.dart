@@ -7,6 +7,8 @@ import '../model/config.dart';
 import '../native/auth_controller.dart';
 import '../native/keep_alive_channel.dart';
 import '../i18n/app_localizations.dart';
+import '../services/log_reader.dart';
+import '../widgets/log_viewer.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -25,10 +27,20 @@ class _HomePageState extends State<HomePage> {
   bool? _accessibilityEnabled; // null = 未查询, true/false = 结果
   final AuthController _authCtrl = AuthController.instance;
 
+  // 实时日志读取器 — 后台 poll run.log,生命周期跟随页面.
+  final LogReader _logReader = LogReader();
+
   @override
   void initState() {
     super.initState();
     _initApp();
+    _logReader.start();
+  }
+
+  @override
+  void dispose() {
+    _logReader.dispose();
+    super.dispose();
   }
 
   Future<void> _initApp() async {
@@ -164,7 +176,7 @@ class _HomePageState extends State<HomePage> {
       _statusText = i18n.stopRequested;
     });
 
-    await _authCtrl.stop(waitForExit: true);
+    await _authCtrl.stop();
 
     if (mounted) {
       setState(() {
@@ -252,7 +264,7 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 8),
                   Center(
                     child: TextButton.icon(
-                      onPressed: () => _authCtrl.forceAuthReset(),
+                      onPressed: _authCtrl.forceAuthReset,
                       icon: const Icon(Icons.refresh, size: 18),
                       label: Text(i18n.btnForceReset),
                       style: TextButton.styleFrom(foregroundColor: cs.error),
@@ -264,6 +276,11 @@ class _HomePageState extends State<HomePage> {
                 // ── 账号摘要 ──
                 if (_config != null && _config!.accounts.isNotEmpty)
                   _buildAccountCard(theme, cs),
+
+                const SizedBox(height: 16),
+
+                // ── 实时日志面板 ──
+                LogViewer(reader: _logReader),
 
                 const SizedBox(height: 24),
               ],

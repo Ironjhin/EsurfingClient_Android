@@ -110,7 +110,7 @@ class LogReader extends ChangeNotifier {
       }
 
       // 只读偏移之后的增量字节
-      raf = await file.open(mode: FileMode.read);
+      raf = await file.open();
       await raf.setPosition(_clearByteOffset);
       final bytes = await raf.read((length - _clearByteOffset).toInt());
       final chunk = utf8.decode(bytes, allowMalformed: true);
