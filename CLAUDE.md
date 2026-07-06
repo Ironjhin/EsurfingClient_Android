@@ -45,6 +45,29 @@ You have **no ability to view, analyze, or reason about images, screenshots, or 
 - This is not modesty. A confident wrong read of an image is worse than admitting you can't see it. When in doubt, say "I can't see the image — please describe / paste the text".
 - The one exception is when the image is merely decorative (a logo in the README, an icon asset whose content doesn't matter to the task) — in that case you can note you're skipping it rather than agonizing.
 
+### Flutter toolchain(Windows,local env)
+
+The local dev environment has **Flutter SDK 3.44.4 stable**(Dart 3.12.2),**Android SDK 36.1.0**(default path `%LOCALAPPDATA%\Android\Sdk`,**no Android Studio needed for CLI builds**).
+
+To run checks:
+
+```bash
+flutter analyze lib/     # static analysis only(< 1 min)
+flutter build apk --release   # full APK build(3-5 min)
+adb install -r build/app/outputs/flutter-apk/app-release.apk   # install to device
+```
+
+Note that **`flutter build apk` works only when the Gradle wrapper config is correct** — `android/gradle/wrapper/gradle-wrapper.properties` MUST contain a `distributionUrl` line, or the build fails before Gradle even starts. The CI pipeline (`build-apk.yml`) rewrites this file every build — if the rewrite ever omits `distributionUrl`, local builds break even though CI appears fine. Check this file first when diagnosing "Could not load wrapper properties".
+
+`adb` path is already documented above the local binary path. Mirrors in use:`PUB_HOSTED_URL=https://pub.flutter-io.cn`, `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`. Clash HTTP proxy: `http://127.0.0.1:7897`.
+
+You have **no ability to view, analyze, or reason about images, screenshots, or any non-text binary**. You are a text-only model.
+
+- If the user shares an image or screenshot, **don't pretend to understand it.** Ask the user to describe what they want, or to paste relevant text (error messages, code snippets, log excerpts, UI text) into the conversation.
+- If you need information that lives only in image form (a diagram, a settings screen, a screenshot from the running app), **ask the user to narrate it** — do not guess from the filename or surrounding context and present the guess as fact.
+- This is not modesty. A confident wrong read of an image is worse than admitting you can't see it. When in doubt, say "I can't see the image — please describe / paste the text".
+- The one exception is when the image is merely decorative (a logo in the README, an icon asset whose content doesn't matter to the task) — in that case you can note you're skipping it rather than agonizing.
+
 `ESurfingClient_Android` — an Android client for authenticating to Guangdong Telecom's campus ("校园网 / Tianyi") network. The UI is Flutter; the actual protocol engine (signing / state machine / captive-portal probing / keepalive) runs in a C daemon compiled with the Android NDK and loaded via Dart FFI. There are two distribution tracks on separate branches:
 
 * `main` → Flutter **APK** version (this branch). No root required.
