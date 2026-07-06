@@ -73,7 +73,7 @@ You have **no ability to view, analyze, or reason about images, screenshots, or 
 * `main` → Flutter **APK** version (this branch). No root required.
 * `magisk` → pure-C Magisk module, ~1–2 MB, boots with the device and exposes a web admin panel.
 
-Each push to `main` triggers `.github/workflows/build-apk.yml`, which runs `flutter build apk --release` in GitHub Actions and publishes an auto-numbered `v1.1.<run_number>` Release. There is no local CI; APK is the output of the workflow.
+Each push to `main` triggers `.github/workflows/build-apk.yml`, which runs `flutter build apk --release` in GitHub Actions and publishes an auto-numbered Release. There is no local CI; APK is the output of the workflow.
 
 ## Project layout
 
@@ -105,19 +105,6 @@ The thing you can't see from any one file is split across three layers:
    - `i18n/app_localizations.dart` — manually-authored localizations (not ARB-generated); `main.dart` wires `GlobalMaterialLocalizations` + a custom `AppLocalizationsDelegate`.
 
 Global error paths: `FlutterError.onError` and a `runZonedGuarded` both append to `<docs>/run.log` with re-entry guard `_isLoggingError` and a `debugPrint` fallback when the app sandbox isn't ready.
-
-## Version numbering (updated 2026-07-06)
-
-- Current prefix: **v1.2.x** — v1.0.x was retired at v1.0.65; v1.1.x was a brief
-  intermediate track before the user requested the scheme below.
-- `build-apk.yml` does **not** use `github.run_number` as the patch number. Instead,
-  a dedicated step scans all existing `v1.2.*` git tags, takes the max x, and +1's
-  it — so the first `main` push produces `v1.2.0`, the next `v1.2.1`, etc.
-- `run_number` still shows up in release notes as an internal build counter, but
-  never appears in the APK's `versionName` or the Release tag.
-- Release notes use `git log <latest pre‑v1.2 tag>..HEAD` for the changelog.
-- The same repo‑scope `run_number` counter powers the `magisk` branch; magisk and
-  main share it, so their releases never collide (magisk uses `magisk-v*`).
 
 ## Editing rules that matter
 
@@ -179,8 +166,7 @@ flutter test
 flutter test path/to/some_test.dart   # single file
 
 # What GitHub Actions runs to produce the release APK
-flutter build apk --release --android-skip-build-dependency-validation \
-  --build-name=1.1.<N> --build-number=<N>
+flutter build apk --release --android-skip-build-dependency-validation
 ```
 
 Notes on the build step:
