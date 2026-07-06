@@ -10,6 +10,7 @@ class LogReader extends ChangeNotifier {
   Timer? _timer;
   String _content = '';
   bool _paused = false;
+  bool _polling = false; // 防重入:上一次 _poll 没跑完就跳过下一次
 
   /// 上次清除时文件末尾的字节偏移，下次轮询只读取此偏移之后的新数据
   int _clearByteOffset = 0;
@@ -19,7 +20,7 @@ class LogReader extends ChangeNotifier {
 
   /// 启动轮询
   void start() {
-    _timer ??= Timer.periodic(const Duration(seconds: 1), (_) => _poll());
+    _timer ??= Timer.periodic(const Duration(seconds: 2), (_) => _poll());
   }
 
   /// 暂停轮询
@@ -84,7 +85,8 @@ class LogReader extends ChangeNotifier {
   }
 
   Future<void> _poll() async {
-    if (_paused) return;
+    if (_paused || _polling) return;
+    _polling = true;
     RandomAccessFile? raf;
     try {
       final dir = await getApplicationDocumentsDirectory();
@@ -145,6 +147,7 @@ class LogReader extends ChangeNotifier {
       try {
         await raf?.close();
       } catch (_) {}
+      _polling = false;
     }
   }
 
