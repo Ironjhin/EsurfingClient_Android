@@ -462,8 +462,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       } else {
                         // 未开启:直接跳转到无障碍系统页.
                         await KeepAliveChannel.openAccessibilitySettings();
-                        // 从设置页返回后 Flutter 会走到这里,需要刷新状态.
-                        // 不立刻刷 — 等用户下一次 onResume 或点击.
+                        // 立刻刷一次:用户可能在系统页开启后返回.
+                        // 不依赖 didChangeAppLifecycleState — 原生 Activity 切换
+                        // 不一定派发 resumed 事件,这里同步补一次最稳.
+                        if (mounted) await _refreshAccessibility();
                       }
                     },
                     icon: Icon(isOn ? Icons.check : Icons.open_in_new, size: 16),
