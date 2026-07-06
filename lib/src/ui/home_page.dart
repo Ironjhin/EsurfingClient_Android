@@ -208,10 +208,11 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final i18n = AppLocalizations.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ESurfing Client'),
+        title: Text(i18n.appTitle),
         centerTitle: true,
         actions: [
           IconButton(
