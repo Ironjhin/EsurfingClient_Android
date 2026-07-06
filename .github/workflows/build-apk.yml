@@ -64,17 +64,51 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      # 执行全架构通用包编译（动态版本号：github.run_number 绝对递增）
+      # 计算下一个 v1.2.x:读现有 v1.2.* tags,取最大 x + 1;没有 v1.2.* 从 0 开始。
+      # run_number 仅用作 release notes 的构建计数展示,不进版本号字符串。
+      - name: Compute next v1.2.x version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force 2>/dev/null || true
+
+          # 提取所有 v1.2.<n> 的 n,取最大;没有则 max=-1,结果 base=0
+          max=-1
+          for tag in $(git tag --list 'v1.2.*' 2>/dev/null); do
+            x="${tag##*.}"
+            if [[ "$x" =~ ^[0-9]+$ ]] && (( x > max )); then
+              max=$x
+            fi
+          done
+
+          next=$(( max + 1 ))
+          echo "V12_X=$next" >> "$GITHUB_ENV"
+          echo "next=v1.2.$next" >> "$GITHUB_OUTPUT"
+          echo "Computed next v1.2.x = v1.2.$next (prev max=$max)"
+
+      # 执行全架构通用包编译(动态版本号:v1.2.x 递增)
       - name: Build Universal Release APK
-        run: flutter build apk --release --android-skip-build-dependency-validation --build-name=1.1.${{ github.run_number }} --build-number=${{ github.run_number }}
+        env:
+          V12_X: ${{ env.V12_X }}
+        run: flutter build apk --release --android-skip-build-dependency-validation --build-name=1.2.$V12_X --build-number=$V12_X
 
       # 发布独立不重名的 Release APK
       - name: Create Unique Release and Upload Raw APK
         env:
+          V12_X: ${{ env.V12_X }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="v1.1.${{ github.run_number }}"
-          git fetch --tags --force 2>/dev/null || true
+          TAG_NAME="v1.2.$V12_X"
+
+          # changelog: 上一个 v1.2.* tag..HEAD 的提交列表;没有就取最近 1 条
+          PREV_TAG=$(git describe --tags --abbrev=0 --match 'v1.[0-1].*' 2>/dev/null || echo '')
+          if [[ -n "$PREV_TAG" ]]; then
+            LOG_RANGE="$PREV_TAG..HEAD"
+          else
+            LOG_RANGE="HEAD~1..HEAD"
+          fi
+
           printf '%s\n' \
             "## 📱 Flutter APK 版（无 Root 用这个）" \
             "适用于无 Root 的 Android 设备，直接下载 APK 安装。" \
@@ -83,10 +117,10 @@ jobs:
             "" \
             "---" \
             "" \
-            "构建 ${{ github.run_number }}（提交 ${{ github.sha }}）" \
+            "发布 $TAG_NAME（构建 ${{ github.run_number }} / 提交 ${{ github.sha }}）" \
             "" \
             "### 更新内容" \
-            "$(git log --oneline v1.1.$(( ${{ github.run_number }} - 1 ))..HEAD 2>/dev/null || echo '首次发布')" \
+            "$(git log --oneline "$LOG_RANGE" 2>/dev/null || echo '首次发布')" \
             > /tmp/release-notes.md
           gh release create "$TAG_NAME" \
             build/app/outputs/flutter-apk/app-release.apk \
