@@ -25,7 +25,7 @@ static log_cfg_t s_logger_cfg = {
     .log_dir = "",
     .log_file = "",
     .file_handle = NULL,
-    .max_lines = 10000,
+    .max_lines = 1000,
     .cur_lines = 0
 };
 
@@ -237,6 +237,11 @@ void clear_log_file(void)
     s_logger_cfg.cur_lines = 0;
 
     pthread_mutex_unlock(&s_log_mutex);
+}
+
+const char* get_log_file_path(void)
+{
+    return s_logger_cfg.log_file;
 }
 
 void clean_logger()

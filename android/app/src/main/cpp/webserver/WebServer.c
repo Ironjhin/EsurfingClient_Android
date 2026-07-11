@@ -118,6 +118,24 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 cJSON_Delete(configs);
                 return;
             }
+            // 读取运行日志 — 直接把 run.log 绝对路径交给 mongoose 发送。
+            // 前端的刷新/导出日志按钮请求此接口（run.log 不在 portal_root 下，
+            // 走静态目录服务拿不到，必须显式按绝对路径 serve）。
+            if (mg_match(hm->uri, mg_str("/api/log"), NULL))
+            {
+                const char* log_path = get_log_file_path();
+                if (log_path == NULL || log_path[0] == '\0')
+                {
+                    mg_http_reply(c, 503, cors_hdrs, "log not ready");
+                    return;
+                }
+                struct mg_http_serve_opts log_opts = {
+                    .mime_types = "log=text/plain",
+                    .extra_headers = cors_hdrs
+                };
+                mg_http_serve_file(c, hm, log_path, &log_opts);
+                return;
+            }
             mg_http_serve_dir(c, hm, &opts);
             return;
         }

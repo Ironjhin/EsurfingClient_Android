@@ -103,4 +103,11 @@ void clean_logger();
  */
 void clear_log_file(void);
 
+/**
+ * @brief 获取当前日志文件的绝对路径
+ * @return 指向内部 log_file 缓冲区的只读指针（如 /data/adb/esurfing/run.log）；
+ *         日志系统未初始化时返回空字符串 ""，调用方无需 free。
+ */
+const char* get_log_file_path(void);
+
 #endif //ESURFINGCLIENT_LOGGER_H

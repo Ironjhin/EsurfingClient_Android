@@ -235,7 +235,7 @@ async function forceAuthReset() {
 
 async function pollLog() {
   try {
-    const res = await fetch(API + '/run.log');
+    const res = await fetch(API + '/api/log');
     if (res.ok) {
       const text = await res.text();
       const lines = text.split('\n').filter(l => l).slice(-50);
@@ -246,7 +246,7 @@ async function pollLog() {
 
 async function refreshLog() {
   try {
-    const res = await fetch(API + '/run.log');
+    const res = await fetch(API + '/api/log');
     if (res.ok) {
       const text = await res.text();
       const lines = text.split('\n').filter(l => l).slice(-100);
@@ -258,7 +258,7 @@ async function refreshLog() {
 
 async function exportLog() {
   try {
-    const res = await fetch(API + '/run.log');
+    const res = await fetch(API + '/api/log');
     if (res.ok) {
       const text = await res.text();
       const blob = new Blob([text], { type: 'text/plain' });

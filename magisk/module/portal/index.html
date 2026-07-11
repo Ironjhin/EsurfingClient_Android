@@ -219,10 +219,10 @@ async function saveAndApply() {
   } catch { showToast('应用失败', true); }
 }
 
-// Log polling — fetch from /run.log (served by mongoose static file serving)
+// Log polling — fetch from /api/log (backend serves run.log by absolute path)
 async function pollLog() {
   try {
-    const res = await fetch('/run.log');
+    const res = await fetch('/api/log');
     if (res.ok) {
       const text = await res.text();
       const lines = text.split('\n').filter(l => l).slice(-100);
@@ -242,7 +242,7 @@ function refreshLog() {
 // Export log as file download
 async function exportLog() {
   try {
-    const res = await fetch('/run.log');
+    const res = await fetch('/api/log');
     if (res.ok) {
       const text = await res.text();
       const blob = new Blob([text], { type: 'text/plain' });
