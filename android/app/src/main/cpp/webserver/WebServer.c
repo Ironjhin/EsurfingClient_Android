@@ -47,27 +47,33 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             {
                 cJSON* auth = cJSON_CreateObject();
                 cJSON_AddBoolToObject(auth, "status", g_prog_status[0].runtime_status.is_authed);
-                // 直接检查网络状态，不依赖 is_connected 标志
-                NetworkStatus net_status = check_network_status();
-                bool connected = (net_status == REQUEST_SUCCESS);
+                // 读拨号线程缓存的 is_connected 标志,不在 HTTP handler 内现场发网络请求。
+                // mongoose 是单线程事件循环,handler 里做同步 curl (check_network_status
+                // 最长阻塞 10s) 会把整个 web 服务卡死,导致所有接口无响应。
+                // is_connected 由 run() 每轮循环(约 10s)更新,足够 WebUI 用。
+                bool connected = g_prog_status[0].runtime_status.is_connected;
                 cJSON_AddBoolToObject(auth, "connected", connected);
-                LOG_DEBUG("API /api/status/auth: is_authed=%d, net_status=%d, connected=%d",
-                    g_prog_status[0].runtime_status.is_authed, net_status, connected);
+                LOG_DEBUG("API /api/status/auth: is_authed=%d, connected=%d(cached)",
+                    g_prog_status[0].runtime_status.is_authed, connected);
                 char* status_str = cJSON_Print(auth);
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);
+                cJSON_Delete(auth);
                 return;
             }
             // 获取联网状态
             if (mg_match(hm->uri, mg_str("/api/status/online"), NULL))
             {
-                const NetworkStatus status = check_network_status();
-                LOG_DEBUG("API /api/status/online: net_status=%d", status);
-                if (status == REQUEST_SUCCESS)
+                // 同样读缓存标志,避免阻塞 web 事件循环。
+                // is_connected=true 视为在线(204);为假时若已认证过则可能是掉线需重认证,
+                // 统一回 302(需认证),前端据此提示;完全未初始化则 503。
+                const bool connected = g_prog_status[0].runtime_status.is_connected;
+                LOG_DEBUG("API /api/status/online: is_connected=%d(cached)", connected);
+                if (connected)
                 {
                     mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                 }
-                else if (status == REQUEST_REDIRECT)
+                else if (g_prog_status[0].runtime_status.is_initialized)
                 {
                     mg_http_reply(c, 302, "Access-Control-Allow-Origin: *\r\n", "");
                 }
