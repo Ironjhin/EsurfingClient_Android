@@ -581,11 +581,16 @@ NetworkStatus get_last_location()
         case REQUEST_REDIRECT:
             break;
         case REQUEST_SUCCESS:
-            LOG_WARN("get_last_location: Captive portal not triggered. Status code: 204. Network might be already online or not intercepted by gateway.");
-            retry = 1;
-            LOG_INFO("已连接至互联网");
-            sleep_ms(10000, true);
-            break;
+            // 设备已在线：网关放行探测 URL 返回 204，没有 302 门户重定向。
+            // 原逻辑此处 break 后 while(status != REQUEST_REDIRECT) 永不满足，会死循环，
+            // 线程永远进不了 run()，is_connected 一直为 false，WebUI 误报"未连接"。
+            // 已在线时无 last_location 可提取，直接返回 REQUEST_SUCCESS：
+            // dialer_app 仅在 REQUEST_ERROR 时置 is_running=false，非错误即进入 run()，
+            // 由 run() 检测到 204 后置 is_connected=true 并进入心跳/保活。
+            // 注意：不在此设置 last_location_lock，保持其为 false，
+            // 以便日后会话掉线返回 302 时，header 回调 (仅在未锁时) 能捕获新的门户 URL 供 auth() 使用。
+            LOG_INFO("get_last_location: 设备已在线 (204)，跳过门户配置提取，直接进入运行循环");
+            return REQUEST_SUCCESS;
         default:
             if (resp.status == REQUEST_HAVE_RES)
             {
