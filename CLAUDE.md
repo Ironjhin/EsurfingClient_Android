@@ -149,6 +149,48 @@ Global error paths: `FlutterError.onError` and a `runZonedGuarded` both append t
   picked up by the next heartbeat tick and rebuilds the dialer chain without
   waiting for the next backoff cycle). The button is hidden when stopped so idle
   users can't bypass the config-required check.
+* **Magisk web server is a SINGLE-THREADED mongoose event loop** (learned the hard
+  way 2026-07-11, `magisk` branch, `webserver/WebServer.c`): the HTTP handler `fn()`
+  runs on one thread. **NEVER do a blocking call inside a handler** — especially
+  `check_network_status()` / `get()` / any libcurl request (up to 10s timeout each).
+  One blocking handler freezes the *entire* web admin panel: every endpoint stops
+  responding, not just the slow one. Symptom: `/api/status/auth` and
+  `/api/status/online` return empty/hang while `/api/status/uptime` (reads only
+  in-memory vars) still answers instantly — that contrast is the fingerprint.
+  Fix pattern: handlers must read **cached** `g_prog_status[0].runtime_status`
+  flags (`is_connected`, `is_authed`, `is_initialized`), which the dialer thread's
+  `run()` refreshes every ~10s. Accept the ~10s staleness; it's invisible in a
+  status panel and infinitely better than a frozen server. A frontend that polls
+  several such endpoints every few seconds makes any blocking handler fatal.
+* **Magisk `/api/log` endpoint** (added 2026-07-11): the WebUI's refresh/export-log
+  buttons fetch `GET /api/log`. This route exists because mongoose's static root is
+  `portal_root` (`/data/adb/esurfing/portal`) but `run.log` lives one level up at
+  `/data/adb/esurfing/run.log` — static serving can't reach it (404). The handler
+  calls `get_log_file_path()` (new getter in `utils/Logger.{h,c}` returning the
+  absolute `s_logger_cfg.log_file`) and passes it to `mg_http_serve_file`, which
+  serves any absolute path and ignores `root_dir`. Don't rely on the `service.sh`
+  symlink of run.log into `portal/` — it's created with `2>/dev/null || true` and
+  mongoose symlink-following is not guaranteed.
+* **Magisk log rotation**: `utils/Logger.c` `max_lines` on the `magisk` branch was
+  also 10000 → reduced to 1000 (matching main). The daemon has no Dart-side
+  truncation, so this C-side `rotate()` is the only cleanup — at 1000 lines it
+  renames run.log to `<time>.rotate.log` and starts fresh.
+
+## Campus-network auth notes (magisk debugging, 2026-07-11)
+
+Diagnosing "daemon can't re-auth, only works after opening the official client":
+the auth flow (`DialerClient.c`) is: `check_network_status()` (302 ⇒ needs auth) →
+`auth()` extracts portal config, `Auth URL`/`Ticket URL` → `init_session` (loads
+AlgoID cipher) → `get_ticket` → **`login()`**. Failures cluster at `login()`
+(`DialerClient.c:151 登录响应失败`) when the POST to `auth.cgi` returns an empty
+body (status ≠ `REQUEST_HAVE_RES`). The decisive evidence is the **decrypted
+`登录响应内容:`** line, which is `LOG_VERBOSE` only — set `log_lv: 6` in
+`/data/adb/esurfing/config.json` (levels: 1 FATAL … 5 DEBUG **6 VERBOSE**) and
+reproduce *while on the campus network and failing* (data-SIM won't trigger auth).
+`refresh_states()` regenerates a **random MAC on every auth attempt** by design
+(it is not a toggle) — manually pinning a MAC can collide with a still-live
+server-side session. Don't theorize the root cause without that VERBOSE login
+response body; it names the real reason (device-limit / MAC-conflict / etc.).
 
 ## Common tasks
 
