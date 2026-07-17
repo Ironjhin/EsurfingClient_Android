@@ -124,22 +124,22 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 cJSON_Delete(configs);
                 return;
             }
-            // 读取运行日志 — 直接把 run.log 绝对路径交给 mongoose 发送。
-            // 前端的刷新/导出日志按钮请求此接口（run.log 不在 portal_root 下，
-            // 走静态目录服务拿不到，必须显式按绝对路径 serve）。
+            // 读取运行日志 — 拼接所有 rotate 文件（旧→新）+ 当前 run.log 一起返回。
+            // 前端的刷新/导出日志按钮请求此接口。
+            // 只读本地文件（无网络请求），不会阻塞 mongoose 事件循环。
             if (mg_match(hm->uri, mg_str("/api/log"), NULL))
             {
-                const char* log_path = get_log_file_path();
-                if (log_path == NULL || log_path[0] == '\0')
+                char* full_log = NULL;
+                size_t len = read_full_log(&full_log);
+                if (full_log == NULL || len == 0)
                 {
                     mg_http_reply(c, 503, cors_hdrs, "log not ready");
                     return;
                 }
-                struct mg_http_serve_opts log_opts = {
-                    .mime_types = "log=text/plain",
-                    .extra_headers = cors_hdrs
-                };
-                mg_http_serve_file(c, hm, log_path, &log_opts);
+                mg_http_reply(c, 200,
+                    "Content-Type: text/plain; charset=utf-8\r\n%s",
+                    "%.*s", (int)len, full_log);
+                free(full_log);
                 return;
             }
             mg_http_serve_dir(c, hm, &opts);
@@ -160,6 +160,16 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 LOG_INFO("强制重新认证: 已触发重置标志");
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
                               forced ? "{\"ok\":true}" : "{\"ok\":false,\"reason\":\"no dialer\"}");
+            }
+            // 重启服务: 设置标志位, 主循环检测到后执行 shut() -> execv 重启
+            // 不在此处直接调用 shut(), 因为 web 线程内 join web 线程会死锁
+            if (mg_match(hm->uri, mg_str("/api/restart"), NULL))
+            {
+                g_need_restart_now = true;
+                LOG_INFO("Web 接口请求重启服务");
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
+                              "{\"ok\":true,\"msg\":\"restarting\"}");
+                return;
             }
             // 仅保存
             if (mg_match(hm->uri, mg_str("/api/saveConfigs"), NULL))

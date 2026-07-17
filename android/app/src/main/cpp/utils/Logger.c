@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
+#include <dirent.h>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -43,6 +44,64 @@ static const char* get_level_str(const LogLevel lv)
     }
 }
 
+/* 轮转后保留的 rotate 文件数量上限 */
+#define KEEP_ROTATE_FILES 3
+
+/* 删除超量的旧 rotate 文件，只保留最近的 KEEP_ROTATE_FILES 个 */
+static void cleanup_old_rotates()
+{
+    if (strlen(s_logger_cfg.log_dir) == 0) return;
+
+    DIR* dir = opendir(s_logger_cfg.log_dir);
+    if (!dir) return;
+
+    /* 收集所有 rotate 文件名 */
+    const size_t suffix_len = strlen(s_rotate_file_name); /* ".rotate.log" */
+    char* names[64] = {0};
+    int count = 0;
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != NULL && count < 64)
+    {
+        size_t len = strlen(ent->d_name);
+        if (len > suffix_len && strcmp(ent->d_name + len - suffix_len, s_rotate_file_name) == 0)
+        {
+            names[count] = strdup(ent->d_name);
+            if (names[count]) count++;
+        }
+    }
+    closedir(dir);
+
+    if (count <= KEEP_ROTATE_FILES)
+    {
+        /* 数量未超限，无需清理 */
+        for (int i = 0; i < count; i++) free(names[i]);
+        return;
+    }
+
+    /* 按文件名排序（时间戳前缀 ⇒ 字典序 = 时间序，最新的在末尾） */
+    for (int i = 1; i < count; i++)
+    {
+        char* key = names[i];
+        int j = i - 1;
+        while (j >= 0 && strcmp(names[j], key) > 0)
+        {
+            names[j + 1] = names[j];
+            j--;
+        }
+        names[j + 1] = key;
+    }
+
+    /* 删除最旧的，只保留最近 KEEP_ROTATE_FILES 个 */
+    for (int i = 0; i < count - KEEP_ROTATE_FILES; i++)
+    {
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, names[i]);
+        remove(path);
+        free(names[i]);
+    }
+    for (int i = count - KEEP_ROTATE_FILES; i < count; i++) free(names[i]);
+}
+
 static void rotate()
 {
     if (!s_logger_cfg.file_handle || strlen(s_logger_cfg.log_file) == 0 || s_logger_cfg.cur_lines < s_logger_cfg.max_lines) return;
@@ -62,6 +121,9 @@ static void rotate()
     s_logger_cfg.cur_lines = 0;
     s_logger_cfg.file_handle = fopen(s_logger_cfg.log_file, "a");
     if (s_logger_cfg.file_handle == NULL) fprintf(stderr, "[ERROR] 无法在轮转后重新打开日志文件 %s\n", s_logger_cfg.log_file);
+
+    /* 轮转完成后清理超量的旧 rotate 文件，防止磁盘无限增长 */
+    cleanup_old_rotates();
 }
 
 void set_log_dir(const char* dir)
@@ -242,6 +304,94 @@ void clear_log_file(void)
 const char* get_log_file_path(void)
 {
     return s_logger_cfg.log_file;
+}
+
+size_t read_full_log(char** out)
+{
+    *out = NULL;
+    if (strlen(s_logger_cfg.log_dir) == 0) return 0;
+
+    /* 1. 收集所有 rotate 文件名并按时间排序（旧 → 新） */
+    const size_t suffix_len = strlen(s_rotate_file_name);
+    char* names[64] = {0};
+    int count = 0;
+    DIR* dir = opendir(s_logger_cfg.log_dir);
+    if (!dir) return 0;
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != NULL && count < 64)
+    {
+        size_t len = strlen(ent->d_name);
+        if (len > suffix_len && strcmp(ent->d_name + len - suffix_len, s_rotate_file_name) == 0)
+        {
+            names[count] = strdup(ent->d_name);
+            if (names[count]) count++;
+        }
+    }
+    closedir(dir);
+
+    /* 按文件名排序（时间戳前缀 ⇒ 字典序 = 时间序） */
+    for (int i = 1; i < count; i++)
+    {
+        char* key = names[i];
+        int j = i - 1;
+        while (j >= 0 && strcmp(names[j], key) > 0)
+        {
+            names[j + 1] = names[j];
+            j--;
+        }
+        names[j + 1] = key;
+    }
+
+    /* 2. 计算总大小：所有 rotate 文件 + 当前 run.log */
+    size_t total_size = 0;
+    for (int i = 0; i < count; i++)
+    {
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, names[i]);
+        struct stat st;
+        if (stat(path, &st) == 0 && st.st_size > 0) total_size += (size_t)st.st_size;
+    }
+    struct stat st;
+    if (stat(s_logger_cfg.log_file, &st) == 0 && st.st_size > 0) total_size += (size_t)st.st_size;
+
+    if (total_size == 0)
+    {
+        for (int i = 0; i < count; i++) free(names[i]);
+        return 0;
+    }
+
+    /* 3. 一次性分配缓冲区（+1 用于结尾 \0） */
+    char* buf = (char*)malloc(total_size + 1);
+    if (!buf)
+    {
+        for (int i = 0; i < count; i++) free(names[i]);
+        return 0;
+    }
+
+    /* 4. 依次读取：rotate 文件（旧 → 新） + 当前 run.log */
+    size_t pos = 0;
+    for (int i = 0; i < count; i++)
+    {
+        char path[PATH_MAX];
+        snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, names[i]);
+        FILE* fp = fopen(path, "r");
+        if (fp)
+        {
+            pos += fread(buf + pos, 1, total_size - pos, fp);
+            fclose(fp);
+        }
+        free(names[i]);
+    }
+    FILE* fp = fopen(s_logger_cfg.log_file, "r");
+    if (fp)
+    {
+        pos += fread(buf + pos, 1, total_size - pos, fp);
+        fclose(fp);
+    }
+    buf[pos] = '\0';
+
+    *out = buf;
+    return pos;
 }
 
 void clean_logger()

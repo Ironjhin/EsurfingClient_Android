@@ -154,6 +154,9 @@ extern bool g_prog_enabled;
 /** @brief 需要重启 */
 extern bool g_need_restart;
 
+/** @brief 请求立即重启服务（由 Web /api/restart 触发，主循环检测并执行） */
+extern volatile bool g_need_restart_now;
+
 /** @brief 刷新状态函数 */
 void refresh_states();
 void stop_dialer(void);

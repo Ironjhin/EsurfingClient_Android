@@ -110,4 +110,16 @@ void clear_log_file(void);
  */
 const char* get_log_file_path(void);
 
+/**
+ * @brief 读取完整日志内容（所有 rotate 文件按时间正序 + 当前 run.log）
+ *
+ * 扫描日志目录中的所有 *.rotate.log 文件，按文件名排序（时间戳前缀 ⇒ 字典序 = 时间序），
+ * 依次读取后追加当前 run.log 内容，拼接进一块 malloc'd 缓冲区。
+ * 调用方必须用 free() 释放 *out。
+ *
+ * @param out 输出缓冲区指针，出错时设为 NULL
+ * @return 读取的字节数（不含结尾 \0），出错返回 0
+ */
+size_t read_full_log(char** out);
+
 #endif //ESURFINGCLIENT_LOGGER_H

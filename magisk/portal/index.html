@@ -53,8 +53,9 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
     <div class="row"><span class="label">运行时间</span><span class="value" id="uptime">-</span></div>
     <div class="actions" style="margin-top:12px;">
       <button class="btn btn-danger" onclick="forceAuthReset()">🔄 强制重新认证</button>
+      <button class="btn btn-danger" onclick="restartService()" style="background:#b62324;">🔁 重启服务</button>
     </div>
-    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击此按钮立即重试，无需等 60s/300s/600s 回退计时。</p>
+    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击"强制重新认证"立即重试。<br>服务彻底卡死、久连不上时点"重启服务"重启守护进程（会短暂断开几秒）。</p>
   </div>
 
   <!-- Config -->
@@ -234,6 +235,50 @@ async function forceAuthReset() {
       showToast(data && data.reason === 'no dialer' ? '守护进程未在运行' : '触发失败', true);
     }
   } catch { showToast('请求失败', true); }
+}
+
+// Restart service — asks the daemon to execv itself, then polls until it's back
+async function restartService() {
+  const btn = document.querySelector('button[onclick="restartService()"]');
+  try {
+    const res = await fetch('/api/restart', { method: 'POST' });
+    const data = await res.json();
+    if (data && data.ok) {
+      showToast('服务正在重启，请稍候...');
+      if (btn) btn.disabled = true;
+      // Poll until the daemon comes back (max ~30s), then refresh the page
+      let back = false;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const ping = await fetch('/api/status/uptime', { cache: 'no-store' });
+          if (ping.ok) { back = true; break; }
+        } catch { /* still restarting */ }
+      }
+      if (back) {
+        showToast('服务已恢复，正在刷新...');
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        showToast('服务尚未恢复，请手动刷新页面', true);
+        if (btn) btn.disabled = false;
+      }
+    } else {
+      showToast('重启请求失败', true);
+    }
+  } catch {
+    // Request itself failed (daemon already dying) — still wait for comeback
+    showToast('服务正在重启，等待恢复...');
+    if (btn) btn.disabled = true;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const ping = await fetch('/api/status/uptime', { cache: 'no-store' });
+        if (ping.ok) { location.reload(); return; }
+      } catch { /* still restarting */ }
+    }
+    showToast('服务尚未恢复，请手动刷新页面', true);
+    if (btn) btn.disabled = false;
+  }
 }
 
 // Log polling — fetch from /api/log (backend serves run.log by absolute path)

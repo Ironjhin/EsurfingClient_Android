@@ -784,6 +784,16 @@ void work()
     uint64_t check_time = 0;
     while (g_thread_keep_alive)
     {
+        /* 收到重启请求：设置 g_need_restart 让 shut() 执行 execv 重启 */
+        if (g_need_restart_now)
+        {
+            g_need_restart_now = false;
+            g_need_restart = true;
+            LOG_INFO("收到重启请求，正在重启服务...");
+            shut(0);
+            /* shut() 在 g_need_restart 为 true 时不会返回 */
+            break;
+        }
         if (check_time > 299999)
         {
             check_time = 0;
