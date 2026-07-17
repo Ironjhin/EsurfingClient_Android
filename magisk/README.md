@@ -76,7 +76,7 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
 ├── ESurfingClient.json     # 配置文件
 ├── esurfingd.pid           # PID 文件
 ├── run.log                 # 运行日志
-├── *.rotate.log            # 轮转归档（满 10000 行后自动轮转）
+├── *.rotate.log            # 轮转归档（满 1000 行后自动轮转，最多保留 3 个）
 └── portal/
     ├── index.html          # Web 前端
     └── run.log -> ../run.log

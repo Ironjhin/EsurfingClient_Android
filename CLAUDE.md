@@ -174,13 +174,14 @@ Global error paths: `FlutterError.onError` and a `runZonedGuarded` both append t
   complete log history, not just the current 1000-line window. Don't rely on the
   `service.sh` symlink of run.log into `portal/` — it's created with `2>/dev/null || true`
   and mongoose symlink-following is not guaranteed.
-* **Magisk log rotation** (updated 2026-07-17): `utils/Logger.c` `max_lines` on the
-  `magisk` branch was also 10000 → reduced to 1000 (matching main). The daemon has no
-  Dart-side truncation, so this C-side `rotate()` is the only cleanup — at 1000 lines
-  it renames run.log to `<time>.rotate.log` and starts fresh. **After each rotation,
-  `cleanup_old_rotates()` runs and deletes all but the most recent 3 rotate files**,
-  bounding total log disk usage to ~4000 lines (current run.log + 3 rotate files).
-  Without this, `/data/adb/esurfing/` would accumulate rotate files indefinitely.
+* **Magisk log rotation** (updated 2026-07-17, fixed again same day): `utils/Logger.c`
+  `max_lines` is 1000. At 1000 lines, `rotate()` renames `run.log` → `<time>.rotate.log`
+  and starts fresh; `cleanup_old_rotates()` keeps only the newest 3 rotate files.
+  **Also fixed unbounded growth from `clean_logger()`**: the old shutdown path renamed
+  `run.log` to `YYYYMMDD-HHMMSS.log` on every stop/restart and never deleted those
+  archives. New behavior closes the handle only (no rename); startup also re-counts
+  existing lines and purges both excess `*.rotate.log` and legacy timestamp `.log`
+  archives. Bound remains ~4000 lines total.
 * **Magisk `/api/restart` endpoint** (added 2026-07-17): `POST /api/restart` sets
   the `g_need_restart_now` flag (in `States.{h,c}`) and returns `{"ok":true}` immediately.
   The main work loop in `DialerClient.c:work()` checks this flag each iteration; when set,

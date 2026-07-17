@@ -47,59 +47,124 @@ static const char* get_level_str(const LogLevel lv)
 /* 轮转后保留的 rotate 文件数量上限 */
 #define KEEP_ROTATE_FILES 3
 
-/* 删除超量的旧 rotate 文件，只保留最近的 KEEP_ROTATE_FILES 个 */
+/* 判断是否为轮转归档：*.rotate.log */
+static bool is_rotate_name(const char* name)
+{
+    if (!name) return false;
+    const size_t len = strlen(name);
+    const size_t suffix_len = strlen(s_rotate_file_name);
+    return len > suffix_len && strcmp(name + len - suffix_len, s_rotate_file_name) == 0;
+}
+
+/* 判断是否为历史 clean_logger() 产生的时间戳归档：YYYYMMDD-HHMMSS.log
+ * 旧实现每次退出都 rename(run.log -> 时间戳.log)，且从不清理，会无限堆积。 */
+static bool is_legacy_archive_name(const char* name)
+{
+    if (!name) return false;
+    /* 期望长度：8 + 1 + 6 + 4 = 19，例如 20260717-153016.log */
+    if (strlen(name) != 19) return false;
+    if (strcmp(name + 15, ".log") != 0) return false;
+    if (name[8] != '-') return false;
+    for (int i = 0; i < 8; i++)
+    {
+        if (name[i] < '0' || name[i] > '9') return false;
+    }
+    for (int i = 9; i < 15; i++)
+    {
+        if (name[i] < '0' || name[i] > '9') return false;
+    }
+    return true;
+}
+
+static size_t count_file_lines(const char* path)
+{
+    FILE* fp = fopen(path, "r");
+    if (!fp) return 0;
+    size_t lines = 0;
+    char buf[4096];
+    while (fgets(buf, sizeof(buf), fp) != NULL)
+    {
+        size_t n = strlen(buf);
+        if (n > 0 && buf[n - 1] == '\n') lines++;
+        else if (feof(fp) && n > 0) lines++;
+    }
+    fclose(fp);
+    return lines;
+}
+
+/* 删除超量的旧 rotate 文件，只保留最近的 KEEP_ROTATE_FILES 个；
+ * 同时清理历史 clean_logger() 留下的时间戳 .log 归档。 */
 static void cleanup_old_rotates()
 {
     if (strlen(s_logger_cfg.log_dir) == 0) return;
 
-    DIR* dir = opendir(s_logger_cfg.log_dir);
-    if (!dir) return;
-
-    /* 收集所有 rotate 文件名 */
-    const size_t suffix_len = strlen(s_rotate_file_name); /* ".rotate.log" */
-    char* names[64] = {0};
-    int count = 0;
-    struct dirent* ent;
-    while ((ent = readdir(dir)) != NULL && count < 64)
+    /* 多轮扫描：旧实现最多收 64 个，超量文件会永久残留 */
+    for (;;)
     {
-        size_t len = strlen(ent->d_name);
-        if (len > suffix_len && strcmp(ent->d_name + len - suffix_len, s_rotate_file_name) == 0)
+        DIR* dir = opendir(s_logger_cfg.log_dir);
+        if (!dir) return;
+
+        char* names[128] = {0};
+        int count = 0;
+        int scan_capped = 0;
+        struct dirent* ent;
+        while ((ent = readdir(dir)) != NULL)
         {
-            names[count] = strdup(ent->d_name);
-            if (names[count]) count++;
+            const char* name = ent->d_name;
+            if (is_legacy_archive_name(name))
+            {
+                char path[PATH_MAX];
+                snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, name);
+                remove(path);
+                continue;
+            }
+            if (is_rotate_name(name))
+            {
+                if (count >= 128)
+                {
+                    scan_capped = 1;
+                    continue;
+                }
+                names[count] = strdup(name);
+                if (names[count]) count++;
+            }
         }
-    }
-    closedir(dir);
+        closedir(dir);
 
-    if (count <= KEEP_ROTATE_FILES)
-    {
-        /* 数量未超限，无需清理 */
-        for (int i = 0; i < count; i++) free(names[i]);
-        return;
-    }
-
-    /* 按文件名排序（时间戳前缀 ⇒ 字典序 = 时间序，最新的在末尾） */
-    for (int i = 1; i < count; i++)
-    {
-        char* key = names[i];
-        int j = i - 1;
-        while (j >= 0 && strcmp(names[j], key) > 0)
+        if (count <= KEEP_ROTATE_FILES)
         {
-            names[j + 1] = names[j];
-            j--;
+            for (int i = 0; i < count; i++) free(names[i]);
+            if (!scan_capped) return;
+            continue;
         }
-        names[j + 1] = key;
-    }
 
-    /* 删除最旧的，只保留最近 KEEP_ROTATE_FILES 个 */
-    for (int i = 0; i < count - KEEP_ROTATE_FILES; i++)
-    {
-        char path[PATH_MAX];
-        snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, names[i]);
-        remove(path);
-        free(names[i]);
+        /* 按文件名排序（时间戳前缀 ⇒ 字典序 = 时间序，最新的在末尾） */
+        for (int i = 1; i < count; i++)
+        {
+            char* key = names[i];
+            int j = i - 1;
+            while (j >= 0 && strcmp(names[j], key) > 0)
+            {
+                names[j + 1] = names[j];
+                j--;
+            }
+            names[j + 1] = key;
+        }
+
+        /* 删除最旧的，只保留最近 KEEP_ROTATE_FILES 个 */
+        const int remove_n = count - KEEP_ROTATE_FILES;
+        for (int i = 0; i < remove_n; i++)
+        {
+            char path[PATH_MAX];
+            snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, names[i]);
+            remove(path);
+            free(names[i]);
+        }
+        for (int i = remove_n; i < count; i++) free(names[i]);
+
+        /* 若本轮因数组上限截断，继续扫直到收干净 */
+        if (!scan_capped) return;
     }
-    for (int i = count - KEEP_ROTATE_FILES; i < count; i++) free(names[i]);
 }
 
 static void rotate()
@@ -268,6 +333,16 @@ bool init_logger()
         fprintf(stderr, "[ERROR] 无法打开日志文件 %s, 如果是 Linux 系统请使用 sudo 运行程序\n", s_logger_cfg.log_file);
         return false;
     }
+
+    /* 启动时先清历史堆积，再按已有行数决定是否立刻轮转。
+     * 旧逻辑 cur_lines 每次从 0 计，进程频繁重启时 run.log 会远超 max_lines。 */
+    cleanup_old_rotates();
+    s_logger_cfg.cur_lines = count_file_lines(s_logger_cfg.log_file);
+    if (s_logger_cfg.cur_lines >= s_logger_cfg.max_lines)
+    {
+        rotate();
+    }
+
     LOG_DEBUG("日志系统初始化完成");
     LOG_DEBUG("日志等级: %s", get_level_str(s_logger_cfg.lv));
     return true;
@@ -297,6 +372,26 @@ void clear_log_file(void)
         fprintf(stderr, "[ERROR] 清空日志后重新打开文件失败\n");
     }
     s_logger_cfg.cur_lines = 0;
+
+    /* 清空当前日志时，把历史 rotate / legacy 归档一并删掉，真正释放磁盘 */
+    if (strlen(s_logger_cfg.log_dir) > 0)
+    {
+        DIR* dir = opendir(s_logger_cfg.log_dir);
+        if (dir)
+        {
+            struct dirent* ent;
+            while ((ent = readdir(dir)) != NULL)
+            {
+                if (is_rotate_name(ent->d_name) || is_legacy_archive_name(ent->d_name))
+                {
+                    char path[PATH_MAX];
+                    snprintf(path, sizeof(path), "%s%c%s", s_logger_cfg.log_dir, SEP, ent->d_name);
+                    remove(path);
+                }
+            }
+            closedir(dir);
+        }
+    }
 
     pthread_mutex_unlock(&s_log_mutex);
 }
@@ -396,22 +491,14 @@ size_t read_full_log(char** out)
 
 void clean_logger()
 {
-    LOG_DEBUG("关闭日志系统");
     if (!s_logger_cfg.file_handle)
     {
         fprintf(stderr, "[ERROR] 日志系统未启动\n");
         return;
     }
+    /* 不再把 run.log rename 成时间戳 .log。
+     * 旧实现每次 stop/restart 都会多一个归档且从不回收，磁盘持续膨胀。
+     * 历史日志只通过 rotate() + cleanup_old_rotates() 管理。 */
     fclose(s_logger_cfg.file_handle);
     s_logger_cfg.file_handle = NULL;
-    if (strlen(s_logger_cfg.log_file) == 0)
-    {
-        fprintf(stderr, "[ERROR] 日志路径为空\n");
-        return;
-    }
-    char cur_tm[32];
-    get_fmt_time(cur_tm, FILE_FORMAT);
-    char new_file_name[PATH_MAX];
-    snprintf(new_file_name, sizeof(new_file_name), "%s%c%s.log", safe_str(s_logger_cfg.log_dir), SEP, safe_str(cur_tm));
-    rename(s_logger_cfg.log_file, new_file_name);
 }
