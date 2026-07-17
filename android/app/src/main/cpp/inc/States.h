@@ -157,6 +157,9 @@ extern bool g_need_restart;
 /** @brief 请求立即重启服务（由 Web /api/restart 触发，主循环检测并执行） */
 extern volatile bool g_need_restart_now;
 
+/** @brief 请求立即停止服务（由 Web /api/stop 触发，主循环检测后干净退出且不 execv） */
+extern volatile bool g_need_stop_now;
+
 /** @brief 刷新状态函数 */
 void refresh_states();
 void stop_dialer(void);

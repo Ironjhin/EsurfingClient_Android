@@ -151,7 +151,7 @@ if [ -f "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" ]; then
 fi
 
 # Set permissions
-chmod 755 "$MODULE_DIR/service.sh" "$MODULE_DIR/uninstall.sh" "$MODULE_DIR/customize.sh" 2>/dev/null || true
+chmod 755 "$MODULE_DIR/service.sh" "$MODULE_DIR/uninstall.sh" "$MODULE_DIR/customize.sh" "$MODULE_DIR/action.sh" 2>/dev/null || true
 chmod 755 "$MODULE_DIR/esurfingd" 2>/dev/null || true
 
 # Create module zip

@@ -127,6 +127,23 @@ CI 自动构建在 GitHub Actions 的 `magisk` 分支上运行。
 | 线程 | 退出需手动重启 | 自动守护重启 |
 | 闪退恢复 | 无 | `service.sh` 启动后常驻 |
 
+## 免重启启停（KernelSU / Magisk）
+
+模块自带 `action.sh`。在 **KernelSU Manager → 模块 → ESurfing Daemon → Action**（部分 Magisk 也有「操作」按钮）可**无需重启手机**切换：
+
+| 当前状态 | Action 效果 |
+|---------|------------|
+| 守护进程在跑 | 停止 `esurfingd`，并写入 `/data/adb/esurfing/disable`（下次开机也不再自动启动） |
+| 守护进程已停 | 删除 `disable` 标记并立即后台启动守护进程 |
+
+也可用 Web 后台的「⏹ 停止服务」干净退出；同样会写 `disable` 标记。重新启动请再点一次模块 Action，或：
+
+```bash
+su -c "rm -f /data/adb/esurfing/disable && /data/adb/esurfing/esurfingd &"
+```
+
+注意：这只是停掉本模块守护进程，**不是** KernelSU/Magisk 的「禁用模块」勾选（那个仍需重启才能卸载挂载点）。对本项目而言，停掉 daemon 已足够停止校园网认证。
+
 ## 常见问题
 
 **Q: 切屏/息屏后会不会被杀？**
@@ -141,6 +158,9 @@ su -c "ps -A | grep esurfingd"
 ```bash
 su -c "killall esurfingd && sleep 1 && /data/adb/esurfing/esurfingd"
 ```
+
+**Q: 怎么不重启手机就关掉/打开？**
+A: KernelSU 模块页点 **Action** 切换；或 Web 点「停止服务」后，再用 Action 启动。
 
 **Q: 卸载 Magisk 模块后会不会残留文件？**
 A: 卸载脚本会清理 `/data/adb/esurfing/` 下所有数据，包括日志和配置。

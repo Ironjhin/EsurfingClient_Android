@@ -30,6 +30,8 @@ bool g_need_restart = false;
 
 volatile bool g_need_restart_now = false;
 
+volatile bool g_need_stop_now = false;
+
 static void reset_host_name()
 {
     char host_name[16];

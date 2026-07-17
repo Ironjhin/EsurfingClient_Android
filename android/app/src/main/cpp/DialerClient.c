@@ -6,6 +6,7 @@
 #include "NetClient.h"
 #include "States.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -784,11 +785,31 @@ void work()
     uint64_t check_time = 0;
     while (g_thread_keep_alive)
     {
+        /* 收到停止请求：干净退出，不 execv 重启 */
+        if (g_need_stop_now)
+        {
+            g_need_stop_now = false;
+            g_need_restart = false;
+            /* 写入 disable 标记，下次开机 service.sh 也不会再拉起（无需重启手机即可关闭） */
+            {
+                FILE* df = fopen("/data/adb/esurfing/disable", "w");
+                if (df) {
+                    fputs("1\n", df);
+                    fclose(df);
+                    LOG_INFO("已写入 /data/adb/esurfing/disable，开机将不再自动启动");
+                }
+            }
+            LOG_INFO("收到停止请求，正在停止服务...");
+            shut(0);
+            break;
+        }
         /* 收到重启请求：设置 g_need_restart 让 shut() 执行 execv 重启 */
         if (g_need_restart_now)
         {
             g_need_restart_now = false;
             g_need_restart = true;
+            /* 重启视为重新启用：清除 disable 标记 */
+            remove("/data/adb/esurfing/disable");
             LOG_INFO("收到重启请求，正在重启服务...");
             shut(0);
             /* shut() 在 g_need_restart 为 true 时不会返回 */

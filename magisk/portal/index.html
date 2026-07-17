@@ -54,8 +54,9 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
     <div class="actions" style="margin-top:12px;">
       <button class="btn btn-danger" onclick="forceAuthReset()">🔄 强制重新认证</button>
       <button class="btn btn-danger" onclick="restartService()" style="background:#b62324;">🔁 重启服务</button>
+      <button class="btn btn-danger" onclick="stopService()" style="background:#6e7681;">⏹ 停止服务</button>
     </div>
-    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击"强制重新认证"立即重试。<br>服务彻底卡死、久连不上时点"重启服务"重启守护进程（会短暂断开几秒）。</p>
+    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击"强制重新认证"立即重试。<br>服务彻底卡死、久连不上时点"重启服务"重启守护进程（会短暂断开几秒）。<br>点"停止服务"仅退出守护进程，无需重启手机；KernelSU 模块列表的 Action 可再次启动。</p>
   </div>
 
   <!-- Config -->
@@ -235,6 +236,38 @@ async function forceAuthReset() {
       showToast(data && data.reason === 'no dialer' ? '守护进程未在运行' : '触发失败', true);
     }
   } catch { showToast('请求失败', true); }
+}
+
+
+// Stop service — clean exit without execv restart (no phone reboot needed)
+async function stopService() {
+  if (!confirm('确定停止守护进程？停止后 Web 后台将不可用，需在 KernelSU/Magisk 模块 Action 中重新启动。')) return;
+  const btn = document.querySelector('button[onclick="stopService()"]');
+  try {
+    const res = await fetch('/api/stop', { method: 'POST' });
+    const data = await res.json();
+    if (data && data.ok) {
+      showToast('服务正在停止...');
+      if (btn) btn.disabled = true;
+      // Wait until API is gone
+      for (let i = 0; i < 15; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        try {
+          const ping = await fetch('/api/status/uptime', { cache: 'no-store' });
+          if (!ping.ok) break;
+        } catch { break; }
+      }
+      showToast('服务已停止（无需重启手机）');
+      document.getElementById('authStatus').innerHTML = '<span class="badge badge-fail">已停止</span>';
+      document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">未知</span>';
+      document.getElementById('uptime').textContent = '-';
+    } else {
+      showToast('停止请求失败', true);
+    }
+  } catch {
+    showToast('服务已停止（无需重启手机）');
+    if (btn) btn.disabled = true;
+  }
 }
 
 // Restart service — asks the daemon to execv itself, then polls until it's back

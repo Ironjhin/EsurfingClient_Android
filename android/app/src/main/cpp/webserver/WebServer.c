@@ -171,6 +171,16 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                               "{\"ok\":true,\"msg\":\"restarting\"}");
                 return;
             }
+            // 停止服务: 设置标志位, 主循环检测到后执行 shut() 干净退出（不 execv）
+            // 不在此处直接调用 shut(), 因为 web 线程内 join web 线程会死锁
+            if (mg_match(hm->uri, mg_str("/api/stop"), NULL))
+            {
+                g_need_stop_now = true;
+                LOG_INFO("Web 接口请求停止服务");
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
+                              "{\"ok\":true,\"msg\":\"stopping\"}");
+                return;
+            }
             // 仅保存
             if (mg_match(hm->uri, mg_str("/api/saveConfigs"), NULL))
             {
