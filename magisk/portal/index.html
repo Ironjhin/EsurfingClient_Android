@@ -314,45 +314,48 @@ async function restartService() {
   }
 }
 
-// Log polling — fetch from /api/log (backend serves run.log by absolute path)
+// Log polling — /api/log returns full rotate history + current run.log
 async function pollLog() {
   try {
-    const res = await fetch('/api/log');
-    if (res.ok) {
-      const text = await res.text();
-      const lines = text.split('\n').filter(l => l).slice(-100);
-      document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
+    const res = await fetch(`/api/log?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) {
+      document.getElementById('logBox').textContent =
+        res.status === 503 ? '(日志尚未就绪)' : `(获取失败 HTTP ${res.status})`;
+      return false;
     }
-  } catch {
-    // Silently fail — log may not be accessible via HTTP
+    const text = await res.text();
+    const lines = text.split('\n').filter(l => l).slice(-100);
+    document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
+    return true;
+  } catch (e) {
+    document.getElementById('logBox').textContent = '(无法连接日志接口)';
+    return false;
   }
 }
 
-// Refresh log manually
-function refreshLog() {
-  pollLog();
-  showToast('日志已刷新');
+async function refreshLog() {
+  const ok = await pollLog();
+  showToast(ok ? '日志已刷新' : '刷新日志失败', !ok);
 }
 
-// Export log as file download
 async function exportLog() {
   try {
-    const res = await fetch('/api/log');
-    if (res.ok) {
-      const text = await res.text();
-      const blob = new Blob([text], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'esurfing-run.log';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast('日志已导出');
-    } else {
-      showToast('获取日志失败', true);
+    const res = await fetch(`/api/log?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) {
+      showToast(res.status === 503 ? '日志尚未就绪' : '获取日志失败', true);
+      return;
     }
+    const text = await res.text();
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'esurfing-run.log';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('日志已导出');
   } catch {
     showToast('导出失败: 网络错误', true);
   }
@@ -363,7 +366,7 @@ refreshStatus();
 loadConfig();
 pollLog();
 setInterval(refreshStatus, 5000);
-setInterval(pollLog, 10000);  // 每10秒自动刷新日志
+setInterval(pollLog, 5000);
 </script>
 </body>
 </html>

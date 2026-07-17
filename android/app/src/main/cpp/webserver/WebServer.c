@@ -136,8 +136,15 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                     mg_http_reply(c, 503, cors_hdrs, "log not ready");
                     return;
                 }
+                /* headers 不是 printf 格式串：不能写 \r\n%s 去拼 cors。
+                 * 之前的写法会把字面量 "%sContent-Length" 发到响应头，
+                 * 导致 Content-Length 失效，前端 fetch 读不到 body。 */
                 mg_http_reply(c, 200,
-                    "Content-Type: text/plain; charset=utf-8\r\n%s",
+                    "Content-Type: text/plain; charset=utf-8\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Content-Type\r\n"
+                    "Cache-Control: no-store\r\n",
                     "%.*s", (int)len, full_log);
                 free(full_log);
                 return;
