@@ -133,12 +133,10 @@ class LogReader extends ChangeNotifier {
       // 内存上限保护：只保留尾部 524288 字符
       if (_content.length > 524288) {
         _content = _content.substring(_content.length - 524288);
-        // 丢弃对应字节数，下次从头读以防止截断行被重复拼接
-        _clearByteOffset = 0;
-      } else {
-        // 正常前进偏移
-        _clearByteOffset = length;
       }
+      // 偏移量始终前进到当前文件末尾:内存里截断 _content 只是缩小显示窗口,
+      // 不改变"文件已读到哪"。若在此清零,下次轮询会从头整段重读并追加,导致日志重复。
+      _clearByteOffset = length;
 
       notifyListeners();
     } catch (_) {

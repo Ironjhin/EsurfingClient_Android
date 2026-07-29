@@ -91,7 +91,10 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   /// 配置有效且已启用时自动进入认证(共用:冷启动 + Settings 返回)
+  /// 只负责"启动":若服务已在运行则直接返回,绝不停掉它 —
+  /// 否则从 Settings 返回时 _loadConfig 会触发 _toggleAuth 把运行中的认证停掉。
   void _tryAutoStart() {
+    if (_isRunning) return;
     final c = _config;
     if (c == null || !c.enabled) return;
     final hasAccount = c.accounts.any(
@@ -157,7 +160,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       }
 
       // 启动认证(C 层内部创建 pthread 运行 dialer_app)
-      final started = await _authCtrl.start();
+      // 每个有效账号对应一个拨号线程,必须把数量传给 C 层,否则只会启动第一个账号
+      final started = await _authCtrl.start(accountCount: validAccounts.length);
       if (mounted) {
         if (started) {
           setState(() {
@@ -213,9 +217,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           ),
           TextButton(
             onPressed: () {
+              // 先关闭对话框,再用"页面的 context"跳转 —
+              // dialogContext 在 pop 后即失活,拿它 push 会抛 deactivated 异常。
               Navigator.pop(dialogContext);
               Navigator.push(
-                dialogContext,
+                context,
                 MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
               );
             },
