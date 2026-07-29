@@ -6,6 +6,7 @@
 #include "NetClient.h"
 #include "States.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -529,6 +530,17 @@ static RunStatus run()
 
     const NetworkStatus net_status = check_network_status(); // 检测网络状态
     LOG_DEBUG("run: check_network_status 返回 %d", net_status);
+
+    // 更新联网状态
+    if (net_status == REQUEST_SUCCESS)
+    {
+        g_prog_status[tl_thread_idx].runtime_status.is_connected = true;
+    }
+    else
+    {
+        g_prog_status[tl_thread_idx].runtime_status.is_connected = false;
+    }
+
     switch (net_status)
     {
     case REQUEST_SUCCESS: // 返回响应成功 (204 响应码)
@@ -686,6 +698,7 @@ int dialer_app(void* arg)
 void work()
 {
     g_thread_keep_alive = true;
+    g_start_run_tm = get_cur_tm_ms(); // 记录守护进程启动时间
 
     g_prog_status = calloc(1, sizeof(prog_status_t)); // 初始化 g_prog_status 指针并分配 1 个空间
 
