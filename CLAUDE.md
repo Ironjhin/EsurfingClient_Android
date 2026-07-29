@@ -38,16 +38,11 @@ Use the full path so the call works regardless of whether the dir is on `PATH`:
 
 If a bare `adb ...` call fails for the user because their shell doesn't have it on `PATH`, prepend the quoted path above.
 
-You have **no ability to view, analyze, or reason about images, screenshots, or any non-text binary**. You are a text-only model.
-
-- If the user shares an image or screenshot, **don't pretend to understand it.** Ask the user to describe what they want, or to paste relevant text (error messages, code snippets, log excerpts, UI text) into the conversation.
-- If you need information that lives only in image form (a diagram, a settings screen, a screenshot from the running app), **ask the user to narrate it** — do not guess from the filename or surrounding context and present the guess as fact.
-- This is not modesty. A confident wrong read of an image is worse than admitting you can't see it. When in doubt, say "I can't see the image — please describe / paste the text".
-- The one exception is when the image is merely decorative (a logo in the README, an icon asset whose content doesn't matter to the task) — in that case you can note you're skipping it rather than agonizing.
-
 ### Flutter toolchain(Windows,local env)
 
-The local dev environment has **Flutter SDK 3.44.4 stable**(Dart 3.12.2),**Android SDK 36.1.0**(default path `%LOCALAPPDATA%\Android\Sdk`,**no Android Studio needed for CLI builds**).
+**注意 (2026-07-29): 本机当前无 Flutter/NDK 编译环境，本地无法 `flutter build`。编译验证依赖 CI（push main → GitHub Actions）。**
+
+历史记录：Flutter SDK 3.44.4 stable (Dart 3.12.2), Android SDK 36.1.0 (default path `%LOCALAPPDATA%\Android\Sdk`, no Android Studio needed for CLI builds).
 
 To run checks:
 
@@ -100,7 +95,7 @@ The thing you can't see from any one file is split across three layers:
 
 3. **Flutter side** (`lib/src/{ui,model,services,i18n}`, `lib/main.dart`)
    - `model/config.dart` — single source of truth for credentials + channel (`phone` vs `pc` → different User-Agent strings) in `SharedPreferences`. Changing `userAgent` here is the supported way to switch between "手机版" and "PC 版" portal flows.
-   - `services/log_reader.dart` — 1-second `Timer`-based poll of `run.log`, **byte-offset incremental** (not full-rewindowed). Clear = in-process `esurfing_client_clear_log()` plus offset reset. Memory cap at 512k chars with rotation detection (file shorter than recorded offset ⇒ reset to 0).
+   - `services/log_reader.dart` — 2-second `Timer`-based poll of `run.log`, **byte-offset incremental** (not full-rewindowed). Clear = in-process `esurfing_client_clear_log()` plus offset reset. Two truncation guards: (a) >1000 lines ⇒ call C-side clear + reset offset to 0; (b) >512k chars ⇒ truncate in-memory `_content` to the tail but **keep the offset at current file length** (resetting it to 0 here would re-read and duplicate the whole file). Rotation detection is separate: file length < recorded offset ⇒ reset offset to 0 and re-read from start.
    - `ui/home_page.dart`, `ui/settings_page.dart`, `widgets/log_viewer.dart` — Material 3, portrait-locked, light/dark via `Color(0xFF1565C0)` seed.
    - `i18n/app_localizations.dart` — manually-authored localizations (not ARB-generated); `main.dart` wires `GlobalMaterialLocalizations` + a custom `AppLocalizationsDelegate`.
 
@@ -111,8 +106,8 @@ Global error paths: `FlutterError.onError` and a `runZonedGuarded` both append t
 * **Native edits**: only the outer `android/app/src/main/cpp/**` is what the active CI pipeline reads. The nested `esurfing_flutter/android/...` copy is out of sync — verify before editing so your change actually ships.
 * **Bridge sync**: if you add/remove/rename an exported symbol in `ffi_bridge.{h,c}`, you must mirror the mangled `typedef` and `lookupFunction` line in `lib/src/native/bindings.dart` and the call in `auth_controller.dart`. A mismatch fails at **runtime** (no static check), with an `DynamicLibrary` lookup error.
 * **Log reader contract**: `LogReader.clear()` calls C-side `esurfing_client_clear_log()` — which truncates the file *from inside the same process* — **then** resets the byte offset. Don't change one without the other, or you replay the whole file on next poll.
-* **Flutter lint config**: project uses `flutter_lints: ^4.0.0` from `pubspec.yaml`. Run `flutter analyze` before pushing — the CI will reject the build on warnings it surfaces.
-* **Magisk sync**: the `magisk` branch shares protocol code with `main`. When fixing something in `cipher/` or `NetClient.c`, check whether the same change needs cherry-picking to Magisk (recent commits show this pattern: "sync from magisk").
+* **Flutter lint config**: project uses `flutter_lints: ^4.0.0` + a strict `analysis_options.yaml` (strict-casts/inference/raw-types). **CI 并不跑 `flutter analyze`** — `build-apk.yml` 只做 `flutter pub get` + `flutter build apk`。因此 analyzer 的 warning/hint（含 `withOpacity` 之类的 deprecation）不会卡 CI；只有真正的 Dart **编译错误**会在 build 阶段暴露。本地仍建议手动 `flutter analyze` 抓问题。
+* **Magisk sync**: the `magisk` branch shares protocol code with `main`. When fixing something in `cipher/` or `NetClient.c`, check whether the same change needs cherry-picking to Magisk (recent commits show this pattern: "sync from magisk"). 2026-07-29 已将以下改动从 magisk 同步到 main: get_last_location 204 死锁修复、is_connected 状态、g_start_run_tm 初始化、Logger 轮转清理、load_cfg 非阻塞化。magisk 专属不同步: `g_need_stop_now`/`g_need_restart_now`、`/data/adb/esurfing/disable` 文件、WebUI/mongoose、KernelSU Action。
 * **Accessibility keepalive** (added 2026-07-06):
   - `ESurfingMainActivity.kt` (renamed from `MainActivity.kt`) replaces the
     Flutter-default `MainActivity` in `AndroidManifest.xml`. It registers a single
@@ -149,48 +144,67 @@ Global error paths: `FlutterError.onError` and a `runZonedGuarded` both append t
   picked up by the next heartbeat tick and rebuilds the dialer chain without
   waiting for the next backoff cycle). The button is hidden when stopped so idle
   users can't bypass the config-required check.
-* **Magisk web server is a SINGLE-THREADED mongoose event loop** (learned the hard
-  way 2026-07-11, `magisk` branch, `webserver/WebServer.c`): the HTTP handler `fn()`
-  runs on one thread. **NEVER do a blocking call inside a handler** — especially
-  `check_network_status()` / `get()` / any libcurl request (up to 10s timeout each).
-  One blocking handler freezes the *entire* web admin panel: every endpoint stops
-  responding, not just the slow one. Symptom: `/api/status/auth` and
-  `/api/status/online` return empty/hang while `/api/status/uptime` (reads only
-  in-memory vars) still answers instantly — that contrast is the fingerprint.
-  Fix pattern: handlers must read **cached** `g_prog_status[0].runtime_status`
-  flags (`is_connected`, `is_authed`, `is_initialized`), which the dialer thread's
-  `run()` refreshes every ~10s. Accept the ~10s staleness; it's invisible in a
-  status panel and infinitely better than a frozen server. A frontend that polls
-  several such endpoints every few seconds makes any blocking handler fatal.
-* **Magisk `/api/log` endpoint** (added 2026-07-11): the WebUI's refresh/export-log
-  buttons fetch `GET /api/log`. This route exists because mongoose's static root is
-  `portal_root` (`/data/adb/esurfing/portal`) but `run.log` lives one level up at
-  `/data/adb/esurfing/run.log` — static serving can't reach it (404). The handler
-  calls `get_log_file_path()` (new getter in `utils/Logger.{h,c}` returning the
-  absolute `s_logger_cfg.log_file`) and passes it to `mg_http_serve_file`, which
-  serves any absolute path and ignores `root_dir`. Don't rely on the `service.sh`
-  symlink of run.log into `portal/` — it's created with `2>/dev/null || true` and
-  mongoose symlink-following is not guaranteed.
-* **Magisk log rotation**: `utils/Logger.c` `max_lines` on the `magisk` branch was
-  also 10000 → reduced to 1000 (matching main). The daemon has no Dart-side
-  truncation, so this C-side `rotate()` is the only cleanup — at 1000 lines it
-  renames run.log to `<time>.rotate.log` and starts fresh.
+* **Log rotation (C 层, 两分支共享)** (synced 2026-07-29): `Logger.c` 的
+  `rotate()` 在 run.log 达到 `max_lines`(1000) 时 rename 为 `<time>.rotate.log`，
+  随后 `cleanup_old_rotates()` 只保留最近 3 个 rotate 文件并删除所有历史
+  `YYYYMMDD-HHMMSS.log` 遗留归档。`init_logger()` 启动时统计已有行数、按需
+  立刻轮转。`clean_logger()` 不再 rename 出时间戳归档（旧行为会无限堆积）。
+  `clear_log_file()` 清空时连带删除 rotate/legacy 归档。
+  新增 `get_log_file_path()` 和 `read_full_log()` 供日志导出使用。
 
-## Campus-network auth notes (magisk debugging, 2026-07-11)
+## Campus-network auth notes
 
-Diagnosing "daemon can't re-auth, only works after opening the official client":
-the auth flow (`DialerClient.c`) is: `check_network_status()` (302 ⇒ needs auth) →
+认证流程 (`DialerClient.c`): `check_network_status()` (302 ⇒ needs auth) →
 `auth()` extracts portal config, `Auth URL`/`Ticket URL` → `init_session` (loads
 AlgoID cipher) → `get_ticket` → **`login()`**. Failures cluster at `login()`
 (`DialerClient.c:151 登录响应失败`) when the POST to `auth.cgi` returns an empty
 body (status ≠ `REQUEST_HAVE_RES`). The decisive evidence is the **decrypted
-`登录响应内容:`** line, which is `LOG_VERBOSE` only — set `log_lv: 6` in
-`/data/adb/esurfing/config.json` (levels: 1 FATAL … 5 DEBUG **6 VERBOSE**) and
-reproduce *while on the campus network and failing* (data-SIM won't trigger auth).
-`refresh_states()` regenerates a **random MAC on every auth attempt** by design
-(it is not a toggle) — manually pinning a MAC can collide with a still-live
-server-side session. Don't theorize the root cause without that VERBOSE login
-response body; it names the real reason (device-limit / MAC-conflict / etc.).
+`登录响应内容:`** line, which is `LOG_VERBOSE` only — set `log_lv: 6`
+(levels: 1 FATAL … 5 DEBUG **6 VERBOSE**) and reproduce *while on the campus
+network and failing*. `refresh_states()` regenerates a **random MAC on every
+auth attempt** by design — manually pinning a MAC can collide with a still-live
+server-side session.
+
+**get_last_location 204 死锁修复** (synced 2026-07-29): 设备已在线时网关放行
+探测 URL 返回 204，原 `do{}while(status != REQUEST_REDIRECT)` 永不满足导致线程
+死循环。修复后 204 分支直接 `return REQUEST_SUCCESS`，`dialer_app` 非 ERROR 即
+进入 `run()`，由 `run()` 置 `is_connected=true` 并进入心跳保活。不在此设置
+`last_location_lock`，保证日后掉线返回 302 时 header 回调仍能捕获门户 URL。
+
+**is_connected 联网状态** (synced 2026-07-29): `runtime_status_t` 新增
+`is_connected` 字段，`run()` 每次 `check_network_status()` 后更新。
+`g_start_run_tm` 在 `work()` 入口初始化，支持运行时长计算。
+
+**load_cfg() 非阻塞化** (synced 2026-07-29): 所有配置错误路径（文件不存在、
+JSON 解析失败、enabled 缺失、无账号等）不再 `while(true){ sleep }` 死等，
+改为设 `g_prog_enabled=false; g_prog_cnt=0` 后 return。Android 构建
+(`__ANDROID__`) 跳过 `get_exec_dir` 路径拼接（配置通过 FFI 注入）。
+
+## Frontend bug fixes (fixed 2026-07-29, main 分支 lib/)
+
+以下四个 Dart 侧 bug 已修复，均在外层 `lib/`（CI 读取的目录）：
+
+* **多账号只启动第一个** (`ui/home_page.dart`): `_toggleAuth` 里
+  `_authCtrl.start()` 用默认 `accountCount=1`，C 层只对索引 0 建拨号线程，
+  配多个账号时其余账号不会认证。已改为 `start(accountCount: validAccounts.length)`。
+  C 侧 `esurfing_client_start(idx)` 一个 idx 一个线程，需逐个 0..N-1 启动。
+* **从设置页返回会停掉运行中的认证** (`ui/home_page.dart`): 设置按钮回调返回后
+  调 `_loadConfig()` → `_tryAutoStart()` → `_toggleAuth()`，而 `_toggleAuth`
+  开头 `if (_isRunning) _stopAuth()` 会把正在跑的服务 toggle 停。已在
+  `_tryAutoStart()` 开头加 `if (_isRunning) return;` 守卫——自动启动只负责启动，
+  运行中绝不触发停止（用户选定方案：保留返回自动启动，但加运行守卫）。
+* **"打开设置"对话框用已失活 context 导航** (`ui/home_page.dart`): 先
+  `Navigator.pop(dialogContext)` 再 `Navigator.push(dialogContext, ...)`，
+  dialog 被 pop 后其 context 失活，push 会抛 "deactivated widget" 异常。
+  已改为用页面 `context` 做 push。
+* **日志 512K 内存上限分支清零偏移量** (`services/log_reader.dart`): 内容超
+  512K 截断 `_content` 尾部时把 `_clearByteOffset=0`，下次轮询从头整段重读并
+  追加，导致日志重复、内存重新膨胀。已改为偏移量统一前进到当前文件长度
+  （内存截断与"文件读到哪"无关）。此 bug 通常被 1000 行截断先触发而潜伏。
+
+遗留代码质量项（未修，不影响功能/CI）: `home_page.dart` 多处 `withOpacity`
+在 Flutter 3.27+ 已废弃（建议换 `withValues(alpha:)`）；`AuthController.initNativeEnv`
+定义但从未调用（`esurfing_client_init` 内部已 `set_log_dir`，属冗余死代码）。
 
 ## Common tasks
 
@@ -217,14 +231,6 @@ Notes on the build step:
 - Output APK lands at `build/app/outputs/flutter-apk/app-release.apk`.
 
 There is no `ios/`, `web/`, or `linux/` target configured — only `android`. Editing native code inside `android/app/src/main/cpp/` is the only way to change protocol behavior; Flutter-only changes never touch the C daemon.
-
-## Editing rules that matter for this repo
-
-* **Native edits**: only the outer `android/app/src/main/cpp/**` is what the active CI pipeline reads. The nested `esurfing_flutter/android/...` copy is out of sync — verify before editing so your change actually ships.
-* **Bridge sync**: if you add/remove/rename an exported symbol in `ffi_bridge.{h,c}`, you must mirror the mangled `typedef` and `lookupFunction` line in `lib/src/native/bindings.dart` and the call in `auth_controller.dart`. A mismatch fails at **runtime** (no static check), with an `DynamicLibrary` lookup error.
-* **Log reader contract**: `LogReader.clear()` calls C-side `esurfing_client_clear_log()` — which truncates the file *from inside the same process* — **then** resets the byte offset. Don't change one without the other, or you replay the whole file on next poll.
-* **Flutter lint config**: project uses `flutter_lints: ^4.0.0` from `pubspec.yaml`. Run `flutter analyze` before pushing — the CI will reject the build on warnings it surfaces.
-* **Magisk sync**: the `magisk` branch shares protocol code with `main`. When fixing something in `cipher/` or `NetClient.c`, check whether the same change needs cherry-picking to Magisk (recent commits show this pattern: "sync from magisk").
 
 ## README vs reality
 
