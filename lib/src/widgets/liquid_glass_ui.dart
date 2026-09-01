@@ -9,9 +9,8 @@ enum GlassQualityMode { automatic, liquid, efficient }
 
 /// Controls the renderer used by all glass surfaces.
 ///
-/// Automatic mode prefers the real Impeller shader and falls back to fake
-/// glass when accessibility requests reduced animation or the physical screen
-/// is large enough that a full-screen shader would be needlessly expensive.
+/// Automatic mode uses the real Impeller shader only when the screen cost is
+/// reasonable. Efficient mode bypasses both the shader and backdrop blur.
 class GlassPerformanceController extends ChangeNotifier {
   GlassPerformanceController._();
 
@@ -40,28 +39,47 @@ class GlassPerformanceController extends ChangeNotifier {
     await preferences.setString(_preferenceKey, value.name);
   }
 
-  bool useFakeGlass(BuildContext context) {
+  bool useLiquidGlass(BuildContext context) {
     switch (_mode) {
       case GlassQualityMode.liquid:
-        return false;
-      case GlassQualityMode.efficient:
         return true;
+      case GlassQualityMode.efficient:
+        return false;
       case GlassQualityMode.automatic:
         final mediaQuery = MediaQuery.maybeOf(context);
         if (mediaQuery == null) return false;
-        if (mediaQuery.disableAnimations) return true;
+        if (mediaQuery.disableAnimations) return false;
 
-        // Shader cost scales with physical pixels. Most 1080p Android phones
-        // stay on real glass; very high-resolution displays use FakeGlass in
-        // automatic mode unless the user explicitly selects Liquid.
+        // Shader cost scales with physical pixels. Very high-resolution
+        // Android displays use the static surface in automatic mode unless
+        // the user explicitly selects Liquid.
         final physicalPixels = mediaQuery.size.width *
             mediaQuery.devicePixelRatio *
             mediaQuery.size.height *
             mediaQuery.devicePixelRatio;
-        return defaultTargetPlatform == TargetPlatform.android &&
-            physicalPixels > 4200000;
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          return physicalPixels <= 3200000;
+        }
+        return true;
     }
   }
+}
+
+class _GlassRenderMode extends InheritedWidget {
+  const _GlassRenderMode({
+    required this.liquid,
+    required super.child,
+  });
+
+  final bool liquid;
+
+  static bool liquidOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_GlassRenderMode>()?.liquid ??
+      false;
+
+  @override
+  bool updateShouldNotify(_GlassRenderMode oldWidget) =>
+      liquid != oldWidget.liquid;
 }
 
 class GlassScene extends StatelessWidget {
@@ -78,18 +96,16 @@ class GlassScene extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final dark = Theme.of(context).brightness == Brightness.dark;
-        final useFake = controller.useFakeGlass(context);
+        final useLiquid = controller.useLiquidGlass(context);
+        final content = _GlassRenderMode(
+          liquid: useLiquid,
+          child: child,
+        );
         return Stack(
           fit: StackFit.expand,
           children: [
             const RepaintBoundary(child: LiquidGlassBackdrop()),
-            LiquidGlassLayer(
-              key: ValueKey(useFake),
-              fake: useFake,
-              settings: glassSettingsFor(dark: dark),
-              child: child,
-            ),
+            content,
           ],
         );
       },
@@ -100,14 +116,14 @@ class GlassScene extends StatelessWidget {
 LiquidGlassSettings glassSettingsFor({required bool dark}) {
   return LiquidGlassSettings(
     glassColor: dark ? const Color(0x24132A46) : const Color(0x24FFFFFF),
-    thickness: 18,
-    blur: dark ? 7 : 8,
-    chromaticAberration: 0.008,
+    thickness: 12,
+    blur: dark ? 4 : 5,
+    chromaticAberration: 0.0045,
     lightAngle: math.pi * 0.72,
     lightIntensity: dark ? 0.72 : 0.86,
     ambientStrength: dark ? 0.18 : 0.12,
-    refractiveIndex: 1.18,
-    saturation: dark ? 1.22 : 1.3,
+    refractiveIndex: 1.12,
+    saturation: dark ? 1.12 : 1.16,
   );
 }
 
@@ -216,6 +232,7 @@ class GlassSurface extends StatelessWidget {
     this.glow = false,
     this.stretch = false,
     this.grouped = false,
+    this.liquid = false,
     super.key,
   });
 
@@ -228,15 +245,23 @@ class GlassSurface extends StatelessWidget {
   final bool stretch;
   final bool grouped;
 
+  /// Enables the expensive refraction shader for this surface in Liquid mode.
+  /// Static cards intentionally keep this false to avoid scroll-time geometry
+  /// updates; top bars, primary actions and dialogs opt in explicitly.
+  final bool liquid;
+
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final useLiquid = liquid && _GlassRenderMode.liquidOf(context);
     final edgeColor = Colors.white.withValues(alpha: dark ? 0.17 : 0.42);
     final shape = LiquidRoundedSuperellipse(
       borderRadius: radius,
       side: BorderSide(color: edgeColor, width: 0.85),
     );
 
+    final surfaceAlpha =
+        useLiquid ? (dark ? 0.08 : 0.16) : (dark ? 0.52 : 0.68);
     Widget content = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -250,10 +275,11 @@ class GlassSurface extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withValues(alpha: dark ? 0.07 : 0.2),
-                (tint ?? Colors.white)
-                    .withValues(alpha: tint == null ? 0.025 : 0.09),
-                Colors.transparent,
+                Colors.white.withValues(alpha: surfaceAlpha),
+                (tint ?? (dark ? const Color(0xFF18324F) : Colors.white))
+                    .withValues(alpha: useLiquid ? 0.07 : 0.38),
+                (dark ? const Color(0xFF0C1D31) : const Color(0xFFEAF5FF))
+                    .withValues(alpha: useLiquid ? 0.02 : 0.58),
               ],
             ),
             boxShadow: [
@@ -269,31 +295,46 @@ class GlassSurface extends StatelessWidget {
       ),
     );
 
-    if (glow || onTap != null) {
-      content = GlassGlow(
-        glowColor: (tint ?? Colors.white).withValues(alpha: 0.26),
-        glowRadius: 1.25,
-        child: content,
-      );
-    }
+    if (!useLiquid) return content;
 
-    Widget glass = grouped
+    // Keep labels/icons out of the shader's render object. Only the empty
+    // background shape is refracted; foreground content remains pixel-stable
+    // while a scrollable list moves.
+    Widget glassBackground = grouped
         ? LiquidGlass.grouped(
             shape: shape,
             clipBehavior: Clip.antiAlias,
-            child: content,
+            child: const SizedBox.expand(),
           )
-        : LiquidGlass(
+        : LiquidGlass.withOwnLayer(
             shape: shape,
+            settings: glassSettingsFor(dark: dark),
             clipBehavior: Clip.antiAlias,
-            child: content,
+            child: const SizedBox.expand(),
           );
+
+    if (glow || onTap != null) {
+      glassBackground = GlassGlow(
+        glowColor: (tint ?? Colors.white).withValues(alpha: 0.2),
+        child: glassBackground,
+      );
+    }
+
+    Widget glass = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned.fill(
+          child: IgnorePointer(child: glassBackground),
+        ),
+        content,
+      ],
+    );
 
     if (stretch && onTap != null) {
       glass = LiquidStretch(
-        interactionScale: 0.985,
-        stretch: 0.14,
-        resistance: 0.11,
+        interactionScale: 0.992,
+        stretch: 0.06,
+        resistance: 0.16,
         child: glass,
       );
     }
@@ -312,8 +353,14 @@ class GlassBlendGroup extends StatelessWidget {
   final double blend;
 
   @override
-  Widget build(BuildContext context) =>
-      LiquidGlassBlendGroup(blend: blend, child: child);
+  Widget build(BuildContext context) {
+    if (!_GlassRenderMode.liquidOf(context)) return child;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return LiquidGlassLayer(
+      settings: glassSettingsFor(dark: dark),
+      child: LiquidGlassBlendGroup(blend: blend, child: child),
+    );
+  }
 }
 
 class GlassActionButton extends StatelessWidget {
@@ -347,6 +394,7 @@ class GlassActionButton extends StatelessWidget {
       child: Opacity(
         opacity: onPressed == null ? 0.5 : 1,
         child: GlassSurface(
+          liquid: true,
           radius: height / 2,
           padding: EdgeInsets.zero,
           tint: accent,
@@ -397,6 +445,7 @@ class GlassTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassSurface(
+      liquid: true,
       radius: 27,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: SizedBox(
@@ -477,46 +526,46 @@ class LiquidGlassDialog extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final dark = Theme.of(context).brightness == Brightness.dark;
+        final useLiquid = controller.useLiquidGlass(context);
+        Widget dialog = _GlassRenderMode(
+          liquid: useLiquid,
+          child: GlassSurface(
+            liquid: true,
+            radius: 30,
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  DefaultTextStyle(
+                    style: Theme.of(context).textTheme.titleLarge!.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                    child: title,
+                  ),
+                  const SizedBox(height: 14),
+                  DefaultTextStyle(
+                    style: Theme.of(context).textTheme.bodyMedium!,
+                    child: content,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: actions,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: LiquidGlassLayer(
-                fake: controller.useFakeGlass(context),
-                settings: glassSettingsFor(dark: dark),
-                child: GlassSurface(
-                  radius: 30,
-                  padding: const EdgeInsets.fromLTRB(24, 22, 24, 14),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        DefaultTextStyle(
-                          style:
-                              Theme.of(context).textTheme.titleLarge!.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                          child: title,
-                        ),
-                        const SizedBox(height: 14),
-                        DefaultTextStyle(
-                          style: Theme.of(context).textTheme.bodyMedium!,
-                          child: content,
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: actions,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              child: dialog,
             ),
           ),
         );

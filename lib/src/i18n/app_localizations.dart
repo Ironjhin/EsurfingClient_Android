@@ -106,12 +106,12 @@ class AppLocalizations {
 
   String get glassQuality => _t('Glass Quality', '玻璃效果质量');
   String get glassQualityHint => _t(
-        'Auto switches to efficient glass when GPU load may be high',
-        '自动模式会在 GPU 负载较高时切换为节能玻璃',
+        'Efficient mode disables refraction and blur for smooth scrolling',
+        '节能模式会关闭折射和模糊，优先保证滚动流畅',
       );
   String get glassQualityAuto => _t('Auto', '自动');
   String get glassQualityLiquid => _t('Liquid', '真实液态');
-  String get glassQualityEfficient => _t('Efficient', '节能');
+  String get glassQualityEfficient => _t('Efficient (no blur)', '节能（无模糊）');
 
   String get accountsTitle => _t('Accounts', '账号');
   String get accountLabel => _t('Account {n}', '账号 {n}');
