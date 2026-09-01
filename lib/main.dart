@@ -8,12 +8,14 @@ import 'src/model/config.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/settings_page.dart';
 import 'src/i18n/app_localizations.dart';
+import 'src/widgets/liquid_glass_ui.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 初始化配置管理器
   await ConfigManager.getInstance();
+  await GlassPerformanceController.instance.initialize();
 
   // 锁定竖屏
   await SystemChrome.setPreferredOrientations([
@@ -24,7 +26,8 @@ void main() async {
   // ── 全局异常日志写入：防重入 + 降级兜底 ──
   bool _isLoggingError = false;
 
-  Future<void> _appendErrorToLog(String tag, Object error, StackTrace stack) async {
+  Future<void> _appendErrorToLog(
+      String tag, Object error, StackTrace stack) async {
     if (_isLoggingError) return;
     _isLoggingError = true;
     try {
@@ -44,7 +47,8 @@ void main() async {
   // 捕获 Flutter 框架层异常并追加写入 run.log
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    _appendErrorToLog('FlutterError', details.exception, details.stack ?? StackTrace.empty);
+    _appendErrorToLog(
+        'FlutterError', details.exception, details.stack ?? StackTrace.empty);
   };
 
   // 捕获异步帧级未处理异常
@@ -77,22 +81,46 @@ class ESurfingClientApp extends StatelessWidget {
         }
         return supported.first;
       },
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF1565C0),
-        brightness: Brightness.light,
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF1565C0),
-        brightness: Brightness.dark,
-      ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       themeMode: ThemeMode.system,
       home: const HomePage(),
       routes: {
         '/settings': (context) => const SettingsPage(),
       },
       debugShowCheckedModeBanner: false,
+    );
+  }
+
+  ThemeData _buildTheme(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF2D7DFF),
+      brightness: brightness,
+    );
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: Colors.transparent,
+      canvasColor: dark ? const Color(0xFF0A1726) : const Color(0xFFF3F8FF),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        centerTitle: true,
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor:
+            dark ? const Color(0xE6293B51) : const Color(0xEFFFFFFF),
+        contentTextStyle: TextStyle(color: scheme.onSurface),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      dividerTheme: DividerThemeData(
+        color: scheme.outlineVariant.withValues(alpha: 0.42),
+        space: 1,
+      ),
     );
   }
 }

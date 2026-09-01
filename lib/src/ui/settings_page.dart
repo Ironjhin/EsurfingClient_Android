@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../model/config.dart';
 import '../i18n/app_localizations.dart';
+import '../widgets/liquid_glass_ui.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -27,9 +28,15 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
-    for (final c in _usernameControllers) c.dispose();
-    for (final c in _passwordControllers) c.dispose();
-    for (final c in _markControllers) c.dispose();
+    for (final c in _usernameControllers) {
+      c.dispose();
+    }
+    for (final c in _passwordControllers) {
+      c.dispose();
+    }
+    for (final c in _markControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -123,221 +130,284 @@ class _SettingsPageState extends State<SettingsPage> {
     final i18n = AppLocalizations.of(context);
     final theme = Theme.of(context);
 
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(title: Text(i18n.settingsTitle)),
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text(i18n.settingsTitle),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _saveConfig,
-            tooltip: i18n.btnSave,
+      backgroundColor: Colors.transparent,
+      body: GlassScene(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: GlassTopBar(
+                  title: i18n.settingsTitle,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded),
+                    tooltip:
+                        MaterialLocalizations.of(context).backButtonTooltip,
+                    onPressed: () => Navigator.maybePop(context),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.check_rounded),
+                    onPressed: _isLoading ? null : _saveConfig,
+                    tooltip: i18n.btnSave,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _config == null
+                        ? Center(child: Text(i18n.loadConfigFailed))
+                        : _buildSettingsList(context, i18n, theme),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
-      body: _config == null
-          ? Center(child: Text(i18n.loadConfigFailed))
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                // Global Enabled Switch
-                SwitchListTile(
-                  title: Text(i18n.enableService),
-                  subtitle: Text(i18n.enableServiceSub),
-                  value: _config!.enabled,
+    );
+  }
+
+  Widget _buildSettingsList(
+    BuildContext context,
+    AppLocalizations i18n,
+    ThemeData theme,
+  ) {
+    final glassController = GlassPerformanceController.instance;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 30),
+      children: [
+        GlassSurface(
+          radius: 26,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Column(
+            children: [
+              SwitchListTile(
+                title: Text(i18n.enableService),
+                subtitle: Text(i18n.enableServiceSub),
+                value: _config!.enabled,
+                onChanged: (value) {
+                  setState(() {
+                    _config = ESurfingConfig(
+                      enabled: value,
+                      logLevel: _config!.logLevel,
+                      accounts: _config!.accounts,
+                    );
+                  });
+                },
+              ),
+              const Divider(indent: 12, endIndent: 12),
+              ListTile(
+                title: Text(i18n.logLevel),
+                subtitle: Text(i18n.logLevelLabel(_config!.logLevel)),
+                trailing: DropdownButton<int>(
+                  value: _config!.logLevel,
+                  underline: const SizedBox.shrink(),
+                  borderRadius: BorderRadius.circular(18),
+                  items: const [
+                    DropdownMenuItem(value: 0, child: Text('OFF')),
+                    DropdownMenuItem(value: 1, child: Text('FATAL')),
+                    DropdownMenuItem(value: 2, child: Text('ERROR')),
+                    DropdownMenuItem(value: 3, child: Text('WARN')),
+                    DropdownMenuItem(value: 4, child: Text('INFO')),
+                    DropdownMenuItem(value: 5, child: Text('DEBUG')),
+                    DropdownMenuItem(value: 6, child: Text('VERBOSE')),
+                  ],
                   onChanged: (value) {
-                    setState(() {
-                      _config = ESurfingConfig(
-                        enabled: value,
-                        logLevel: _config!.logLevel,
-                        accounts: _config!.accounts,
-                      );
-                    });
+                    if (value != null) {
+                      setState(() {
+                        _config = ESurfingConfig(
+                          enabled: _config!.enabled,
+                          logLevel: value,
+                          accounts: _config!.accounts,
+                        );
+                      });
+                    }
                   },
                 ),
-                const Divider(),
-
-                // Log Level
-                ListTile(
-                  title: Text(i18n.logLevel),
-                  subtitle: Text(i18n.logLevelLabel(_config!.logLevel)),
-                  trailing: DropdownButton<int>(
-                    value: _config!.logLevel,
-                    items: const [
-                      DropdownMenuItem(value: 0, child: Text('OFF')),
-                      DropdownMenuItem(value: 1, child: Text('FATAL')),
-                      DropdownMenuItem(value: 2, child: Text('ERROR')),
-                      DropdownMenuItem(value: 3, child: Text('WARN')),
-                      DropdownMenuItem(value: 4, child: Text('INFO')),
-                      DropdownMenuItem(value: 5, child: Text('DEBUG')),
-                      DropdownMenuItem(value: 6, child: Text('VERBOSE')),
+              ),
+              const Divider(indent: 12, endIndent: 12),
+              AnimatedBuilder(
+                animation: glassController,
+                builder: (context, _) => ListTile(
+                  leading: const Icon(Icons.auto_awesome),
+                  title: Text(i18n.glassQuality),
+                  subtitle: Text(i18n.glassQualityHint),
+                  trailing: DropdownButton<GlassQualityMode>(
+                    value: glassController.mode,
+                    underline: const SizedBox.shrink(),
+                    borderRadius: BorderRadius.circular(18),
+                    items: [
+                      DropdownMenuItem(
+                        value: GlassQualityMode.automatic,
+                        child: Text(i18n.glassQualityAuto),
+                      ),
+                      DropdownMenuItem(
+                        value: GlassQualityMode.liquid,
+                        child: Text(i18n.glassQualityLiquid),
+                      ),
+                      DropdownMenuItem(
+                        value: GlassQualityMode.efficient,
+                        child: Text(i18n.glassQualityEfficient),
+                      ),
                     ],
                     onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _config = ESurfingConfig(
-                            enabled: _config!.enabled,
-                            logLevel: value,
-                            accounts: _config!.accounts,
-                          );
-                        });
-                      }
+                      if (value != null) glassController.setMode(value);
                     },
                   ),
                 ),
-                const Divider(),
-
-                // Accounts
-                Text(i18n.accountsTitle,
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                ..._formKeys.asMap().entries.map((entry) {
-                  final i = entry.key;
-                  return _buildAccountCard(i, i18n);
-                }),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: Text(i18n.btnAddAccount),
-                  onPressed: _addAccount,
-                ),
-                const SizedBox(height: 24),
-
-                // Info
-                Card(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(i18n.channelOptionsHint,
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Text(i18n.channelPhoneDesc),
-                        Text(i18n.channelPcDesc),
-                        const SizedBox(height: 16),
-                        Text(i18n.markHelpTitle,
-                            style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Text(i18n.markHelp1),
-                        Text(i18n.markHelp2),
-                        Text(i18n.markHelp3),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            i18n.accountsTitle,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
             ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        ..._formKeys.asMap().entries.map(
+              (entry) => _buildAccountCard(entry.key, i18n),
+            ),
+        const SizedBox(height: 2),
+        GlassActionButton(
+          icon: Icons.add_rounded,
+          label: i18n.btnAddAccount,
+          onPressed: _addAccount,
+        ),
+        const SizedBox(height: 24),
+        GlassSurface(
+          tint: theme.colorScheme.secondary,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                i18n.channelOptionsHint,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(i18n.channelPhoneDesc),
+              Text(i18n.channelPcDesc),
+              const SizedBox(height: 16),
+              Text(
+                i18n.markHelpTitle,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(i18n.markHelp1),
+              Text(i18n.markHelp2),
+              Text(i18n.markHelp3),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildAccountCard(int index, AppLocalizations i18n) {
     final theme = Theme.of(context);
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: GlassSurface(
+        radius: 26,
         child: Form(
           key: _formKeys[index],
-          child: IntrinsicHeight(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 220),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        backgroundColor: theme.colorScheme.primaryContainer,
-                        child: Text('${index + 1}'),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 220),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    CircleAvatar(
+                      backgroundColor: theme.colorScheme.primaryContainer,
+                      child: Text('${index + 1}'),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        i18n.accountLabel.replaceAll('{n}', '${index + 1}'),
+                        style: theme.textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          i18n.accountLabel.replaceAll('{n}', '${index + 1}'),
-                          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
+                    ),
+                    if (_formKeys.length > 1)
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _removeAccount(index),
+                        tooltip: i18n.btnRemoveAccount,
                       ),
-                      if (_formKeys.length > 1)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => _removeAccount(index),
-                          tooltip: i18n.btnRemoveAccount,
-                        ),
-                    ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _usernameControllers[index],
+                  decoration: glassInputDecoration(
+                    context,
+                    label: i18n.fieldUsername,
+                    icon: Icons.person_outline_rounded,
                   ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _usernameControllers[index],
-                    decoration: InputDecoration(
-                      labelText: i18n.fieldUsername,
-                      prefixIcon: const Icon(Icons.person),
-                      border: const OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return i18n.validateUsername;
-                      }
-                      return null;
-                    },
+                  validator: (value) {
+                    if (value == null || value.trim().isEmpty) {
+                      return i18n.validateUsername;
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passwordControllers[index],
+                  decoration: glassInputDecoration(
+                    context,
+                    label: i18n.fieldPassword,
+                    icon: Icons.lock_outline_rounded,
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _passwordControllers[index],
-                    decoration: InputDecoration(
-                      labelText: i18n.fieldPassword,
-                      prefixIcon: const Icon(Icons.lock),
-                      border: const OutlineInputBorder(),
-                    ),
-                    obscureText: true,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return i18n.validatePassword;
-                      }
-                      return null;
-                    },
+                  obscureText: true,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return i18n.validatePassword;
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _channelValues[index],
+                  decoration: glassInputDecoration(
+                    context,
+                    label: i18n.fieldChannel,
+                    icon: Icons.router_outlined,
                   ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _channelValues[index],
-                    decoration: InputDecoration(
-                      labelText: i18n.fieldChannel,
-                      prefixIcon: const Icon(Icons.router),
-                      border: const OutlineInputBorder(),
-                    ),
-                    items: [
-                      DropdownMenuItem(value: 'phone', child: Text(i18n.channelPhone)),
-                      DropdownMenuItem(value: 'pc', child: Text(i18n.channelPc)),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _channelValues[index] = value);
-                      }
-                    },
+                  items: [
+                    DropdownMenuItem(
+                        value: 'phone', child: Text(i18n.channelPhone)),
+                    DropdownMenuItem(value: 'pc', child: Text(i18n.channelPc)),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _channelValues[index] = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _markControllers[index],
+                  decoration: glassInputDecoration(
+                    context,
+                    label: i18n.fieldMark,
+                    icon: Icons.tag_rounded,
+                    hint: i18n.hintMark,
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _markControllers[index],
-                    decoration: InputDecoration(
-                      labelText: i18n.fieldMark,
-                      prefixIcon: const Icon(Icons.tag),
-                      border: const OutlineInputBorder(),
-                      hintText: i18n.hintMark,
-                    ),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]')),
-                    ],
-                  ),
-                ],
-              ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F]')),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

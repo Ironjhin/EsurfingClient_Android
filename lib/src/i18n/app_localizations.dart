@@ -28,10 +28,12 @@ class AppLocalizations {
   String get ready => _t('Ready', '就绪');
   String get disabledHint => _t('Disabled', '已禁用');
   String get accountCount => _t('{n} account(s) configured', '已配置 {n} 个账号');
-  String get configInSettings => _t('Please configure accounts in settings', '请在设置中配置账号');
+  String get configInSettings =>
+      _t('Please configure accounts in settings', '请在设置中配置账号');
 
   String get nativeInitFailed => _t('Native init failed', '底层初始化失败');
-  String get authenticatedHeartbeat => _t('Authenticated — heartbeat active', '已认证 — 心跳运行中');
+  String get authenticatedHeartbeat =>
+      _t('Authenticated — heartbeat active', '已认证 — 心跳运行中');
   String get runningDetail => _t('Running in background thread', '在后台线程中运行');
   String get startFailed => _t('Failed to start authentication', '启动认证失败');
   String get stopRequested => _t('Stopping...', '正在停止...');
@@ -43,23 +45,25 @@ class AppLocalizations {
   String get btnForceReset => _t('Force Re-Auth', '强制重新认证');
 
   // 无障碍保活 (Accessibility keepalive)
-  String get keepaliveNeedsEnableTitle => _t('Keep-alive Needs Accessibility', '增强保活需要无障碍服务');
+  String get keepaliveNeedsEnableTitle =>
+      _t('Keep-alive Needs Accessibility', '增强保活需要无障碍服务');
   String get keepaliveNeedsEnableBody => _t(
-    'To prevent being killed by the system, please enable the accessibility service for this app in Settings.',
-    '为了防止被系统清理,请在系统设置里为本应用开启无障碍服务。',
-  );
+        'To prevent being killed by the system, please enable the accessibility service for this app in Settings.',
+        '为了防止被系统清理,请在系统设置里为本应用开启无障碍服务。',
+      );
   String get keepaliveKilledHint => _t(
-    'If the system reclaims the process in the background, the service will disconnect — just come back here and tap the button below to turn it back on.',
-    '若系统后台回收了进程,服务会断开 — 回到这里点下方按钮重新开启即可。',
-  );
-  String get keepaliveStatusRunning => _t('Service is running normally ✓', '服务运行正常 ✓');
+        'If the system reclaims the process in the background, the service will disconnect — just come back here and tap the button below to turn it back on.',
+        '若系统后台回收了进程,服务会断开 — 回到这里点下方按钮重新开启即可。',
+      );
+  String get keepaliveStatusRunning =>
+      _t('Service is running normally ✓', '服务运行正常 ✓');
 
   // 配置缺失对话框
   String get configRequiredTitle => _t('Configuration Required', '需要配置');
   String get configRequiredBody => _t(
-    'Please add at least one account with both username and password in Settings.',
-    '请至少添加一个包含用户名和密码的账号。',
-  );
+        'Please add at least one account with both username and password in Settings.',
+        '请至少添加一个包含用户名和密码的账号。',
+      );
   String get btnCancel => _t('Cancel', '取消');
   String get btnOpenSettings => _t('Open Settings', '打开设置');
 
@@ -69,9 +73,9 @@ class AppLocalizations {
 
   // 底部版本
   String get versionInfo => _t(
-    'ESurfing Client v1.0.0\nFlutter + NDK FFI',
-    '天翼认证客户端 v1.0.0\nFlutter + NDK FFI',
-  );
+        'ESurfing Client v1.0.0\nFlutter + NDK FFI',
+        '天翼认证客户端 v1.0.0\nFlutter + NDK FFI',
+      );
 
   // 日志面板
   String get logPanelTitle => _t('Run Log', '运行日志');
@@ -95,9 +99,19 @@ class AppLocalizations {
   String get loadConfigFailed => _t('Failed to load config', '加载配置失败');
 
   String get enableService => _t('Enable Service', '启用服务');
-  String get enableServiceSub => _t('Start authentication on app launch', '应用启动时自动开始认证');
+  String get enableServiceSub =>
+      _t('Start authentication on app launch', '应用启动时自动开始认证');
 
   String get logLevel => _t('Log Level', '日志等级');
+
+  String get glassQuality => _t('Glass Quality', '玻璃效果质量');
+  String get glassQualityHint => _t(
+        'Auto switches to efficient glass when GPU load may be high',
+        '自动模式会在 GPU 负载较高时切换为节能玻璃',
+      );
+  String get glassQualityAuto => _t('Auto', '自动');
+  String get glassQualityLiquid => _t('Liquid', '真实液态');
+  String get glassQualityEfficient => _t('Efficient', '节能');
 
   String get accountsTitle => _t('Accounts', '账号');
   String get accountLabel => _t('Account {n}', '账号 {n}');
@@ -109,7 +123,8 @@ class AppLocalizations {
   String get fieldPassword => _t('Password', '密码');
   String get fieldChannel => _t('Channel', '通道');
   String get fieldMark => _t('Mark (Optional)', '标记值（可选）');
-  String get hintMark => _t('Hex without 0x (e.g., 100)', '十六进制，无需 0x 前缀（如 100）');
+  String get hintMark =>
+      _t('Hex without 0x (e.g., 100)', '十六进制，无需 0x 前缀（如 100）');
   String get validateUsername => _t('Username is required', '请输入用户名');
   String get validatePassword => _t('Password is required', '请输入密码');
 
@@ -119,24 +134,39 @@ class AppLocalizations {
 
   // 帮助信息
   String get channelOptionsHint => _t('Channel Options:', '通道选项：');
-  String get channelPhoneDesc => _t('• phone - Mobile client (CCTP/android64_vpn/2093)', '• phone - 手机端 (CCTP/android64_vpn/2093)');
-  String get channelPcDesc => _t('• pc - PC client (CCTP/Linux64/1003)', '• pc - 电脑端 (CCTP/Linux64/1003)');
+  String get channelPhoneDesc => _t(
+      '• phone - Mobile client (CCTP/android64_vpn/2093)',
+      '• phone - 手机端 (CCTP/android64_vpn/2093)');
+  String get channelPcDesc => _t(
+      '• pc - PC client (CCTP/Linux64/1003)', '• pc - 电脑端 (CCTP/Linux64/1003)');
   String get markHelpTitle => _t('Mark (SO_MARK):', '标记值 (SO_MARK)：');
-  String get markHelp1 => _t('• Optional routing mark for multi-WAN setups', '• 多 WAN 环境下的可选路由标记');
-  String get markHelp2 => _t('• Leave empty for auto-assignment (0x100, 0x200, ...)', '• 留空将自动分配 (0x100, 0x200, ...)');
-  String get markHelp3 => _t('• Format: hex without 0x prefix (e.g., "100")', '• 格式：不带 0x 前缀的十六进制（如 "100"）');
+  String get markHelp1 =>
+      _t('• Optional routing mark for multi-WAN setups', '• 多 WAN 环境下的可选路由标记');
+  String get markHelp2 => _t(
+      '• Leave empty for auto-assignment (0x100, 0x200, ...)',
+      '• 留空将自动分配 (0x100, 0x200, ...)');
+  String get markHelp3 => _t('• Format: hex without 0x prefix (e.g., "100")',
+      '• 格式：不带 0x 前缀的十六进制（如 "100"）');
 
   // 日志等级选项
   String logLevelLabel(int level) {
     switch (level) {
-      case 0: return 'OFF';
-      case 1: return 'FATAL';
-      case 2: return 'ERROR';
-      case 3: return 'WARN';
-      case 4: return 'INFO';
-      case 5: return 'DEBUG';
-      case 6: return 'VERBOSE';
-      default: return 'UNKNOWN';
+      case 0:
+        return 'OFF';
+      case 1:
+        return 'FATAL';
+      case 2:
+        return 'ERROR';
+      case 3:
+        return 'WARN';
+      case 4:
+        return 'INFO';
+      case 5:
+        return 'DEBUG';
+      case 6:
+        return 'VERBOSE';
+      default:
+        return 'UNKNOWN';
     }
   }
 
@@ -147,11 +177,12 @@ class AppLocalizationsDelegate extends LocalizationsDelegate<AppLocalizations> {
   const AppLocalizationsDelegate();
 
   @override
-  bool isSupported(Locale locale) =>
-      AppLocalizations.supportedLocales.any((l) => l.languageCode == locale.languageCode);
+  bool isSupported(Locale locale) => AppLocalizations.supportedLocales
+      .any((l) => l.languageCode == locale.languageCode);
 
   @override
-  Future<AppLocalizations> load(Locale locale) => Future.value(AppLocalizations(locale));
+  Future<AppLocalizations> load(Locale locale) =>
+      Future.value(AppLocalizations(locale));
 
   @override
   bool shouldReload(AppLocalizationsDelegate old) => false;

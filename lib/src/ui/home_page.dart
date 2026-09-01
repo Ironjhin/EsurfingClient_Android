@@ -9,6 +9,7 @@ import '../native/keep_alive_channel.dart';
 import '../i18n/app_localizations.dart';
 import '../services/log_reader.dart';
 import '../widgets/log_viewer.dart';
+import '../widgets/liquid_glass_ui.dart';
 import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -22,7 +23,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   ESurfingConfig? _config;
   bool _isLoading = true;
   bool _isRunning = false;
-  String _statusText = '';  // 由首帧 i18n 注入
+  String _statusText = ''; // 由首帧 i18n 注入
   String _statusDetail = '';
   bool? _accessibilityEnabled; // null = 未查询, true/false = 结果
   final AuthController _authCtrl = AuthController.instance;
@@ -131,8 +132,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     }
 
     // 检查至少有一个有效账号
-    final validAccounts =
-        _config!.accounts.where((a) => a.username.isNotEmpty && a.password.isNotEmpty).toList();
+    final validAccounts = _config!.accounts
+        .where((a) => a.username.isNotEmpty && a.password.isNotEmpty)
+        .toList();
     if (validAccounts.isEmpty) {
       _showConfigRequiredDialog();
       return;
@@ -205,14 +207,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void _showConfigRequiredDialog() {
     if (!mounted) return;
     final i18n = AppLocalizations.of(context);
-    showDialog<void>(
+    showLiquidGlassDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => LiquidGlassDialog(
         title: Text(i18n.configRequiredTitle),
         content: Text(i18n.configRequiredBody),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: Text(i18n.btnCancel),
           ),
           TextButton(
@@ -239,162 +241,168 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final i18n = AppLocalizations.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(i18n.appTitle),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () async {
-              await Navigator.push<void>(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const SettingsPage()),
-              );
-              _loadConfig();
-              // 从 Settings 返回后也刷一遍 — /settings 可能开启了自动启动之类.
-              if (Platform.isAndroid) {
-                await _refreshAccessibility();
-              }
-            },
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              children: [
-                // ── 增强保活卡 (Android only) ──
-                if (Platform.isAndroid) ...[
-                  _buildAccessibilityTile(theme, cs),
-                  const SizedBox(height: 12),
-                ],
-
-                // ── 状态 Hero 卡 ──
-                _buildStatusHero(theme, cs),
-                const SizedBox(height: 16),
-
-                // ── 主操作区 ──
-                _buildPrimaryButton(theme, cs),
-                // ── 强制重新认证 ──
-                if (_isRunning) ...[
-                  const SizedBox(height: 8),
-                  Center(
-                    child: TextButton.icon(
-                      onPressed: _authCtrl.forceAuthReset,
-                      icon: const Icon(Icons.refresh, size: 18),
-                      label: Text(i18n.btnForceReset),
-                      style: TextButton.styleFrom(foregroundColor: cs.error),
-                    ),
+      backgroundColor: Colors.transparent,
+      body: GlassScene(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: GlassTopBar(
+                  title: i18n.appTitle,
+                  trailing: IconButton(
+                    icon: const Icon(Icons.settings_outlined),
+                    tooltip: i18n.settingsTitle,
+                    onPressed: () async {
+                      await Navigator.push<void>(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => const SettingsPage(),
+                        ),
+                      );
+                      _loadConfig();
+                      // 从 Settings 返回后也刷一遍 — /settings 可能开启了自动启动之类.
+                      if (Platform.isAndroid) {
+                        await _refreshAccessibility();
+                      }
+                    },
                   ),
-                ],
-                const SizedBox(height: 24),
-
-                // ── 账号摘要 ──
-                if (_config != null && _config!.accounts.isNotEmpty)
-                  _buildAccountCard(theme, cs),
-
-                const SizedBox(height: 16),
-
-                // ── 实时日志面板 ──
-                LogViewer(reader: _logReader),
-
-                const SizedBox(height: 24),
-              ],
-            ),
+                ),
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+                        children: [
+                          if (Platform.isAndroid) ...[
+                            _buildAccessibilityTile(theme, cs),
+                            const SizedBox(height: 14),
+                          ],
+                          _buildStatusHero(theme, cs),
+                          const SizedBox(height: 14),
+                          GlassBlendGroup(
+                            blend: 10,
+                            child: Column(
+                              children: [
+                                _buildPrimaryButton(cs),
+                                if (_isRunning) ...[
+                                  const SizedBox(height: 8),
+                                  GlassActionButton(
+                                    grouped: true,
+                                    height: 46,
+                                    icon: Icons.refresh,
+                                    label: i18n.btnForceReset,
+                                    color: cs.error,
+                                    onPressed: _authCtrl.forceAuthReset,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          if (_config != null && _config!.accounts.isNotEmpty)
+                            _buildAccountCard(theme),
+                          const SizedBox(height: 14),
+                          LogViewer(reader: _logReader),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
   Widget _buildStatusHero(ThemeData theme, ColorScheme cs) {
     final isUp = _isRunning;
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: isUp
-          ? cs.primaryContainer.withOpacity(0.6)
-          : cs.surfaceContainerHighest,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
-        child: Column(
-          children: [
-            Icon(
+    return GlassSurface(
+      radius: 30,
+      tint: isUp ? cs.primary : cs.surfaceTint,
+      glow: true,
+      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+      child: Column(
+        children: [
+          Container(
+            width: 82,
+            height: 82,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  (isUp ? cs.primary : cs.onSurfaceVariant)
+                      .withValues(alpha: 0.22),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: Icon(
               isUp ? Icons.wifi : Icons.wifi_off,
-              size: 56,
+              size: 54,
               color: isUp ? cs.primary : cs.onSurfaceVariant,
             ),
-            const SizedBox(height: 12),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _statusText,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: isUp ? cs.primary : cs.onSurface,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          if (_statusDetail.isNotEmpty) ...[
+            const SizedBox(height: 4),
             Text(
-              _statusText,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: isUp ? cs.primary : cs.onSurface,
-              ),
+              _statusDetail,
+              style: theme.textTheme.bodyMedium
+                  ?.copyWith(color: cs.onSurfaceVariant),
               textAlign: TextAlign.center,
             ),
-            if (_statusDetail.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                _statusDetail,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: cs.onSurfaceVariant),
-                textAlign: TextAlign.center,
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildPrimaryButton(ThemeData theme, ColorScheme cs) {
+  Widget _buildPrimaryButton(ColorScheme cs) {
     final i18n = AppLocalizations.of(context);
     final isUp = _isRunning;
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: FilledButton.icon(
-        icon: Icon(isUp ? Icons.stop : Icons.play_arrow),
-        label: Text(isUp ? i18n.btnStopAuth : i18n.btnStartAuth),
-        onPressed: _toggleAuth,
-        style: FilledButton.styleFrom(
-          backgroundColor: isUp ? cs.error : cs.primary,
-          foregroundColor: isUp ? cs.onError : cs.onPrimary,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
+    return GlassActionButton(
+      grouped: true,
+      icon: isUp ? Icons.stop_rounded : Icons.play_arrow_rounded,
+      label: isUp ? i18n.btnStopAuth : i18n.btnStartAuth,
+      color: isUp ? cs.error : cs.primary,
+      onPressed: _toggleAuth,
     );
   }
 
-  Widget _buildAccountCard(ThemeData theme, ColorScheme cs) {
+  Widget _buildAccountCard(ThemeData theme) {
     final i18n = AppLocalizations.of(context);
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              i18n.configuredAccounts,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            ..._config!.accounts.asMap().entries.map((entry) {
-              final i = entry.key;
-              final a = entry.value;
-              return ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(radius: 16, child: Text('${i + 1}')),
-                title: Text(a.username.isEmpty ? i18n.emptyAccount : a.username),
-                subtitle: Text('${i18n.fieldChannel}: ${a.channel}'),
-              );
-            }),
-          ],
-        ),
+    return GlassSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            i18n.configuredAccounts,
+            style: theme.textTheme.titleSmall
+                ?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ..._config!.accounts.asMap().entries.map((entry) {
+            final i = entry.key;
+            final a = entry.value;
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: CircleAvatar(radius: 16, child: Text('${i + 1}')),
+              title: Text(a.username.isEmpty ? i18n.emptyAccount : a.username),
+              subtitle: Text('${i18n.fieldChannel}: ${a.channel}'),
+            );
+          }),
+        ],
       ),
     );
   }
@@ -406,89 +414,83 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     // null = 还在查(首次启动) — 显示引导态,和未开启一样的行动按钮.
     final isOn = enabled == true;
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: isOn
-          ? cs.primaryContainer.withOpacity(0.5)
-          : cs.tertiaryContainer.withOpacity(0.5),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              isOn ? Icons.verified_user : Icons.privacy_tip_outlined,
-              size: 22,
-              color: isOn ? cs.primary : cs.tertiary,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    isOn ? '已开启增强保活' : '开启增强保活',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: isOn ? cs.primary : cs.tertiary,
-                    ),
+    return GlassSurface(
+      tint: isOn ? cs.primary : cs.tertiary,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isOn ? Icons.verified_user : Icons.privacy_tip_outlined,
+            size: 22,
+            color: isOn ? cs.primary : cs.tertiary,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isOn ? '已开启增强保活' : '开启增强保活',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: isOn ? cs.primary : cs.tertiary,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isOn
-                        ? '系统已放宽电池优化,守护进程不会被回收'
-                        : '开启无障碍服务后放宽电池优化限制,熄屏 30 分钟+ 仍保持在线。不会监听或操作你的界面。',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  isOn
+                      ? '系统已放宽电池优化,守护进程不会被回收'
+                      : '开启无障碍服务后放宽电池优化限制,熄屏 30 分钟+ 仍保持在线。不会监听或操作你的界面。',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  i18n.keepaliveKilledHint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.7),
+                    fontSize: 11,
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    i18n.keepaliveKilledHint,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: cs.onSurfaceVariant.withOpacity(0.7),
-                      fontSize: 11,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // 无论是否开启都显示按钮:开启时用于"重新检查/管理",未开启时用于跳转.
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      if (isOn) {
-                        // 已开启:刷新状态并告知用户当前真实情况.
-                        await _refreshAccessibility();
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(i18n.keepaliveStatusRunning),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      } else {
-                        // 未开启:直接跳转到无障碍系统页.
-                        await KeepAliveChannel.openAccessibilitySettings();
-                        // 立刻刷一次:用户可能在系统页开启后返回.
-                        // 不依赖 didChangeAppLifecycleState — 原生 Activity 切换
-                        // 不一定派发 resumed 事件,这里同步补一次最稳.
-                        if (mounted) await _refreshAccessibility();
+                ),
+                const SizedBox(height: 8),
+                // 无论是否开启都显示按钮:开启时用于"重新检查/管理",未开启时用于跳转.
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    if (isOn) {
+                      // 已开启:刷新状态并告知用户当前真实情况.
+                      await _refreshAccessibility();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(i18n.keepaliveStatusRunning),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
                       }
-                    },
-                    icon: Icon(isOn ? Icons.check : Icons.open_in_new, size: 16),
-                    label: Text(isOn ? '检查状态' : '去开启'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: isOn ? cs.primary : cs.tertiary,
-                      side: BorderSide(
-                          color: (isOn ? cs.primary : cs.tertiary)
-                              .withOpacity(0.5)),
-                      visualDensity: VisualDensity.compact,
+                    } else {
+                      // 未开启:直接跳转到无障碍系统页.
+                      await KeepAliveChannel.openAccessibilitySettings();
+                      // 立刻刷一次:用户可能在系统页开启后返回.
+                      // 不依赖 didChangeAppLifecycleState — 原生 Activity 切换
+                      // 不一定派发 resumed 事件,这里同步补一次最稳.
+                      if (mounted) await _refreshAccessibility();
+                    }
+                  },
+                  icon: Icon(isOn ? Icons.check : Icons.open_in_new, size: 16),
+                  label: Text(isOn ? '检查状态' : '去开启'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isOn ? cs.primary : cs.tertiary,
+                    side: BorderSide(
+                      color: (isOn ? cs.primary : cs.tertiary)
+                          .withValues(alpha: 0.5),
                     ),
+                    visualDensity: VisualDensity.compact,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
