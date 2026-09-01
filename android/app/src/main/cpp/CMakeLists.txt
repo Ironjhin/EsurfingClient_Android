@@ -80,7 +80,9 @@ find_library(ANDROID_LOG log)
 # ============================================================
 #  源文件
 # ============================================================
-file(GLOB CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/impl/*.c")
+# 上游已弃用旧版 Android 算法；这里只保留仍有效的 PC/Linux 兼容实现。
+file(GLOB CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/impl/*_pc.c")
+file(GLOB ANDROID_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/android/*.c")
 
 file(GLOB UTILS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/utils/*.c")
 
@@ -100,6 +102,7 @@ set(MAIN_SOURCES
 set(ALL_SOURCES
     ${MAIN_SOURCES}
     ${CIPHER_SOURCES}
+    ${ANDROID_CIPHER_SOURCES}
     ${UTILS_SOURCES}
     ${WEBSERVER_SOURCES}
 )

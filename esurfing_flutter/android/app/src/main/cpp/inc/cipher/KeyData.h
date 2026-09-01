@@ -108,4 +108,56 @@ extern const uint8_t key4_B306E770_B7D5_49F2_A574_BCE2C5C650ED[8];
 extern const uint8_t key5_B306E770_B7D5_49F2_A574_BCE2C5C650ED[8];
 extern const uint8_t key6_B306E770_B7D5_49F2_A574_BCE2C5C650ED[8];
 
+// Algo Id: 07E824B2-9E5C-4D1B-BBB0-5E07C251E4AA (SNOW3G-variant) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_07E824B2_9E5C_4D1B_BBB0_5E07C251E4AA[16];
+extern const uint8_t iv_07E824B2_9E5C_4D1B_BBB0_5E07C251E4AA[16];
+
+// -----------------------------------------------------------------
+// Algo Id: 319FC5AB-EC0E-46B9-A252-2285F9DAE813 (Triple modified-TEA) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_319FC5AB_EC0E_46B9_A252_2285F9DAE813[48];
+
+// -----------------------------------------------------------------
+// Algo Id: D6544CFE-F2DE-459B-9B77-0F2B367EF169 (SM4-variant CBC) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_D6544CFE_F2DE_459B_9B77_0F2B367EF169[16];
+extern const uint8_t iv_D6544CFE_F2DE_459B_9B77_0F2B367EF169[16];
+
+// -----------------------------------------------------------------
+// Algo Id: D755A536-B551-468C-BD87-322182B223D4 (SM4-variant ECB) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_D755A536_B551_468C_BD87_322182B223D4[16];
+extern const uint8_t iv_D755A536_B551_468C_BD87_322182B223D4[16];
+
+// -----------------------------------------------------------------
+// Algo Id: BB2EA626-590B-4C42-82BE-E052FCBBB88E (double AES-128-CBC) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_BB2EA626_590B_4C42_82BE_E052FCBBB88E[32];
+extern const uint8_t iv_BB2EA626_590B_4C42_82BE_E052FCBBB88E[16];
+
+// -----------------------------------------------------------------
+// Algo Id: DEABB8C8-A2BC-48CA-8ED0-8CDF1BD62F61 (double AES-128-CBC) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_DEABB8C8_A2BC_48CA_8ED0_8CDF1BD62F61[32];
+extern const uint8_t iv_DEABB8C8_A2BC_48CA_8ED0_8CDF1BD62F61[16];
+
+// -----------------------------------------------------------------
+// Algo Id: 9ABF4D29-34DB-4CE9-BB8C-7E371D637758 (double 3DES-CBC) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_9ABF4D29_34DB_4CE9_BB8C_7E371D637758[48];
+extern const uint8_t iv_9ABF4D29_34DB_4CE9_BB8C_7E371D637758[16];
+
+// -----------------------------------------------------------------
+// Algo Id: AD8BB5B0-0E72-4198-A362-96D52C1B7ED1 (six-layer DES-ECB) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_AD8BB5B0_0E72_4198_A362_96D52C1B7ED1[48];
+extern const uint8_t iv_AD8BB5B0_0E72_4198_A362_96D52C1B7ED1[16];
+
+// -----------------------------------------------------------------
+// Algo Id: 35101415-A20F-4DFE-B00B-0B4F3B2F8C66 (triple modified-TEA CBC) (Android new)
+// -----------------------------------------------------------------
+extern const uint8_t key_35101415_A20F_4DFE_B00B_0B4F3B2F8C66[48];
+extern const uint8_t iv_35101415_A20F_4DFE_B00B_0B4F3B2F8C66[16];
+
 #endif // ESURFINGCLIENT_KEYDATA_H

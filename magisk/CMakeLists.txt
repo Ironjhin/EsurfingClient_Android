@@ -78,7 +78,9 @@ include_directories(${curl_SOURCE_DIR}/include)
 # ============================================================
 # 源文件
 # ============================================================
-file(GLOB CIPHER_SOURCES "${SRC_ROOT}/cipher/impl/*.c")
+# 上游已弃用旧版 Android 算法；这里只保留仍有效的 PC/Linux 兼容实现。
+file(GLOB CIPHER_SOURCES "${SRC_ROOT}/cipher/impl/*_pc.c")
+file(GLOB ANDROID_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/android/*.c")
 file(GLOB UTILS_SOURCES "${SRC_ROOT}/utils/*.c")
 file(GLOB WEBSERVER_SOURCES "${SRC_ROOT}/webserver/*.c")
 
@@ -96,6 +98,7 @@ set(MAIN_SOURCES
 set(ALL_SOURCES
     ${MAIN_SOURCES}
     ${CIPHER_SOURCES}
+    ${ANDROID_CIPHER_SOURCES}
     ${UTILS_SOURCES}
     ${WEBSERVER_SOURCES}
 )

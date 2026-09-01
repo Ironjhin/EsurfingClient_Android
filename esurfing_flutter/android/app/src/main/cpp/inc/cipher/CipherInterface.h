@@ -86,6 +86,38 @@ extern cipher_interface_t* create_zuc_cipher(
     const uint8_t* key,
     const uint8_t* iv);
 
+extern cipher_interface_t* create_snow3g_variant_android_cipher(
+    const uint8_t* key,
+    const uint8_t* iv);
+
+extern cipher_interface_t* create_tea_triple_ecb_android_cipher(
+    const uint8_t* key);
+
+extern cipher_interface_t* create_tea_triple_cbc_android_cipher(
+    const uint8_t* key,
+    const uint8_t* iv);
+
+extern cipher_interface_t* create_sm4_variant_cbc_android_cipher(
+    const uint8_t* key,
+    const uint8_t* iv);
+
+extern cipher_interface_t* create_sm4_variant_ecb_android_cipher(
+    const uint8_t* key);
+
+extern cipher_interface_t* create_aes_double_cbc_android_cipher(
+    const uint8_t* key,
+    const uint8_t* iv);
+
+extern cipher_interface_t* create_aes_double_ecb_android_cipher(
+    const uint8_t* key);
+
+extern cipher_interface_t* create_desede_double_cbc_android_cipher(
+    const uint8_t* key,
+    const uint8_t* iv);
+
+extern cipher_interface_t* create_des_ecb_six_android_cipher(
+    const uint8_t* key);
+
 /**
  * 销毁加解密工厂
  */

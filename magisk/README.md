@@ -124,6 +124,7 @@ CI 自动构建在 GitHub Actions 的 `magisk` 分支上运行。
 | 日志 | 终端输出 | 文件日志 + Web 页面实时查看 |
 | DNS | 未处理校园网 DNS 不可达 | 域名重写 + 公网 IP 直连 |
 | 探测 | 单一 204 探测 | 双探针 + 超时降级（连通判定） |
+| 算法 | CVersion v2.0.6-r1 新 Android 算法 | 已同步 9 个新 Android 算法，停用 9 个旧 Android 算法，保留 6 个有效的 PC/Linux 算法 |
 | 线程 | 退出需手动重启 | 自动守护重启 |
 | 闪退恢复 | 无 | `service.sh` 启动后常驻 |
 

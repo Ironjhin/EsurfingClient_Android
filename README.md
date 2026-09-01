@@ -32,6 +32,7 @@
 | 10 | NULL 解引用闪退 | Portal 配置 XML 结尾标签缺失时未做容错 | 增加结尾标签缺失保护 |
 | 11 | 校园网标志 `readlink` 死循环 | `get_school_network_symbol()` 指针空悬 | 增加三层判空保护 |
 | 12 | 备用探针无意义 fallback | AC IP（`wlanacip`）不 serve portal 页面 | 删除 AC fallback 逻辑 |
+| 13 | 上游算法更迭后无法识别新 Algo ID | Magisk 版仅包含旧 Android 与 PC/Linux 算法 | 同步 CVersion v2.0.6-r1 的 9 个新 Android 算法；停用 9 个上游已弃用的旧 Android 算法，保留仍有效的 6 个 PC/Linux 算法 |
 
 ## 安装
 
