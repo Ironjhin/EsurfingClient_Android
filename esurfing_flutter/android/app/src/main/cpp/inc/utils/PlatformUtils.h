@@ -2,6 +2,7 @@
 #define ESURFINGCLIENT_PLATFORMUTILS_H
 
 #include "States.h"
+#include "utils/cJSON.h"
 
 #include <inttypes.h>
 #include <stdint.h>

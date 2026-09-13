@@ -139,6 +139,10 @@ target_compile_options(esurfing_client PRIVATE
     -D__OPENWRT__=0
 )
 
+target_compile_definitions(esurfing_client PRIVATE
+    PROGRAM_FULL_VERSION="v2.0.8-r1"
+)
+
 target_include_directories(esurfing_client PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/external

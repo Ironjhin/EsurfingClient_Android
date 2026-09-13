@@ -10,6 +10,10 @@
 #include "NetClient.h"
 #include "States.h"
 
+#ifndef PROGRAM_FULL_VERSION
+#define PROGRAM_FULL_VERSION "v2.0.8-r1"
+#endif
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
