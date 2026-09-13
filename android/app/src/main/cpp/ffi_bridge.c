@@ -173,11 +173,22 @@ void esurfing_client_destroy(void) {
     g_prog_cnt = 0;
 }
 
-/* 强制重新认证: 设置 is_need_reset 标志,轮询线程会在下一个 100ms 周期重建拨号线程 */
+/* 强制重新认证: 设置 is_need_reset 标志, dialer_app 会在就地完成 reset 并重拨 */
 void esurfing_client_force_auth_reset(void) {
     if (!g_prog_status) return;
     for (int i = 0; i < g_prog_cnt; i++) {
         g_prog_status[i].runtime_status.is_need_reset = true;
     }
+}
+
+int32_t esurfing_client_get_auth_state(int32_t idx) {
+    if (!g_prog_status || idx < 0 || idx >= g_prog_cnt) return -1;
+    int32_t state = 0;
+    if (g_prog_status[idx].runtime_status.is_running)       state |= 0x01;
+    if (g_prog_status[idx].runtime_status.is_authed)        state |= 0x02;
+    if (g_prog_status[idx].runtime_status.is_connected)     state |= 0x04;
+    if (g_prog_status[idx].runtime_status.is_time_disabled) state |= 0x08;
+    if (g_prog_status[idx].runtime_status.is_initialized)   state |= 0x10;
+    return state;
 }
 

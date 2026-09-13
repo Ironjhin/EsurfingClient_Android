@@ -104,12 +104,52 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _uptimeTimer?.cancel();
     _uptimeNotifier.value =
         _formatUptime(DateTime.now().difference(_startTime!));
+    _syncRuntimeStatus();
     _uptimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_startTime != null) {
         _uptimeNotifier.value =
             _formatUptime(DateTime.now().difference(_startTime!));
       }
+      _syncRuntimeStatus();
     });
+  }
+
+  void _syncRuntimeStatus() {
+    if (!mounted || !_isRunning) return;
+    final state = _authCtrl.getAuthState();
+    if (state < 0) return;
+
+    final isRunning = (state & 0x01) != 0;
+    final isAuthed = (state & 0x02) != 0;
+    final isConnected = (state & 0x04) != 0;
+    final isTimeDisabled = (state & 0x08) != 0;
+
+    final i18n = AppLocalizations.of(context);
+    if (!isRunning) {
+      setState(() {
+        _isRunning = false;
+        _statusText = isTimeDisabled ? i18n.disabledHint : i18n.stopped;
+        _statusDetail = '';
+      });
+      _stopUptimeTimer();
+      return;
+    }
+
+    String nextText;
+    if (isAuthed) {
+      nextText = i18n.authenticatedHeartbeat;
+    } else if (isConnected) {
+      nextText = i18n.connectedDirect;
+    } else {
+      nextText = i18n.authenticating;
+    }
+
+    if (_statusText != nextText) {
+      setState(() {
+        _statusText = nextText;
+        _statusDetail = i18n.runningDetail;
+      });
+    }
   }
 
   void _stopUptimeTimer() {
@@ -140,10 +180,12 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       final i18n = AppLocalizations.of(context);
       setState(() {
         _config = config;
-        _statusText = config.enabled ? i18n.ready : i18n.disabledHint;
-        _statusDetail = config.enabled
-            ? i18n.accountCount.replaceAll('{n}', '${config.accounts.length}')
-            : i18n.configInSettings;
+        if (!_isRunning) {
+          _statusText = config.enabled ? i18n.ready : i18n.disabledHint;
+          _statusDetail = config.enabled
+              ? i18n.accountCount.replaceAll('{n}', '${config.accounts.length}')
+              : i18n.configInSettings;
+        }
       });
       // 无论是冷启动还是从 Settings 返回,都尝试自动启动
       _tryAutoStart();
@@ -226,7 +268,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (mounted) {
         if (started) {
           setState(() {
-            _statusText = i18n.authenticatedHeartbeat;
+            _statusText = i18n.authenticating;
             _statusDetail = i18n.runningDetail;
           });
           _startUptimeTimer();
@@ -445,7 +487,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: cs.primary.withValues(alpha: 0.3),
-                        width: 1,
                       ),
                     ),
                     child: Text(

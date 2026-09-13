@@ -16,6 +16,19 @@ void   esurfing_client_clear_log(void);
 void   esurfing_client_force_auth_reset(void);
 
 /**
+ * @brief 获取指定认证线程的状态位掩码
+ *
+ * @param thread_index 线程下标 (0 到 g_prog_cnt - 1)
+ * @return int32_t 状态掩码 (失败返回 -1):
+ *         bit 0 (0x01): is_running
+ *         bit 1 (0x02): is_authed
+ *         bit 2 (0x04): is_connected
+ *         bit 3 (0x08): is_time_disabled
+ *         bit 4 (0x10): is_initialized
+ */
+int32_t esurfing_client_get_auth_state(int32_t thread_index);
+
+/**
  * @brief 初始化原生层环境（注入 Android 沙盒路径）
  *
  * 应在 esurfing_client_init() 之前调用。

@@ -131,7 +131,7 @@ class AuthController {
       _workerSendPort!.send(_StopCommand());
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
-    _workerIsolate?.kill(priority: Isolate.beforeNextEvent);
+    _workerIsolate?.kill();
     _workerIsolate = null;
     _workerSendPort = null;
     _mainReceivePort?.close();
@@ -155,7 +155,7 @@ class AuthController {
   }
 
   /// ================================================================
-  ///  强制重新认证 — 设置 is_need_reset, 后台工作循环立即重建拨号线程
+  ///  强制重新认证 — 设置 is_need_reset, dialer_app 就地重置会话并重新拨号
   /// ================================================================
   Future<void> forceAuthReset() async {
     if (!_running) return;
@@ -165,6 +165,24 @@ class AuthController {
       bindings.esurfingClientForceAuthReset();
       onStatusChanged?.call(true, '正在强制重新认证...');
     } catch (_) {}
+  }
+
+  /// ================================================================
+  ///  获取 C 层认证与连接状态位掩码
+  ///  bit 0 (0x01): is_running
+  ///  bit 1 (0x02): is_authed
+  ///  bit 2 (0x04): is_connected
+  ///  bit 3 (0x08): is_time_disabled
+  ///  bit 4 (0x10): is_initialized
+  /// ================================================================
+  int getAuthState({int accountIndex = 0}) {
+    final bindings = NativeBindings.instance;
+    if (!bindings.isLoaded) return -1;
+    try {
+      return bindings.esurfingClientGetAuthState(accountIndex);
+    } catch (_) {
+      return -1;
+    }
   }
 
   /// ================================================================

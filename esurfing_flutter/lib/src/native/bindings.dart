@@ -7,14 +7,15 @@ import 'package:ffi/ffi.dart';
 // ============================================================
 
 /// C 函数签名声明
-typedef init_c = Int32 Function(Pointer<Utf8>, Pointer<Utf8>);
-typedef start_c = Int32 Function(Int32);
-typedef stop_c = Void Function();
-typedef is_stopped_c = Int32 Function();
-typedef destroy_c = Void Function();
-typedef clear_log_c = Void Function();
-typedef init_native_env_c = Void Function(Pointer<Utf8>);
-typedef force_auth_reset_c = Void Function();
+typedef InitC = Int32 Function(Pointer<Utf8>, Pointer<Utf8>);
+typedef StartC = Int32 Function(Int32);
+typedef StopC = Void Function();
+typedef IsStoppedC = Int32 Function();
+typedef DestroyC = Void Function();
+typedef ClearLogC = Void Function();
+typedef InitNativeEnvC = Void Function(Pointer<Utf8>);
+typedef ForceAuthResetC = Void Function();
+typedef GetAuthStateC = Int32 Function(Int32);
 
 /// Dart 侧函数签名
 typedef InitDart = int Function(Pointer<Utf8>, Pointer<Utf8>);
@@ -25,6 +26,7 @@ typedef DestroyDart = void Function();
 typedef ClearLogDart = void Function();
 typedef InitNativeEnvDart = void Function(Pointer<Utf8>);
 typedef ForceAuthResetDart = void Function();
+typedef GetAuthStateDart = int Function(int);
 
 // ============================================================
 //  Native 库加载与符号绑定
@@ -43,6 +45,7 @@ class NativeBindings {
   late final ClearLogDart esurfingClientClearLog;
   late final InitNativeEnvDart initNativeEnv;
   late final ForceAuthResetDart esurfingClientForceAuthReset;
+  late final GetAuthStateDart esurfingClientGetAuthState;
 
   static NativeBindings get instance {
     _instance ??= NativeBindings._();
@@ -59,7 +62,7 @@ class NativeBindings {
       // Android NDK 编译出的 so 文件
       _lib = DynamicLibrary.open('libesurfing_client.so');
     } else if (Platform.isLinux) {
-      final path = '/usr/local/lib/libesurfing_client.so';
+      const path = '/usr/local/lib/libesurfing_client.so';
       if (File(path).existsSync()) _lib = DynamicLibrary.open(path);
     }
   }
@@ -67,21 +70,23 @@ class NativeBindings {
   void _bindFunctions() {
     final l = _lib!;
     esurfingClientInit = l
-        .lookupFunction<init_c, InitDart>('esurfing_client_init');
+        .lookupFunction<InitC, InitDart>('esurfing_client_init');
     esurfingClientStart = l
-        .lookupFunction<start_c, StartDart>('esurfing_client_start');
+        .lookupFunction<StartC, StartDart>('esurfing_client_start');
     esurfingClientStop = l
-        .lookupFunction<stop_c, StopDart>('esurfing_client_stop');
+        .lookupFunction<StopC, StopDart>('esurfing_client_stop');
     esurfingClientIsStopped = l
-        .lookupFunction<is_stopped_c, IsStoppedDart>('esurfing_client_is_stopped');
+        .lookupFunction<IsStoppedC, IsStoppedDart>('esurfing_client_is_stopped');
     esurfingClientDestroy = l
-        .lookupFunction<destroy_c, DestroyDart>('esurfing_client_destroy');
+        .lookupFunction<DestroyC, DestroyDart>('esurfing_client_destroy');
     esurfingClientClearLog = l
-        .lookupFunction<clear_log_c, ClearLogDart>('esurfing_client_clear_log');
+        .lookupFunction<ClearLogC, ClearLogDart>('esurfing_client_clear_log');
     initNativeEnv = l
-        .lookupFunction<init_native_env_c, InitNativeEnvDart>('init_native_env');
+        .lookupFunction<InitNativeEnvC, InitNativeEnvDart>('init_native_env');
     esurfingClientForceAuthReset = l
-        .lookupFunction<force_auth_reset_c, ForceAuthResetDart>('esurfing_client_force_auth_reset');
+        .lookupFunction<ForceAuthResetC, ForceAuthResetDart>('esurfing_client_force_auth_reset');
+    esurfingClientGetAuthState = l
+        .lookupFunction<GetAuthStateC, GetAuthStateDart>('esurfing_client_get_auth_state');
   }
 
   bool get isLoaded => _lib != null;

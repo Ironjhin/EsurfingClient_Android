@@ -24,12 +24,12 @@ void main() async {
   ]);
 
   // ── 全局异常日志写入：防重入 + 降级兜底 ──
-  bool _isLoggingError = false;
+  bool isLoggingError = false;
 
-  Future<void> _appendErrorToLog(
+  Future<void> appendErrorToLog(
       String tag, Object error, StackTrace stack) async {
-    if (_isLoggingError) return;
-    _isLoggingError = true;
+    if (isLoggingError) return;
+    isLoggingError = true;
     try {
       final dir = await getApplicationDocumentsDirectory();
       final logFile = File('${dir.path}/run.log');
@@ -40,14 +40,14 @@ void main() async {
       // 沙盒路径未就绪或文件写入失败 → 降级到系统控制台
       debugPrint('[$tag] $error\n$stack');
     } finally {
-      _isLoggingError = false;
+      isLoggingError = false;
     }
   }
 
   // 捕获 Flutter 框架层异常并追加写入 run.log
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
-    _appendErrorToLog(
+    appendErrorToLog(
         'FlutterError', details.exception, details.stack ?? StackTrace.empty);
   };
 
@@ -55,7 +55,7 @@ void main() async {
   await runZonedGuarded<Future<void>>(() async {
     runApp(const ESurfingClientApp());
   }, (error, stack) {
-    _appendErrorToLog('UnhandledAsyncError', error, stack);
+    appendErrorToLog('UnhandledAsyncError', error, stack);
   });
 }
 
@@ -83,7 +83,6 @@ class ESurfingClientApp extends StatelessWidget {
       },
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
-      themeMode: ThemeMode.system,
       home: const HomePage(),
       routes: {
         '/settings': (context) => const SettingsPage(),

@@ -776,29 +776,63 @@ int dialer_app(void* arg)
         g_prog_status[tl_thread_idx].login_cfg.idx);
 
     refresh_states(); // 刷新数据 (algo_id, host_name, client_id, mac_addr)
-    if (get_last_location() == false) g_prog_status[tl_thread_idx].runtime_status.is_running = false;  // 获取 last_location, 用于获取认证配置
+    if (!get_last_location())
+    {
+        LOG_WARN("首次获取重定向位置未就绪，将在运行循环中重试");
+    }
 
     /**
      * 运行循环
-     * is_running 为真且 is_need_reset 为假时保持循环
-     * 正在运行且不需要重置时保持循环
-     * 如果不运行, 或者需要重置时退出循环
+     * is_running 为真时保持循环
+     * 仅当收到退出信号（g_need_exit / !g_thread_keep_alive / is_time_disabled）时退出
+     * 收到重置或运行出错时就地恢复，避免线程自杀导致无看门狗时变为僵尸态
      */
     while (g_prog_status[tl_thread_idx].runtime_status.is_running)
     {
-        const RunStatus run_status = run();
-        if (run_status == RUN_FAILED || g_prog_status[tl_thread_idx].runtime_status.is_need_reset) // 如果 run 函数返回 RUN_FAILED 或需要重置, 则退出循环
+        if (g_need_exit || !g_thread_keep_alive || g_prog_status[tl_thread_idx].runtime_status.is_time_disabled)
         {
-            if (run_status == RUN_FAILED)
-            {
-                LOG_ERROR("线程出现错误, 正在退出");
-            }
-            else if (g_prog_status[tl_thread_idx].runtime_status.is_need_reset)
-            {
-                LOG_INFO("线程需要重置, 正在退出");
-            }
+            LOG_INFO("认证线程 %" PRId8 " 收到退出或时间控制禁用信号, 正在退出", tl_thread_idx);
             g_prog_status[tl_thread_idx].runtime_status.is_running = false;
             break;
+        }
+
+        if (g_prog_status[tl_thread_idx].runtime_status.is_need_reset)
+        {
+            LOG_INFO("认证线程 %" PRId8 " 收到重置请求, 正在就地重置会话并重新认证", tl_thread_idx);
+            reset();
+            g_prog_status[tl_thread_idx].runtime_status.is_running = true;
+            g_prog_status[tl_thread_idx].runtime_status.is_need_reset = false;
+            get_last_location();
+            sleep_ms(1000, false);
+            continue;
+        }
+
+        const RunStatus run_status = run();
+        if (g_need_exit || !g_thread_keep_alive || g_prog_status[tl_thread_idx].runtime_status.is_time_disabled)
+        {
+            LOG_INFO("认证线程 %" PRId8 " 收到退出信号, 正在退出", tl_thread_idx);
+            g_prog_status[tl_thread_idx].runtime_status.is_running = false;
+            break;
+        }
+
+        if (g_prog_status[tl_thread_idx].runtime_status.is_need_reset)
+        {
+            LOG_INFO("认证线程 %" PRId8 " 收到重置请求, 正在就地重置会话并重新认证", tl_thread_idx);
+            reset();
+            g_prog_status[tl_thread_idx].runtime_status.is_running = true;
+            g_prog_status[tl_thread_idx].runtime_status.is_need_reset = false;
+            get_last_location();
+            sleep_ms(1000, false);
+            continue;
+        }
+
+        if (run_status == RUN_FAILED)
+        {
+            LOG_ERROR("认证线程 %" PRId8 " 运行出错, 5 秒后就地重试...", tl_thread_idx);
+            reset();
+            g_prog_status[tl_thread_idx].runtime_status.is_running = true;
+            sleep_ms(5000, true);
+            continue;
         }
     }
 

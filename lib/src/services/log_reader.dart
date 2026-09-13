@@ -79,19 +79,6 @@ class LogReader extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 行数超限触发的内部重置 — 不调用 notifyListeners(调用方自己决定)
-  /// 复用 clear() 的 C 端物理截断 + 偏移重置,仅内存 _content 一并清空。
-  void _clearLogAndReset() {
-    _content = '';
-    final bindings = NativeBindings.instance;
-    if (bindings.isLoaded) {
-      try {
-        bindings.esurfingClientClearLog();
-      } catch (_) {}
-    }
-    _clearByteOffset = 0;
-  }
-
   Future<void> _syncClearOffset() async {
     try {
       final dir = await getApplicationDocumentsDirectory();

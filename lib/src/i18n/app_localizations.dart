@@ -34,6 +34,9 @@ class AppLocalizations {
   String get nativeInitFailed => _t('Native init failed', '底层初始化失败');
   String get authenticatedHeartbeat =>
       _t('Authenticated — heartbeat active', '已认证 — 心跳运行中');
+  String get authenticating => _t('Authenticating...', '正在认证中...');
+  String get connectedDirect =>
+      _t('Connected (direct internet)', '已联网 (无需认证)');
   String get runningDetail => _t('Running in background thread', '在后台线程中运行');
   String get startFailed => _t('Failed to start authentication', '启动认证失败');
   String get stopRequested => _t('Stopping...', '正在停止...');

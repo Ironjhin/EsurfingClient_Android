@@ -415,7 +415,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: AccountConfig.normalizeChannel(_channelValues[index]),
+                  initialValue: AccountConfig.normalizeChannel(_channelValues[index]),
                   decoration: glassInputDecoration(
                     context,
                     label: i18n.fieldChannel,

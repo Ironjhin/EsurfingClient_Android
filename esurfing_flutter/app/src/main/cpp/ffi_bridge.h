@@ -12,6 +12,32 @@ int32_t esurfing_client_start(int32_t thread_index);
 void   esurfing_client_stop(void);
 int32_t esurfing_client_is_stopped(void);
 void   esurfing_client_destroy(void);
+void   esurfing_client_clear_log(void);
+void   esurfing_client_force_auth_reset(void);
+
+/**
+ * @brief 获取指定认证线程的状态位掩码
+ *
+ * @param thread_index 线程下标 (0 到 g_prog_cnt - 1)
+ * @return int32_t 状态掩码 (失败返回 -1):
+ *         bit 0 (0x01): is_running
+ *         bit 1 (0x02): is_authed
+ *         bit 2 (0x04): is_connected
+ *         bit 3 (0x08): is_time_disabled
+ *         bit 4 (0x10): is_initialized
+ */
+int32_t esurfing_client_get_auth_state(int32_t thread_index);
+
+/**
+ * @brief 初始化原生层环境（注入 Android 沙盒路径）
+ *
+ * 应在 esurfing_client_init() 之前调用。
+ * 将 Android 私有数据目录路径注入 C 层日志系统，
+ * 使日志写入 Android 应用内部存储而非 stdout 或硬编码路径。
+ *
+ * @param sandbox_path Android Context.filesDir.absolutePath
+ */
+void   init_native_env(const char* sandbox_path);
 
 #ifdef __cplusplus
 }
