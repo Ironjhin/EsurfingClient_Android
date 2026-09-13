@@ -126,9 +126,12 @@ class AuthController {
       } catch (_) {}
     }
 
-    // 2. 通知 Isolate 退出
-    _workerSendPort?.send(_StopCommand());
-    _workerIsolate?.kill(priority: Isolate.immediate);
+    // 2. 通知 Isolate 优雅退出并安全回收
+    if (_workerSendPort != null) {
+      _workerSendPort!.send(_StopCommand());
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    _workerIsolate?.kill(priority: Isolate.beforeNextEvent);
     _workerIsolate = null;
     _workerSendPort = null;
     _mainReceivePort?.close();

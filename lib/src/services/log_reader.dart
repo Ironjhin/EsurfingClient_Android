@@ -119,14 +119,12 @@ class LogReader extends ChangeNotifier {
 
       _content += chunk;
 
-      // ── 行数上限:超过 1000 行即截断,清掉前面的内容 ──
+      // ── 行数上限:超过 1000 行即在前端内存中平滑截断，保留最新 800 行，绝不清空底层文件 ──
       if (_content.isNotEmpty) {
-        final lines = '\n'.allMatches(_content).length + 1;
-        if (lines > 1000) {
-          // 磁盘 + 内存 同步清空,C 端下一次写又从零开始,规模可控
-          _clearLogAndReset();
-          notifyListeners();
-          return;
+        final newlineMatches = '\n'.allMatches(_content).toList();
+        if (newlineMatches.length >= 1000) {
+          final cutIndex = newlineMatches[newlineMatches.length - 800].end;
+          _content = _content.substring(cutIndex);
         }
       }
 

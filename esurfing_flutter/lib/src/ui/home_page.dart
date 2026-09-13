@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
@@ -28,6 +29,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   bool? _accessibilityEnabled; // null = 未查询, true/false = 结果
   final AuthController _authCtrl = AuthController.instance;
 
+  // 运行时间相关
+  DateTime? _startTime;
+  Timer? _uptimeTimer;
+  String _uptimeText = '';
+
   // 实时日志读取器 — 后台 poll run.log,生命周期跟随页面.
   final LogReader _logReader = LogReader();
 
@@ -42,6 +48,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _uptimeTimer?.cancel();
+    _authCtrl.onStatusChanged = null;
     _logReader.dispose();
     super.dispose();
   }
@@ -66,12 +74,54 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _isRunning = running;
           _statusText = text;
         });
+        if (running && _startTime == null) {
+          _startUptimeTimer();
+        } else if (!running && _startTime != null) {
+          _stopUptimeTimer();
+        }
       }
     };
 
     if (mounted) {
       setState(() => _isLoading = false);
     }
+  }
+
+  void _startUptimeTimer() {
+    _startTime = DateTime.now();
+    _uptimeTimer?.cancel();
+    _uptimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _startTime != null) {
+        setState(() {
+          _uptimeText = _formatUptime(DateTime.now().difference(_startTime!));
+        });
+      }
+    });
+  }
+
+  void _stopUptimeTimer() {
+    _uptimeTimer?.cancel();
+    _uptimeTimer = null;
+    _startTime = null;
+    if (mounted) {
+      setState(() {
+        _uptimeText = '';
+      });
+    }
+  }
+
+  String _formatUptime(Duration duration) {
+    final days = duration.inDays;
+    final hours = duration.inHours % 24;
+    final minutes = duration.inMinutes % 60;
+    final seconds = duration.inSeconds % 60;
+    final i18n = AppLocalizations.of(context);
+    return i18n.uptimeFormatted(
+      days: days,
+      hours: hours,
+      minutes: minutes,
+      seconds: seconds,
+    );
   }
 
   Future<void> _loadConfig() async {
@@ -170,11 +220,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             _statusText = i18n.authenticatedHeartbeat;
             _statusDetail = i18n.runningDetail;
           });
+          _startUptimeTimer();
         } else {
           setState(() {
             _isRunning = false;
             _statusText = i18n.startFailed;
           });
+          _stopUptimeTimer();
         }
       }
     } catch (e) {
@@ -183,11 +235,13 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
           _isRunning = false;
           _statusText = '${i18n.errorPrefix}: $e';
         });
+        _stopUptimeTimer();
       }
     }
   }
 
   Future<void> _stopAuth() async {
+    _stopUptimeTimer();
     final i18n = AppLocalizations.of(context);
     setState(() {
       _statusText = i18n.stopRequested;
@@ -318,6 +372,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Widget _buildStatusHero(ThemeData theme, ColorScheme cs) {
     final isUp = _isRunning;
+    final i18n = AppLocalizations.of(context);
     return GlassSurface(
       radius: 30,
       tint: isUp ? cs.primary : cs.surfaceTint,
@@ -362,6 +417,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               textAlign: TextAlign.center,
             ),
           ],
+          if (_isRunning && _uptimeText.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: cs.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: cs.primary.withValues(alpha: 0.3),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                '${i18n.uptimeLabel}$_uptimeText',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: cs.primary,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.3,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -399,7 +477,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(radius: 16, child: Text('${i + 1}')),
               title: Text(a.username.isEmpty ? i18n.emptyAccount : a.username),
-              subtitle: Text('${i18n.fieldChannel}: ${a.channel}'),
+              subtitle: Text(
+                '${i18n.fieldChannel}: ${i18n.channelDisplayName(a.channel)}',
+              ),
             );
           }),
         ],
@@ -430,7 +510,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  isOn ? '已开启增强保活' : '开启增强保活',
+                  isOn
+                      ? i18n.keepaliveEnabledTitle
+                      : i18n.keepaliveDisabledTitle,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: isOn ? cs.primary : cs.tertiary,
@@ -439,8 +521,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                 const SizedBox(height: 4),
                 Text(
                   isOn
-                      ? '系统已放宽电池优化,守护进程不会被回收'
-                      : '开启无障碍服务后放宽电池优化限制,熄屏 30 分钟+ 仍保持在线。不会监听或操作你的界面。',
+                      ? i18n.keepaliveEnabledBody
+                      : i18n.keepaliveDisabledBody,
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: cs.onSurfaceVariant),
                 ),
@@ -477,7 +559,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                     }
                   },
                   icon: Icon(isOn ? Icons.check : Icons.open_in_new, size: 16),
-                  label: Text(isOn ? '检查状态' : '去开启'),
+                  label: Text(
+                    isOn ? i18n.keepaliveBtnCheck : i18n.keepaliveBtnEnable,
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: isOn ? cs.primary : cs.tertiary,
                     side: BorderSide(

@@ -19,6 +19,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final List<TextEditingController> _passwordControllers = [];
   final List<TextEditingController> _markControllers = [];
   final List<String> _channelValues = [];
+  final List<List<TimeWindowConfig>> _timeWindowsList = [];
 
   @override
   void initState() {
@@ -53,11 +54,21 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _initializeControllers(ESurfingConfig config) {
+    for (final c in _usernameControllers) {
+      c.dispose();
+    }
+    for (final c in _passwordControllers) {
+      c.dispose();
+    }
+    for (final c in _markControllers) {
+      c.dispose();
+    }
     _formKeys.clear();
     _usernameControllers.clear();
     _passwordControllers.clear();
     _markControllers.clear();
     _channelValues.clear();
+    _timeWindowsList.clear();
 
     for (final account in config.accounts) {
       _formKeys.add(GlobalKey<FormState>());
@@ -65,6 +76,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _passwordControllers.add(TextEditingController(text: account.password));
       _markControllers.add(TextEditingController(text: account.mark));
       _channelValues.add(AccountConfig.normalizeChannel(account.channel));
+      _timeWindowsList.add(List<TimeWindowConfig>.from(account.timeWindows));
     }
   }
 
@@ -72,20 +84,35 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_config == null) return;
     final i18n = AppLocalizations.of(context);
 
+    // 校验所有表单：必须全部合法方可保存，绝不能静默丢弃未通过校验的账号
+    bool allValid = true;
+    for (int i = 0; i < _formKeys.length; i++) {
+      if (!(_formKeys[i].currentState?.validate() ?? false)) {
+        allValid = false;
+      }
+    }
+    if (!allValid) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(i18n.configFormInvalid),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
+
     final accounts = <AccountConfig>[];
     for (int i = 0; i < _usernameControllers.length; i++) {
-      if (_formKeys[i].currentState?.validate() ?? false) {
-        final existingTw = (i < _config!.accounts.length)
-            ? _config!.accounts[i].timeWindows
-            : <TimeWindowConfig>[];
-        accounts.add(AccountConfig(
-          username: _usernameControllers[i].text.trim(),
-          password: _passwordControllers[i].text,
-          channel: AccountConfig.normalizeChannel(_channelValues[i]),
-          mark: _markControllers[i].text.trim(),
-          timeWindows: existingTw,
-        ));
-      }
+      final tw = i < _timeWindowsList.length
+          ? _timeWindowsList[i]
+          : <TimeWindowConfig>[];
+      accounts.add(AccountConfig(
+        username: _usernameControllers[i].text.trim(),
+        password: _passwordControllers[i].text,
+        channel: AccountConfig.normalizeChannel(_channelValues[i]),
+        mark: _markControllers[i].text.trim(),
+        timeWindows: tw,
+      ));
     }
 
     final newConfig = ESurfingConfig(
@@ -112,6 +139,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _passwordControllers.add(TextEditingController());
       _markControllers.add(TextEditingController());
       _channelValues.add('android');
+      _timeWindowsList.add([]);
     });
   }
 
@@ -126,6 +154,9 @@ class _SettingsPageState extends State<SettingsPage> {
       _markControllers[index].dispose();
       _markControllers.removeAt(index);
       _channelValues.removeAt(index);
+      if (index < _timeWindowsList.length) {
+        _timeWindowsList.removeAt(index);
+      }
     });
   }
 

@@ -51,12 +51,50 @@ class AppLocalizations {
         'To prevent being killed by the system, please enable the accessibility service for this app in Settings.',
         '为了防止被系统清理,请在系统设置里为本应用开启无障碍服务。',
       );
+  String get keepaliveEnabledTitle => _t('Keep-alive Active', '已开启增强保活');
+  String get keepaliveDisabledTitle => _t('Enable Keep-alive', '开启增强保活');
+  String get keepaliveEnabledBody => _t(
+        'Battery optimizations relaxed. Background daemon will not be reclaimed.',
+        '系统已放宽电池优化,守护进程不会被回收。',
+      );
+  String get keepaliveDisabledBody => _t(
+        'Relax battery optimization to stay online for 30m+ with screen off. No screen interaction or monitoring.',
+        '开启无障碍服务后放宽电池优化限制,熄屏 30 分钟+ 仍保持在线。不会监听或操作你的界面。',
+      );
+  String get keepaliveBtnCheck => _t('Check Status', '检查状态');
+  String get keepaliveBtnEnable => _t('Enable', '去开启');
   String get keepaliveKilledHint => _t(
         'If the system reclaims the process in the background, the service will disconnect — just come back here and tap the button below to turn it back on.',
         '若系统后台回收了进程,服务会断开 — 回到这里点下方按钮重新开启即可。',
       );
   String get keepaliveStatusRunning =>
       _t('Service is running normally ✓', '服务运行正常 ✓');
+
+  // 运行时间
+  String get uptimeLabel => _t('Uptime: ', '运行时间: ');
+  String uptimeFormatted({
+    required int days,
+    required int hours,
+    required int minutes,
+    required int seconds,
+  }) {
+    if (_lang == 'zh') {
+      if (days > 0) return '$days天 $hours时 $minutes分 $seconds秒';
+      if (hours > 0) return '$hours时 $minutes分 $seconds秒';
+      if (minutes > 0) return '$minutes分 $seconds秒';
+      return '$seconds秒';
+    } else {
+      if (days > 0) return '${days}d ${hours}h ${minutes}m ${seconds}s';
+      if (hours > 0) return '${hours}h ${minutes}m ${seconds}s';
+      if (minutes > 0) return '${minutes}m ${seconds}s';
+      return '${seconds}s';
+    }
+  }
+
+  String get configFormInvalid => _t(
+        'Please complete all required fields correctly before saving',
+        '请正确填写所有账号的必填信息后再保存',
+      );
 
   // 配置缺失对话框
   String get configRequiredTitle => _t('Configuration Required', '需要配置');
@@ -138,6 +176,29 @@ class AppLocalizations {
   // 兼容旧属性
   String get channelPhone => channelAndroid;
   String get channelPc => channelLinux;
+
+  String channelDisplayName(String channel) {
+    switch (channel.toLowerCase()) {
+      case 'windows':
+      case '1':
+        return channelWindows;
+      case 'linux':
+      case 'pc':
+      case '2':
+        return channelLinux;
+      case 'ios':
+      case '4':
+        return channelIos;
+      case 'macos':
+      case '5':
+        return channelMacos;
+      case 'android':
+      case 'phone':
+      case '3':
+      default:
+        return channelAndroid;
+    }
+  }
 
   // 帮助信息
   String get channelOptionsHint => _t('Channel Options:', '通道选项：');
