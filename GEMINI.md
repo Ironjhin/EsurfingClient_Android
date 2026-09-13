@@ -1,4 +1,4 @@
-﻿# GEMINI.md - 项目记忆与规则沉淀
+# GEMINI.md - 项目记忆与规则沉淀
 
 本文件由 Antigravity 自动加载，用于在各次对话中沉淀开发者的本地环境配置与重要经验规则。
 
@@ -34,13 +34,15 @@
 3. **认证服务器**：`http://14.146.227.141:7001`、`http://121.8.177.212:7001`
 4. **心跳保活**：校园网内部网关 AC（通常为私有网段或校内 IP）
 
-### Box4Magisk 共存规则
-若同时启用 Box4Magisk（基于 iptables/nftables 的透明代理）：
-- **Flutter APK 版**：在 `/data/adb/box/scripts/box.config` 的 `user_packages_list` 中排除包名 `com.example.esurfing_client`。
-- **Magisk Daemon 版**：
-  1. 在 `/data/adb/box/scripts/box.config` 的 `intranet` 中加入：
-     `1.1.1.1/32`、`14.146.227.141/32`、`121.8.177.212/32` 及校内 Portal IP。
-  2. 在 `/data/adb/box/sing-box.json` 的 `route.rules` 与 `dns.rules` 中将 `rom.miui.com` 与校园网域名设为 `direct` / `local` DNS。
+### Box4Magisk / sing-box 共存规则
+若同时启用 Box4Magisk（基于 iptables 的 sing-box 透明代理）：
+- **Flutter APK 版**：在 WebUI 或 `exclude.list` 中排除包名 `com.example.esurfing_client`。
+- **Magisk Daemon 版（`esurfing-daemon` / `esurfingd`）**：
+  1. **禁止在 `ap_list` 中包含客户端网卡**：`/data/adb/singbox/settings.ini` 中的 `ap_list` 绝对不能包含 `"wlan+"` 或 `"rmnet+"`！否则会将 Wi-Fi 和蜂窝网的所有入站响应包（如认证服务器的 TCP SYN-ACK）误当成热点流量进行 TPROXY 劫持，导致 curl 报错误码 28（操作超时）。
+  2. **内网与校园网段放行**：
+     - 在 `/data/adb/singbox/scripts/constants.sh` 的 `INTRANET_V4` 中加入：`100.0.0.0/8`（覆盖高校 Wi-Fi 常见的 `100.2.x.x` 内部网段）、`1.1.1.1/32`、`14.146.227.141/32`、`121.8.177.212/32`。
+     - 在 `iptables.sh` 中，`bypass_intranet` 规则必须置于 `handle_packages`（应用过滤）之前，且需同时加入 `-s "${subnet}"` 和 `-d "${subnet}"` 的双向 RETURN 规则。
+  3. 在 `config.json` 的 `route.rules` 与 `dns.rules` 中将 `rom.miui.com` 与 `edu.cn` 设为 `direct` / `local` DNS。
 
 ---
 
