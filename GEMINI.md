@@ -23,9 +23,22 @@
 "D:\UNLOCKER\莫离然然搞机工具箱v4.7.5-2026.3.17\Tools\fastboot.exe"
 ```
 
+### PowerShell 文件输出编码禁忌（重要）
+- **严禁在 PowerShell 中使用 `>` 重定向写入将被推送至 Android / Linux 的文本文件**！PowerShell 5.1 的 `>` 默认输出为 `UTF-16 LE` 编码，会导致 Android WebView 将中文渲染为乱码且 JavaScript 语法解析崩溃。
+- 生成推送到设备的配置文件或 HTML 时，必须使用 Python 二进制模式写入、`[System.IO.File]::WriteAllBytes`，或显式指定 `-Encoding utf8`。
+
+### 接口调试与 Mongoose 避坑
+- **严禁使用 `curl -I` 探测守护进程 Web 接口**：`WebServer.c` 的轻量路由仅匹配了 `GET` 和 `POST`。发送 `HEAD` 动词（`curl -I`）会导致连接无任何响应并挂起死锁。应使用 `curl -s -i` 并配合超时参数。
+
 ---
 
-## 2. 网络代理冲突与 Box4Magisk 经验
+## 2. WebUI 与 KernelSU 通信规则
+- **KernelSU WebUI 端口隔离**：KernelSU WebUI 运行于内核管理器自建的随机端口 HTTP 服务中。`webroot/index.html` 中的 API 请求地址**必须显式指向 `http://127.0.0.1:8888`**，绝不能使用相对路径或基于 `location.origin.startsWith('http')` 进行清空，否则会导致所有请求发向 KernelSU 自身引发 404 断连。
+- 后端 `WebServer.c` 必须始终保持注入 `cors_hdrs`（包含 `Access-Control-Allow-Origin: *`）。
+
+---
+
+## 3. 网络代理冲突与 Box4Magisk 经验
 
 ### 连通性探测地址
 客户端底层（`NetClient.c`）探测网络通畅与 Portal 拦截状态依赖以下目标：
@@ -46,7 +59,13 @@
 
 ---
 
-## 3. 分支与工程规范
+## 4. 守护进程状态机与控制规范
+- **待机就绪状态同步**：主循环在 `STATUS_OK`（已联网就绪）循环探测时，必须持续设置 `is_connected = true`，避免 WebUI 与外部接口返回假离线。
+- **控制信号中断响应**：任何长休眠或主循环等待分支必须同步轮询并响应 `is_need_reset`、`g_need_stop_now` 和 `g_need_restart_now`，确保网页端重置、停止与重启随时可用。
+
+---
+
+## 5. 分支与工程规范
 - **`main` 分支**：Flutter 客户端（Android APK），根目录与 `esurfing_flutter/` 目录源码需保持 1:1 同步。
 - **`magisk` 分支**：Magisk / KernelSU root 模块守护进程源码（`magisk/` 目录）。
 - **CI / CD**：推送至 `main` 自动构建 APK（`Flutter Universal APK Build`），推送至 `magisk` 自动构建模块 zip（`Build Magisk Module`）。
