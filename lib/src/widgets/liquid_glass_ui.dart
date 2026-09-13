@@ -27,7 +27,9 @@ class GlassPerformanceController extends ChangeNotifier {
     final stored = preferences.getString(_preferenceKey);
     _mode = GlassQualityMode.values.firstWhere(
       (value) => value.name == stored,
-      orElse: () => GlassQualityMode.automatic,
+      orElse: () => defaultTargetPlatform == TargetPlatform.android
+          ? GlassQualityMode.efficient
+          : GlassQualityMode.automatic,
     );
   }
 
@@ -46,20 +48,12 @@ class GlassPerformanceController extends ChangeNotifier {
       case GlassQualityMode.efficient:
         return false;
       case GlassQualityMode.automatic:
+        if (defaultTargetPlatform == TargetPlatform.android) {
+          return false;
+        }
         final mediaQuery = MediaQuery.maybeOf(context);
         if (mediaQuery == null) return false;
         if (mediaQuery.disableAnimations) return false;
-
-        // Shader cost scales with physical pixels. Very high-resolution
-        // Android displays use the static surface in automatic mode unless
-        // the user explicitly selects Liquid.
-        final physicalPixels = mediaQuery.size.width *
-            mediaQuery.devicePixelRatio *
-            mediaQuery.size.height *
-            mediaQuery.devicePixelRatio;
-        if (defaultTargetPlatform == TargetPlatform.android) {
-          return physicalPixels <= 3200000;
-        }
         return true;
     }
   }

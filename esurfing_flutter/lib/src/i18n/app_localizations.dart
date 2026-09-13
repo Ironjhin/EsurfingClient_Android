@@ -142,14 +142,14 @@ class AppLocalizations {
 
   String get logLevel => _t('Log Level', '日志等级');
 
-  String get glassQuality => _t('Glass Quality', '玻璃效果质量');
+  String get glassQuality => _t('Rendering Mode', '界面渲染模式');
   String get glassQualityHint => _t(
-        'Efficient mode disables refraction and blur for smooth scrolling',
-        '节能模式会关闭折射和模糊，优先保证滚动流畅',
+        'Efficient mode disables GPU shaders for max battery & 120fps smoothness',
+        '高效模式关闭着色器，极速流畅、省电不发热',
       );
-  String get glassQualityAuto => _t('Auto', '自动');
-  String get glassQualityLiquid => _t('Liquid', '真实液态');
-  String get glassQualityEfficient => _t('Efficient (no blur)', '节能（无模糊）');
+  String get glassQualityAuto => _t('Auto', '自动判定');
+  String get glassQualityLiquid => _t('Liquid Glass (High GPU)', '液态玻璃 (高画质)');
+  String get glassQualityEfficient => _t('Efficient (Recommended)', '高效流畅 (推荐)');
 
   String get accountsTitle => _t('Accounts', '账号');
   String get accountLabel => _t('Account {n}', '账号 {n}');

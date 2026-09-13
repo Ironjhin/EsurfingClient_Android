@@ -32,13 +32,33 @@ class _LogViewerState extends State<LogViewer> {
   void initState() {
     super.initState();
     widget.reader.addListener(_onLogUpdate);
+    widget.reader.setExpanded(_expanded);
+  }
+
+  @override
+  void didUpdateWidget(covariant LogViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reader != widget.reader) {
+      oldWidget.reader.removeListener(_onLogUpdate);
+      oldWidget.reader.setExpanded(false);
+      widget.reader.addListener(_onLogUpdate);
+      widget.reader.setExpanded(_expanded);
+    }
   }
 
   @override
   void dispose() {
+    widget.reader.setExpanded(false);
     widget.reader.removeListener(_onLogUpdate);
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _toggleExpanded() {
+    setState(() {
+      _expanded = !_expanded;
+    });
+    widget.reader.setExpanded(_expanded);
   }
 
   void _onLogUpdate() {
@@ -124,7 +144,7 @@ class _LogViewerState extends State<LogViewer> {
         children: [
           // 展开/收缩标题栏
           InkWell(
-            onTap: () => setState(() => _expanded = !_expanded),
+            onTap: _toggleExpanded,
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -233,44 +253,46 @@ class _LogViewerState extends State<LogViewer> {
               ),
             ),
             // 日志正文 — 终端样式
-            Container(
-              width: double.infinity,
-              height: 280,
-              decoration: const BoxDecoration(
-                color: Color(0xFF1E1E1E),
-                borderRadius:
-                    BorderRadius.vertical(bottom: Radius.circular(22)),
-              ),
-              child: content.isEmpty
-                  ? Center(
-                      child: Text(
-                        i18n.logPanelEmpty,
-                        style: TextStyle(
-                          color: Colors.grey.shade600,
-                          fontFamily: 'monospace',
-                          fontSize: _fontSize,
+            RepaintBoundary(
+              child: Container(
+                width: double.infinity,
+                height: 280,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1E1E1E),
+                  borderRadius:
+                      BorderRadius.vertical(bottom: Radius.circular(22)),
+                ),
+                child: content.isEmpty
+                    ? Center(
+                        child: Text(
+                          i18n.logPanelEmpty,
+                          style: TextStyle(
+                            color: Colors.grey.shade600,
+                            fontFamily: 'monospace',
+                            fontSize: _fontSize,
+                          ),
                         ),
-                      ),
-                    )
-                  : ClipRect(
-                      child: Scrollbar(
-                        controller: _scrollCtrl,
-                        thumbVisibility: true,
-                        child: SingleChildScrollView(
+                      )
+                    : ClipRect(
+                        child: Scrollbar(
                           controller: _scrollCtrl,
-                          padding: const EdgeInsets.all(8),
-                          child: SelectableText(
-                            content,
-                            style: TextStyle(
-                              color: const Color(0xFF00FF41),
-                              fontFamily: 'monospace',
-                              fontSize: _fontSize,
-                              height: 1.4,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _scrollCtrl,
+                            padding: const EdgeInsets.all(8),
+                            child: SelectableText(
+                              content,
+                              style: TextStyle(
+                                color: const Color(0xFF00FF41),
+                                fontFamily: 'monospace',
+                                fontSize: _fontSize,
+                                height: 1.4,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
+              ),
             ),
           ],
         ],

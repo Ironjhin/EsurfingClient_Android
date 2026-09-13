@@ -32,7 +32,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   // 运行时间相关
   DateTime? _startTime;
   Timer? _uptimeTimer;
-  String _uptimeText = '';
+  final ValueNotifier<String> _uptimeNotifier = ValueNotifier<String>('');
 
   // 实时日志读取器 — 后台 poll run.log,生命周期跟随页面.
   final LogReader _logReader = LogReader();
@@ -49,17 +49,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _uptimeTimer?.cancel();
+    _uptimeNotifier.dispose();
     _authCtrl.onStatusChanged = null;
     _logReader.dispose();
     super.dispose();
   }
 
-  // 切回前台时(从系统设置页 / 多任务回来)刷一次无障碍状态 —
-  // 系统若清理了后台进程,服务会断开,这里立刻反映到 UI.
+  // 切回前台时(从系统设置页 / 多任务回来)刷一次无障碍状态并唤醒轮询；
+  // 退到后台时暂停日志轮询与计时器，消除无谓 CPU 唤醒与电量损耗。
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && Platform.isAndroid) {
-      _refreshAccessibility();
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      _uptimeTimer?.cancel();
+      _uptimeTimer = null;
+      _logReader.pause();
+    } else if (state == AppLifecycleState.resumed) {
+      _logReader.resume();
+      if (_isRunning && _startTime != null && _uptimeTimer == null) {
+        _startUptimeTimer();
+      }
+      if (Platform.isAndroid) {
+        _refreshAccessibility();
+      }
     }
   }
 
@@ -88,13 +100,14 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   void _startUptimeTimer() {
-    _startTime = DateTime.now();
+    _startTime ??= DateTime.now();
     _uptimeTimer?.cancel();
+    _uptimeNotifier.value =
+        _formatUptime(DateTime.now().difference(_startTime!));
     _uptimeTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && _startTime != null) {
-        setState(() {
-          _uptimeText = _formatUptime(DateTime.now().difference(_startTime!));
-        });
+      if (_startTime != null) {
+        _uptimeNotifier.value =
+            _formatUptime(DateTime.now().difference(_startTime!));
       }
     });
   }
@@ -103,11 +116,7 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _uptimeTimer?.cancel();
     _uptimeTimer = null;
     _startTime = null;
-    if (mounted) {
-      setState(() {
-        _uptimeText = '';
-      });
-    }
+    _uptimeNotifier.value = '';
   }
 
   String _formatUptime(Duration duration) {
@@ -333,7 +342,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                             _buildAccessibilityTile(theme, cs),
                             const SizedBox(height: 14),
                           ],
-                          _buildStatusHero(theme, cs),
+                          RepaintBoundary(
+                            child: _buildStatusHero(theme, cs),
+                          ),
                           const SizedBox(height: 14),
                           GlassBlendGroup(
                             blend: 10,
@@ -358,7 +369,9 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                           if (_config != null && _config!.accounts.isNotEmpty)
                             _buildAccountCard(theme),
                           const SizedBox(height: 14),
-                          LogViewer(reader: _logReader),
+                          RepaintBoundary(
+                            child: LogViewer(reader: _logReader),
+                          ),
                           const SizedBox(height: 24),
                         ],
                       ),
@@ -417,29 +430,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
               textAlign: TextAlign.center,
             ),
           ],
-          if (_isRunning && _uptimeText.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: cs.primary.withValues(alpha: 0.3),
-                  width: 1,
-                ),
-              ),
-              child: Text(
-                '${i18n.uptimeLabel}$_uptimeText',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: cs.primary,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
-                ),
-                textAlign: TextAlign.center,
-              ),
+          if (_isRunning)
+            ValueListenableBuilder<String>(
+              valueListenable: _uptimeNotifier,
+              builder: (context, uptime, _) {
+                if (uptime.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: cs.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: cs.primary.withValues(alpha: 0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      '${i18n.uptimeLabel}$uptime',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 0.3,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
         ],
       ),
     );

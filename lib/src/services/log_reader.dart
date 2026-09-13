@@ -11,16 +11,30 @@ class LogReader extends ChangeNotifier {
   String _content = '';
   bool _paused = false;
   bool _polling = false; // 防重入:上一次 _poll 没跑完就跳过下一次
+  bool _isExpanded = false; // 是否展开查看: 折叠时跳过磁盘轮询节省能耗
 
   /// 上次清除时文件末尾的字节偏移，下次轮询只读取此偏移之后的新数据
   int _clearByteOffset = 0;
 
   String get content => _content;
   bool get isRunning => _timer != null;
+  bool get isExpanded => _isExpanded;
 
   /// 启动轮询
   void start() {
     _timer ??= Timer.periodic(const Duration(seconds: 2), (_) => _poll());
+    // 启动时主动轻量读一次初始状态
+    _poll(force: true);
+  }
+
+  /// 展开/折叠状态切换
+  void setExpanded(bool expanded) {
+    if (_isExpanded == expanded) return;
+    _isExpanded = expanded;
+    if (_isExpanded) {
+      // 展开时立即拉取一次最新增量
+      _poll(force: true);
+    }
   }
 
   /// 暂停轮询
@@ -31,6 +45,9 @@ class LogReader extends ChangeNotifier {
   /// 恢复轮询
   void resume() {
     _paused = false;
+    if (_isExpanded) {
+      _poll(force: true);
+    }
   }
 
   /// 停止轮询并释放资源
@@ -38,6 +55,7 @@ class LogReader extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     _paused = false;
+    _isExpanded = false;
   }
 
   /// 清空日志：C 层同源物理截断 + 偏移量重置
@@ -84,7 +102,8 @@ class LogReader extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> _poll() async {
+  Future<void> _poll({bool force = false}) async {
+    if (!force && !_isExpanded) return;
     if (_paused || _polling) return;
     _polling = true;
     RandomAccessFile? raf;
