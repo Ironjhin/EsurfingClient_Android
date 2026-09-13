@@ -103,7 +103,7 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
   <!-- Log -->
   <div class="card">
     <h2>运行日志</h2>
-    <div class="actions" style="margin-top:0;margin-bottom:12px;">
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
       <button class="btn btn-primary" onclick="refreshLog()">刷新日志</button>
       <button class="btn btn-primary" onclick="exportLog()">导出日志</button>
     </div>
@@ -114,7 +114,9 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
 <div class="toast" id="toast"></div>
 
 <script>
-// Toast helper
+const API = 'http://127.0.0.1:8888';
+let latestLogText = '';
+
 function showToast(msg, isError) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -122,36 +124,67 @@ function showToast(msg, isError) {
   setTimeout(() => t.className = 'toast', 2500);
 }
 
-// Status polling
 async function refreshStatus() {
-  try {
-    const authRes = await fetch('/api/status/auth');
-    const authData = await authRes.json();
-    const el = document.getElementById('authStatus');
-    if (authData.status) {
-      el.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
-    } else if (authData.connected) {
-      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（未通过本工具认证）</span>';
-    } else {
-      el.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
-    }
-  } catch { document.getElementById('authStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+  let isAuthed = false;
+  let isConnected = false;
+  let onlineCode = 0;
 
   try {
-    const onlineRes = await fetch('/api/status/online');
-    const el = document.getElementById('onlineStatus');
-    if (onlineRes.status === 204) {
-      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span>';
-    } else if (onlineRes.status === 302) {
-      el.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
-    } else {
-      el.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
+    const authRes = await fetch(API + '/api/status/auth');
+    if (authRes.ok) {
+      const authData = await authRes.json();
+      if (authData.status) isAuthed = true;
+      if (authData.connected) isConnected = true;
     }
-  } catch { document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+  } catch {}
+
+  try {
+    const onlineRes = await fetch(API + '/api/status/online');
+    onlineCode = onlineRes.status;
+    if (onlineCode === 204) isConnected = true;
+  } catch {}
+
+  if (!isConnected && latestLogText) {
+    const lines = latestLogText.split('\n').filter(l => l.trim()).slice(-20);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes('已认证登录')) {
+        isAuthed = true;
+        isConnected = true;
+        break;
+      }
+      if (lines[i].includes('已连接至互联网') || lines[i].includes('响应码: 204') || lines[i].includes('心跳包')) {
+        isConnected = true;
+        break;
+      }
+      if (lines[i].includes('需要认证') || lines[i].includes('网络错误')) {
+        break;
+      }
+    }
+  }
+
+  const authEl = document.getElementById('authStatus');
+  if (isAuthed) {
+    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
+  } else if (isConnected) {
+    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（守护中 / 正常在线）</span>';
+  } else if (onlineCode === 302) {
+    authEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
+  } else {
+    authEl.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
+  }
+
+  const onlineEl = document.getElementById('onlineStatus');
+  if (isConnected || onlineCode === 204) {
+    onlineEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span>';
+  } else if (onlineCode === 302) {
+    onlineEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
+  } else {
+    onlineEl.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
+  }
 
   // 更新运行时间
   try {
-    const uptimeRes = await fetch('/api/status/uptime');
+    const uptimeRes = await fetch(API + '/api/status/uptime');
     const uptimeData = await uptimeRes.json();
     const el = document.getElementById('uptime');
     if (uptimeData.uptime_ms > 0) {
@@ -171,10 +204,9 @@ async function refreshStatus() {
   } catch { document.getElementById('uptime').textContent = '-'; }
 }
 
-// Load config into form
 async function loadConfig() {
   try {
-    const res = await fetch('/api/getConfigs');
+    const res = await fetch(API + '/api/getConfigs');
     const data = await res.json();
     document.getElementById('enabled').checked = data.enabled;
     document.getElementById('logLevel').value = data.log_lv;
@@ -189,7 +221,6 @@ async function loadConfig() {
   } catch { showToast('加载配置失败', true); }
 }
 
-// Save config
 async function saveConfig() {
   const cfg = {
     enabled: document.getElementById('enabled').checked,
@@ -205,7 +236,7 @@ async function saveConfig() {
   if (!cfg.accounts[0].password) { showToast('请输入密码', true); return; }
 
   try {
-    const res = await fetch('/api/saveConfigs', {
+    const res = await fetch(API + '/api/saveConfigs', {
       method: 'POST',
       body: JSON.stringify(cfg)
     });
@@ -217,11 +248,10 @@ async function saveConfig() {
   } catch { showToast('保存失败: 网络错误', true); }
 }
 
-// Save + apply (restart threads)
 async function saveAndApply() {
   await saveConfig();
   try {
-    const res = await fetch('/api/applyConfigs', {
+    const res = await fetch(API + '/api/applyConfigs', {
       method: 'POST',
       body: JSON.stringify({ apply: true })
     });
@@ -234,7 +264,7 @@ async function saveAndApply() {
 // Force auth reset — breaks the long retry sleep and restarts dialer now
 async function forceAuthReset() {
   try {
-    const res = await fetch('/api/auth/reset', { method: 'POST' });
+    const res = await fetch(API + '/api/auth/reset', { method: 'POST' });
     const data = await res.json();
     if (data && data.ok) {
       showToast('已触发强制重新认证');
@@ -250,7 +280,7 @@ async function stopService() {
   if (!confirm('确定停止守护进程？停止后 Web 后台将不可用，需在 KernelSU/Magisk 模块 Action 中重新启动。')) return;
   const btn = document.querySelector('button[onclick="stopService()"]');
   try {
-    const res = await fetch('/api/stop', { method: 'POST' });
+    const res = await fetch(API + '/api/stop', { method: 'POST' });
     const data = await res.json();
     if (data && data.ok) {
       showToast('服务正在停止...');
@@ -259,7 +289,7 @@ async function stopService() {
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 500));
         try {
-          const ping = await fetch('/api/status/uptime', { cache: 'no-store' });
+          const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
           if (!ping.ok) break;
         } catch { break; }
       }
@@ -280,17 +310,16 @@ async function stopService() {
 async function restartService() {
   const btn = document.querySelector('button[onclick="restartService()"]');
   try {
-    const res = await fetch('/api/restart', { method: 'POST' });
+    const res = await fetch(API + '/api/restart', { method: 'POST' });
     const data = await res.json();
     if (data && data.ok) {
       showToast('服务正在重启，请稍候...');
       if (btn) btn.disabled = true;
-      // Poll until the daemon comes back (max ~30s), then refresh the page
       let back = false;
       for (let i = 0; i < 30; i++) {
         await new Promise(r => setTimeout(r, 1000));
         try {
-          const ping = await fetch('/api/status/uptime', { cache: 'no-store' });
+          const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
           if (ping.ok) { back = true; break; }
         } catch { /* still restarting */ }
       }
@@ -305,13 +334,12 @@ async function restartService() {
       showToast('重启请求失败', true);
     }
   } catch {
-    // Request itself failed (daemon already dying) — still wait for comeback
     showToast('服务正在重启，等待恢复...');
     if (btn) btn.disabled = true;
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 1000));
       try {
-        const ping = await fetch('/api/status/uptime', { cache: 'no-store' });
+        const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
         if (ping.ok) { location.reload(); return; }
       } catch { /* still restarting */ }
     }
@@ -323,13 +351,14 @@ async function restartService() {
 // Log polling — /api/log returns full rotate history + current run.log
 async function pollLog() {
   try {
-    const res = await fetch(`/api/log?t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`${API}/api/log?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) {
       document.getElementById('logBox').textContent =
         res.status === 503 ? '(日志尚未就绪)' : `(获取失败 HTTP ${res.status})`;
       return false;
     }
     const text = await res.text();
+    latestLogText = text;
     const lines = text.split('\n').filter(l => l).slice(-100);
     document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
     return true;
@@ -346,7 +375,7 @@ async function refreshLog() {
 
 async function exportLog() {
   try {
-    const res = await fetch(`/api/log?t=${Date.now()}`, { cache: 'no-store' });
+    const res = await fetch(`${API}/api/log?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) {
       showToast(res.status === 503 ? '日志尚未就绪' : '获取日志失败', true);
       return;
@@ -367,10 +396,8 @@ async function exportLog() {
   }
 }
 
-// Init
-refreshStatus();
+pollLog().then(() => refreshStatus());
 loadConfig();
-pollLog();
 setInterval(refreshStatus, 5000);
 setInterval(pollLog, 5000);
 </script>

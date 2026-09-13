@@ -860,20 +860,64 @@ void work()
             {
                 break;
             }
+#ifdef __MAGISK__
+            /* 收到停止请求：干净退出，不 execv 重启 */
+            if (g_need_stop_now)
+            {
+                g_need_stop_now = false;
+                g_need_restart = false;
+                FILE* df = fopen("/data/adb/esurfing/disable", "w");
+                if (df) {
+                    fputs("1\n", df);
+                    fclose(df);
+                    LOG_INFO("已写入 /data/adb/esurfing/disable，开机将不再自动启动");
+                }
+                LOG_INFO("收到停止请求，正在停止服务...");
+                shut(0);
+                break;
+            }
+            /* 收到重启请求：设置 g_need_restart 由 shut() 执行 execv 重启 */
+            if (g_need_restart_now)
+            {
+                g_need_restart_now = false;
+                g_need_restart = true;
+                remove("/data/adb/esurfing/disable");
+                LOG_INFO("收到重启请求，正在重启服务...");
+                shut(0);
+                break;
+            }
+#endif
+            if (g_prog_status && g_prog_status[0].runtime_status.is_need_reset)
+            {
+                LOG_INFO("检测到强制认证/重置请求，退出就绪等待并启动认证流程");
+                g_prog_status[0].runtime_status.is_need_reset = false;
+                quit = true;
+                break;
+            }
+
             switch (check_network_status(true)) // 检查网络状态
             {
             case STATUS_OK:
                 // 正常连接到互联网
                 retry_network = 1;
+                for (int8_t i = 0; i < g_prog_cnt; i++) {
+                    g_prog_status[i].runtime_status.is_connected = true;
+                }
                 LOG_INFO("已连接至互联网");
                 sleep_ms(10000, true);
                 break;
             case STATUS_NEED_AUTH:
                 // 需要认证
+                for (int8_t i = 0; i < g_prog_cnt; i++) {
+                    g_prog_status[i].runtime_status.is_connected = false;
+                }
                 quit = true;
                 break;
             default:
                 // 网络错误
+                for (int8_t i = 0; i < g_prog_cnt; i++) {
+                    g_prog_status[i].runtime_status.is_connected = false;
+                }
                 if (retry_network > 5)
                 {
                     LOG_FATAL("超过最多重试次数");

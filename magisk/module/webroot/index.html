@@ -115,6 +115,7 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
 
 <script>
 const API = 'http://127.0.0.1:8888';
+let latestLogText = '';
 
 function showToast(msg, isError) {
   const t = document.getElementById('toast');
@@ -124,30 +125,62 @@ function showToast(msg, isError) {
 }
 
 async function refreshStatus() {
+  let isAuthed = false;
+  let isConnected = false;
+  let onlineCode = 0;
+
   try {
     const authRes = await fetch(API + '/api/status/auth');
-    const authData = await authRes.json();
-    const el = document.getElementById('authStatus');
-    if (authData.status) {
-      el.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
-    } else if (authData.connected) {
-      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（未通过本工具认证）</span>';
-    } else {
-      el.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
+    if (authRes.ok) {
+      const authData = await authRes.json();
+      if (authData.status) isAuthed = true;
+      if (authData.connected) isConnected = true;
     }
-  } catch { document.getElementById('authStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+  } catch {}
 
   try {
     const onlineRes = await fetch(API + '/api/status/online');
-    const el = document.getElementById('onlineStatus');
-    if (onlineRes.status === 204) {
-      el.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span>';
-    } else if (onlineRes.status === 302) {
-      el.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
-    } else {
-      el.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
+    onlineCode = onlineRes.status;
+    if (onlineCode === 204) isConnected = true;
+  } catch {}
+
+  if (!isConnected && latestLogText) {
+    const lines = latestLogText.split('\n').filter(l => l.trim()).slice(-20);
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes('已认证登录')) {
+        isAuthed = true;
+        isConnected = true;
+        break;
+      }
+      if (lines[i].includes('已连接至互联网') || lines[i].includes('响应码: 204') || lines[i].includes('心跳包')) {
+        isConnected = true;
+        break;
+      }
+      if (lines[i].includes('需要认证') || lines[i].includes('网络错误')) {
+        break;
+      }
     }
-  } catch { document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">查询失败</span>'; }
+  }
+
+  const authEl = document.getElementById('authStatus');
+  if (isAuthed) {
+    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
+  } else if (isConnected) {
+    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（守护中 / 正常在线）</span>';
+  } else if (onlineCode === 302) {
+    authEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
+  } else {
+    authEl.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
+  }
+
+  const onlineEl = document.getElementById('onlineStatus');
+  if (isConnected || onlineCode === 204) {
+    onlineEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span>';
+  } else if (onlineCode === 302) {
+    onlineEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
+  } else {
+    onlineEl.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
+  }
 
   // 更新运行时间
   try {
@@ -325,6 +358,7 @@ async function pollLog() {
       return false;
     }
     const text = await res.text();
+    latestLogText = text;
     const lines = text.split('\n').filter(l => l).slice(-100);
     document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
     return true;
@@ -362,9 +396,8 @@ async function exportLog() {
   }
 }
 
-refreshStatus();
+pollLog().then(() => refreshStatus());
 loadConfig();
-pollLog();
 setInterval(refreshStatus, 5000);
 setInterval(pollLog, 5000);
 </script>
