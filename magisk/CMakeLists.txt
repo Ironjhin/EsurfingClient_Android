@@ -13,12 +13,15 @@ set(SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../android/app/src/main/cpp")
 include_directories(
     ${SRC_ROOT}
     ${SRC_ROOT}/cipher
+    ${SRC_ROOT}/cipher/algo/ios/lzma
     ${SRC_ROOT}/utils
+    ${SRC_ROOT}/utils/simssl
     ${SRC_ROOT}/webserver
     ${SRC_ROOT}/external
     ${SRC_ROOT}/inc
     ${SRC_ROOT}/inc/cipher
     ${SRC_ROOT}/inc/utils
+    ${SRC_ROOT}/inc/utils/simssl
     ${SRC_ROOT}/inc/webserver
 )
 
@@ -76,12 +79,23 @@ FetchContent_MakeAvailable(curl)
 include_directories(${curl_SOURCE_DIR}/include)
 
 # ============================================================
+# Android NDK log library
+# ============================================================
+find_library(ANDROID_LOG log)
+
+# ============================================================
 # 源文件
 # ============================================================
-# 上游已弃用旧版 Android 算法；这里只保留仍有效的 PC/Linux 兼容实现。
-file(GLOB CIPHER_SOURCES "${SRC_ROOT}/cipher/impl/*_pc.c")
 file(GLOB ANDROID_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/android/*.c")
-file(GLOB UTILS_SOURCES "${SRC_ROOT}/utils/*.c")
+file(GLOB LINUX_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/linux/*.c")
+file(GLOB IOS_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/ios/*.c")
+file(GLOB LZMA_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/ios/lzma/*.c")
+
+file(GLOB UTILS_SOURCES
+    "${SRC_ROOT}/utils/*.c"
+    "${SRC_ROOT}/utils/simssl/*.c"
+)
+
 file(GLOB WEBSERVER_SOURCES "${SRC_ROOT}/webserver/*.c")
 
 set(MAIN_SOURCES
@@ -91,14 +105,15 @@ set(MAIN_SOURCES
     "${SRC_ROOT}/cipher/CipherFactory.c"
     "${SRC_ROOT}/cipher/KeyData.c"
     "${SRC_ROOT}/cipher/CipherUtils.c"
-    "${SRC_ROOT}/external/md5.c"
     "${SRC_ROOT}/main_magisk.c"
 )
 
 set(ALL_SOURCES
     ${MAIN_SOURCES}
-    ${CIPHER_SOURCES}
     ${ANDROID_CIPHER_SOURCES}
+    ${LINUX_CIPHER_SOURCES}
+    ${IOS_CIPHER_SOURCES}
+    ${LZMA_CIPHER_SOURCES}
     ${UTILS_SOURCES}
     ${WEBSERVER_SOURCES}
 )
@@ -112,6 +127,8 @@ add_executable(esurfingd ${ALL_SOURCES})
 target_link_libraries(esurfingd
     libcurl
     Threads::Threads
+    ${ANDROID_LOG}
+    m
 )
 
 target_compile_options(esurfingd PRIVATE
@@ -127,8 +144,14 @@ target_compile_options(esurfingd PRIVATE
     -D__MAGISK__
 )
 
+target_compile_definitions(esurfingd PRIVATE
+    PROGRAM_FULL_VERSION="v2.0.8-r1"
+)
+
 target_include_directories(esurfingd PUBLIC
     ${SRC_ROOT}
     ${SRC_ROOT}/external
     ${SRC_ROOT}/inc
+    ${SRC_ROOT}/inc/utils/simssl
+    ${SRC_ROOT}/cipher/algo/ios/lzma
 )

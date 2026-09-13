@@ -23,11 +23,15 @@ static void remove_pid()
     remove(PID_FILE);
 }
 
+#ifndef PROGRAM_FULL_VERSION
+#define PROGRAM_FULL_VERSION "v2.0.8-r1"
+#endif
+
 int main(int argc, char* argv[])
 {
     // Parse args
     if (argc > 1 && (strcmp(argv[1], "-v") == 0 || strcmp(argv[1], "--version") == 0)) {
-        printf("esurfingd 1.0.0\n");
+        printf("esurfingd " PROGRAM_FULL_VERSION "\n");
         return 0;
     }
 

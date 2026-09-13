@@ -11,45 +11,92 @@
 static const char* listenAddr = "http://0.0.0.0:8888";
 static sim_thread_t* web_thread;
 
+#ifdef __MAGISK__
+static const char* portal_root = "/data/adb/esurfing/portal";
+#else
+static const char* portal_root = "portal";
+#endif
+
+// CORS headers for KernelSU WebUI cross-origin API access
+static const char* cors_hdrs = "Access-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n";
+
 static void fn(struct mg_connection *c, const int ev, void *ev_data)
 {
     if (ev == MG_EV_HTTP_MSG)
     {
         struct mg_http_message* hm = ev_data;
-        struct mg_http_serve_opts opts = { .root_dir = "portal" };
+        struct mg_http_serve_opts opts = { .root_dir = portal_root, .extra_headers = cors_hdrs };
+
+        // Handle CORS preflight (KernelSU WebUI cross-origin requests)
+        if (mg_strcmp(hm->method, mg_str("OPTIONS")) == 0)
+        {
+            mg_http_reply(c, 204, cors_hdrs, "");
+            return;
+        }
         // GET 请求
         if (mg_strcmp(hm->method, mg_str("GET")) == 0)
         {
             // 根目录转发到 index.html
             if (mg_match(hm->uri, mg_str("/"), NULL))
             {
-                mg_http_reply(c, 302, "Location: /index.html\r\n", "");
+                mg_http_reply(c, 302, "Location: /index.html\r\nAccess-Control-Allow-Origin: *\r\n", "");
+                return;
             }
             // 获取认证状态
             if (mg_match(hm->uri, mg_str("/api/status/auth"), NULL))
             {
                 cJSON* auth = cJSON_CreateObject();
                 cJSON_AddBoolToObject(auth, "status", g_prog_status[0].runtime_status.is_authed);
+                // 读拨号线程缓存的 is_connected 标志,不在 HTTP handler 内现场发网络请求。
+                // mongoose 是单线程事件循环,handler 里做同步 curl (check_network_status
+                // 最长阻塞 10s) 会把整个 web 服务卡死,导致所有接口无响应。
+                // is_connected 由 run() 每轮循环(约 10s)更新,足够 WebUI 用。
+                bool connected = g_prog_status[0].runtime_status.is_connected;
+                cJSON_AddBoolToObject(auth, "connected", connected);
+                LOG_DEBUG("API /api/status/auth: is_authed=%d, connected=%d(cached)",
+                    g_prog_status[0].runtime_status.is_authed, connected);
                 char* status_str = cJSON_Print(auth);
-                mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", status_str);
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", status_str);
                 free(status_str);
+                cJSON_Delete(auth);
+                return;
             }
             // 获取联网状态
             if (mg_match(hm->uri, mg_str("/api/status/online"), NULL))
             {
-                const NetworkStatus status = check_network_status();
-                if (status == REQUEST_SUCCESS)
+                // 同样读缓存标志,避免阻塞 web 事件循环。
+                // is_connected=true 视为在线(204);为假时若已认证过则可能是掉线需重认证,
+                // 统一回 302(需认证),前端据此提示;完全未初始化则 503。
+                const bool connected = g_prog_status[0].runtime_status.is_connected;
+                LOG_DEBUG("API /api/status/online: is_connected=%d(cached)", connected);
+                if (connected)
                 {
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                 }
-                else if (status == REQUEST_REDIRECT)
+                else if (g_prog_status[0].runtime_status.is_initialized)
                 {
-                    mg_http_reply(c, 302, "", "");
+                    mg_http_reply(c, 302, "Access-Control-Allow-Origin: *\r\n", "");
                 }
                 else
                 {
-                    mg_http_reply(c, 503, "", "");
+                    mg_http_reply(c, 503, "Access-Control-Allow-Origin: *\r\n", "");
                 }
+                return;
+            }
+            // 获取运行时间
+            if (mg_match(hm->uri, mg_str("/api/status/uptime"), NULL))
+            {
+                cJSON* uptime = cJSON_CreateObject();
+                uint64_t now = get_cur_tm_ms();
+                uint64_t start = g_start_run_tm;
+                uint64_t elapsed_ms = (start > 0) ? (now - start) : 0;
+                cJSON_AddNumberToObject(uptime, "uptime_ms", (double)elapsed_ms);
+                cJSON_AddNumberToObject(uptime, "start_ms", (double)start);
+                char* uptime_str = cJSON_Print(uptime);
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", uptime_str);
+                free(uptime_str);
+                cJSON_Delete(uptime);
+                return;
             }
             // 获取配置
             if (mg_match(hm->uri, mg_str("/api/getConfigs"), NULL))
@@ -64,22 +111,61 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 cJSON_AddStringToObject(account, "username", g_prog_status[0].login_cfg.usr);
                 cJSON_AddStringToObject(account, "password", g_prog_status[0].login_cfg.pwd);
-                cJSON_AddStringToObject(account, "channel", g_prog_status[0].login_cfg.chn);
+                const char* chn_str = "android";
+                switch (g_prog_status[0].login_cfg.chn)
+                {
+                case 1: chn_str = "windows"; break;
+                case 2: chn_str = "linux"; break;
+                case 3: chn_str = "android"; break;
+                case 4: chn_str = "ios"; break;
+                case 5: chn_str = "macos"; break;
+                default: chn_str = "android"; break;
+                }
+                cJSON_AddStringToObject(account, "channel", chn_str);
 
                 cJSON_AddItemToArray(accounts, account);
                 cJSON_AddItemToObject(configs, "accounts", accounts);
 
                 char* config_str = cJSON_Print(configs);
 
-                mg_http_reply(c, 200, "Content-Type: application/json\r\n", "%s", config_str);
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", config_str);
 
                 free(config_str);
                 cJSON_Delete(configs);
+                return;
+            }
+            // 读取运行日志 — 拼接所有 rotate 文件（旧→新）+ 当前 run.log 一起返回。
+            // 前端的刷新/导出日志按钮请求此接口。
+            // 只读本地文件（无网络请求），不会阻塞 mongoose 事件循环。
+            if (mg_match(hm->uri, mg_str("/api/log"), NULL))
+            {
+                char* full_log = NULL;
+                size_t len = read_full_log(&full_log);
+                if (full_log == NULL || len == 0)
+                {
+                    mg_http_reply(c, 503, cors_hdrs, "log not ready");
+                    return;
+                }
+                /* headers 不是 printf 格式串：不能写 \r\n%s 去拼 cors。
+                 * 之前的写法会把字面量 "%sContent-Length" 发到响应头，
+                 * 导致 Content-Length 失效，前端 fetch 读不到 body。 */
+                mg_http_reply(c, 200,
+                    "Content-Type: text/plain; charset=utf-8\r\n"
+                    "Access-Control-Allow-Origin: *\r\n"
+                    "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+                    "Access-Control-Allow-Headers: Content-Type\r\n"
+                    "Cache-Control: no-store\r\n",
+                    "%.*s", (int)len, full_log);
+                free(full_log);
+                return;
             }
             mg_http_serve_dir(c, hm, &opts);
             return;
         }
-                   // 强制重新认证: 设置 is_need_reset, 工作循环会立即重建拨号线程
+        // POST 请求
+        if (mg_strcmp(hm->method, mg_str("POST")) == 0)
+        {
+            // 强制重新认证: 设置 is_need_reset, 工作循环会立即重建拨号线程
             if (mg_match(hm->uri, mg_str("/api/auth/reset"), NULL))
             {
                 int forced = 0;
@@ -89,8 +175,28 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                     forced = 1;
                 }
                 LOG_INFO("强制重新认证: 已触发重置标志");
-                mg_http_reply(c, 200, "Content-Type: application/json\r\n",
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
                               forced ? "{\"ok\":true}" : "{\"ok\":false,\"reason\":\"no dialer\"}");
+            }
+            // 重启服务: 设置标志位, 主循环检测到后执行 shut() -> execv 重启
+            // 不在此处直接调用 shut(), 因为 web 线程内 join web 线程会死锁
+            if (mg_match(hm->uri, mg_str("/api/restart"), NULL))
+            {
+                g_need_restart_now = true;
+                LOG_INFO("Web 接口请求重启服务");
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
+                              "{\"ok\":true,\"msg\":\"restarting\"}");
+                return;
+            }
+            // 停止服务: 设置标志位, 主循环检测到后执行 shut() 干净退出（不 execv）
+            // 不在此处直接调用 shut(), 因为 web 线程内 join web 线程会死锁
+            if (mg_match(hm->uri, mg_str("/api/stop"), NULL))
+            {
+                g_need_stop_now = true;
+                LOG_INFO("Web 接口请求停止服务");
+                mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n",
+                              "{\"ok\":true,\"msg\":\"stopping\"}");
+                return;
             }
             // 仅保存
             if (mg_match(hm->uri, mg_str("/api/saveConfigs"), NULL))
@@ -99,7 +205,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (body->len == 0)
                 {
-                    mg_http_reply(c, 400, "", "");
+                    mg_http_reply(c, 400, "Access-Control-Allow-Origin: *\r\n", "");
                     return;
                 }
 
@@ -109,14 +215,15 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (save_cfg(data))
                 {
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                 }
                 else
                 {
-                    mg_http_reply(c, 500, "", "");
+                    mg_http_reply(c, 500, "Access-Control-Allow-Origin: *\r\n", "");
                 }
 
                 free(data);
+                return;
             }
             // 仅应用
             if (mg_match(hm->uri, mg_str("/api/applyConfigs"), NULL))
@@ -125,7 +232,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (body->len == 0)
                 {
-                    mg_http_reply(c, 400, "", "");
+                    mg_http_reply(c, 400, "Access-Control-Allow-Origin: *\r\n", "");
                     return;
                 }
 
@@ -139,16 +246,18 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 if (apply->valueint)
                 {
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                     g_need_restart = true;
+                    g_need_restart_now = true;
                 }
                 else
                 {
-                    mg_http_reply(c, 500, "", "");
+                    mg_http_reply(c, 500, "Access-Control-Allow-Origin: *\r\n", "");
                 }
 
                 free(data);
                 cJSON_Delete(operation_json);
+                return;
             }
         }
     }
@@ -233,7 +342,7 @@ int web_server(void* arg)
 {
     tl_thread_idx = (int8_t)(intptr_t)arg;
     struct mg_mgr mgr;
-    mg_log_level = MG_LL_VERBOSE;
+    mg_log_level = MG_LL_ERROR;  // 只输出错误日志，避免轮询刷屏
     mg_log_set_fn(logFn, NULL);
     mg_mgr_init(&mgr);
 

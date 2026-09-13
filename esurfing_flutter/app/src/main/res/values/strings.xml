@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ESurfing Client</string>
+    <string name="accessibility_service_description">开启后放宽系统对 ESurfing Client 的电池优化限制,让校园网认证守护进程在后台持续运行。此服务不做任何界面操作。</string>
+</resources>

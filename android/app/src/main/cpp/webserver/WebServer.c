@@ -111,7 +111,17 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
 
                 cJSON_AddStringToObject(account, "username", g_prog_status[0].login_cfg.usr);
                 cJSON_AddStringToObject(account, "password", g_prog_status[0].login_cfg.pwd);
-                cJSON_AddStringToObject(account, "channel", g_prog_status[0].login_cfg.chn);
+                const char* chn_str = "android";
+                switch (g_prog_status[0].login_cfg.chn)
+                {
+                case 1: chn_str = "windows"; break;
+                case 2: chn_str = "linux"; break;
+                case 3: chn_str = "android"; break;
+                case 4: chn_str = "ios"; break;
+                case 5: chn_str = "macos"; break;
+                default: chn_str = "android"; break;
+                }
+                cJSON_AddStringToObject(account, "channel", chn_str);
 
                 cJSON_AddItemToArray(accounts, account);
                 cJSON_AddItemToObject(configs, "accounts", accounts);
@@ -238,6 +248,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 {
                     mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
                     g_need_restart = true;
+                    g_need_restart_now = true;
                 }
                 else
                 {

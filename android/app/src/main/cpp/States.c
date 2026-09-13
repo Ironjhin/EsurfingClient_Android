@@ -22,7 +22,7 @@ bool g_thread_keep_alive = false;
 
 bool g_is_webserver_running = false;
 
-volatile int g_need_exit = 0;
+bool g_need_exit = false;
 
 bool g_prog_enabled = false;
 

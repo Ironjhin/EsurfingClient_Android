@@ -87,8 +87,11 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; }
     <div class="form-group">
       <label for="channel">通道</label>
       <select id="channel">
-        <option value="phone">手机端</option>
-        <option value="pc">电脑端</option>
+        <option value="android">Android (推荐)</option>
+        <option value="windows">Windows</option>
+        <option value="linux">Linux</option>
+        <option value="ios">iOS</option>
+        <option value="macos">macOS</option>
       </select>
     </div>
     <div class="actions">
@@ -177,7 +180,10 @@ async function loadConfig() {
     if (data.accounts && data.accounts.length > 0) {
       document.getElementById('username').value = data.accounts[0].username;
       document.getElementById('password').value = data.accounts[0].password;
-      document.getElementById('channel').value = data.accounts[0].channel || 'phone';
+      let ch = (data.accounts[0].channel || 'android').toLowerCase();
+      if (ch === 'phone') ch = 'android';
+      if (ch === 'pc') ch = 'linux';
+      document.getElementById('channel').value = ch;
     }
   } catch { showToast('加载配置失败', true); }
 }

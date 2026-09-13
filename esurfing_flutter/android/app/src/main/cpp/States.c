@@ -22,11 +22,15 @@ bool g_thread_keep_alive = false;
 
 bool g_is_webserver_running = false;
 
-volatile int g_need_exit = 0;
+bool g_need_exit = false;
 
 bool g_prog_enabled = false;
 
 bool g_need_restart = false;
+
+volatile bool g_need_restart_now = false;
+
+volatile bool g_need_stop_now = false;
 
 static void reset_host_name()
 {
