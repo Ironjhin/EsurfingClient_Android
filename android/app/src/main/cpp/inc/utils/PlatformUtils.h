@@ -29,7 +29,7 @@
 #endif
 
 #define XML_BUFFER_SIZE 1024
-#define NAME_LENGTH 128
+#define NAME_LENGTH 256
 
 typedef enum
 {
@@ -160,5 +160,9 @@ bool save_cfg(char* configs_str);
  * @brief 加载配置文件
  */
 bool load_cfg();
+
+uint8_t parse_channel_json(const cJSON* chn, uint8_t cfg_no);
+void apply_channel_ua(login_cfg_t* cfg, uint8_t cfg_no);
+bool apply_time_windows(const cJSON* item, login_cfg_t* cfg);
 
 #endif // ESURFINGCLIENT_PLATFORMUTILS_H

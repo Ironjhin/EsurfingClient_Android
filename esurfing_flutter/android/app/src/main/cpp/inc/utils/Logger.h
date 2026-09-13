@@ -78,6 +78,12 @@ LogLevel get_logger_level();
 void set_logger_level(LogLevel lv);
 
 /**
+ * @brief 设置日志沙盒路径（Android 私有数据目录）
+ * @param dir 沙盒目录路径，会在此目录下创建 run.log
+ */
+void set_log_dir(const char* dir);
+
+/**
  * @brief 初始化日志系统
  * @return 初始化状态
  */
@@ -87,5 +93,33 @@ bool init_logger();
  * @brief 清理日志系统
  */
 void clean_logger();
+
+/**
+ * @brief 物理截断日志文件为零字节（线程安全）
+ *
+ * 在互斥锁保护下关闭当前文件句柄，以 "w" 模式重新打开以清空内容，
+ * 再以 "a" 模式重开恢复追加写入。由于在同进程 C 层内部操作，
+ * 持有文件句柄的源线程不会遭遇权限拒绝。
+ */
+void clear_log_file(void);
+
+/**
+ * @brief 获取当前日志文件的绝对路径
+ * @return 指向内部 log_file 缓冲区的只读指针（如 /data/adb/esurfing/run.log）；
+ *         日志系统未初始化时返回空字符串 ""，调用方无需 free。
+ */
+const char* get_log_file_path(void);
+
+/**
+ * @brief 读取完整日志内容（所有 rotate 文件按时间正序 + 当前 run.log）
+ *
+ * 扫描日志目录中的所有 *.rotate.log 文件，按文件名排序（时间戳前缀 ⇒ 字典序 = 时间序），
+ * 依次读取后追加当前 run.log 内容，拼接进一块 malloc'd 缓冲区。
+ * 调用方必须用 free() 释放 *out。
+ *
+ * @param out 输出缓冲区指针，出错时设为 NULL
+ * @return 读取的字节数（不含结尾 \0），出错返回 0
+ */
+size_t read_full_log(char** out);
 
 #endif //ESURFINGCLIENT_LOGGER_H

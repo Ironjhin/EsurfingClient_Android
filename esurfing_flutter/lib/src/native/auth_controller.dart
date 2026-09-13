@@ -1,5 +1,3 @@
-import 'dart:ffi';
-import 'dart:convert';
 import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import 'bindings.dart';
@@ -34,6 +32,21 @@ class AuthController {
   bool get isRunning => _running;
 
   /// ================================================================
+  ///  注入 Android 沙盒路径到 C 层（应在 initialize 前调用）
+  /// ================================================================
+  void initNativeEnv(String sandboxPath) {
+    final bindings = NativeBindings.instance;
+    if (!bindings.isLoaded) return;
+
+    final pathPtr = sandboxPath.toNativeUtf8();
+    try {
+      bindings.initNativeEnv(pathPtr);
+    } finally {
+      calloc.free(pathPtr);
+    }
+  }
+
+  /// ================================================================
   ///  初始化 C 层：传入 Android 沙盒路径与 JSON 配置
   /// ================================================================
   Future<bool> initialize(String dataDir, String configJson) async {
@@ -60,7 +73,7 @@ class AuthController {
   /// ================================================================
   ///  启动认证 Isolate
   /// ================================================================
-  Future<bool> start() async {
+  Future<bool> start({int accountCount = 1}) async {
     if (_initialized == false) return false;
     if (_running) return true;
 
@@ -78,8 +91,8 @@ class AuthController {
       // 等待 worker 发回确认
       _workerSendPort = await _mainReceivePort!.first as SendPort;
 
-      // 通知 worker 开始
-      _workerSendPort!.send(_StartCommand());
+      // 通知 worker 开始认证
+      _workerSendPort!.send(_StartCommand(accountCount));
       _running = true;
       onStatusChanged?.call(true, 'Running — authentication active');
       return true;
@@ -91,17 +104,8 @@ class AuthController {
   }
 
   /// ================================================================
-  ///  强制重新认证 — 设置 is_need_reset, 后台工作循环立即重建拨号线程
+  ///  安全停止 — 调用 C 层 stop_dialer / esurfing_client_stop
   /// ================================================================
-  Future<void> forceAuthReset() async {
-    if (!_running) return;
-    final bindings = NativeBindings.instance;
-    if (!bindings.isLoaded) return;
-    try {
-      bindings.esurfingClientForceAuthReset();
-      onStatusChanged?.call(true, '正在强制重新认证...');
-    } catch (_) {}
-  }
   Future<void> stop({bool waitForExit = true}) async {
     if (!_running) return;
 
@@ -115,7 +119,7 @@ class AuthController {
         // 轮询等待 C 层线程退出（最多 5 秒）
         if (waitForExit) {
           for (int i = 0; i < 50; i++) {
-            await Future.delayed(const Duration(milliseconds: 100));
+            await Future<void>.delayed(const Duration(milliseconds: 100));
             if (bindings.esurfingClientIsStopped() == 1) break;
           }
         }
@@ -148,22 +152,44 @@ class AuthController {
   }
 
   /// ================================================================
-  ///  Isolate 入口 — 仅用作信号宿主
+  ///  强制重新认证 — 设置 is_need_reset, 后台工作循环立即重建拨号线程
+  /// ================================================================
+  Future<void> forceAuthReset() async {
+    if (!_running) return;
+    final bindings = NativeBindings.instance;
+    if (!bindings.isLoaded) return;
+    try {
+      bindings.esurfingClientForceAuthReset();
+      onStatusChanged?.call(true, '正在强制重新认证...');
+    } catch (_) {}
+  }
+
+  /// ================================================================
+  ///  Isolate 入口 — 在此调用 FFI 启动 C 层认证线程
   /// ================================================================
   static void _workerEntryPoint(SendPort mainSendPort) {
     final receivePort = ReceivePort();
     mainSendPort.send(receivePort.sendPort);
 
     receivePort.listen((message) {
-      if (message is _StopCommand) {
+      if (message is _StartCommand) {
+        final bindings = NativeBindings.instance;
+        if (bindings.isLoaded) {
+          for (int i = 0; i < message.accountCount; i++) {
+            bindings.esurfingClientStart(i);
+          }
+        }
+      } else if (message is _StopCommand) {
         receivePort.close();
         Isolate.exit();
       }
-      // _StartCommand: 什么都不做，C 层已经在跑了
     });
   }
 }
 
 /// Isolate 内部消息
-class _StartCommand {}
+class _StartCommand {
+  final int accountCount;
+  _StartCommand(this.accountCount);
+}
 class _StopCommand {}

@@ -64,7 +64,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _usernameControllers.add(TextEditingController(text: account.username));
       _passwordControllers.add(TextEditingController(text: account.password));
       _markControllers.add(TextEditingController(text: account.mark));
-      _channelValues.add(account.channel);
+      _channelValues.add(AccountConfig.normalizeChannel(account.channel));
     }
   }
 
@@ -73,13 +73,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final i18n = AppLocalizations.of(context);
 
     final accounts = <AccountConfig>[];
-    for (int i = 0; i < _config!.accounts.length; i++) {
+    for (int i = 0; i < _usernameControllers.length; i++) {
       if (_formKeys[i].currentState?.validate() ?? false) {
+        final existingTw = (i < _config!.accounts.length)
+            ? _config!.accounts[i].timeWindows
+            : <TimeWindowConfig>[];
         accounts.add(AccountConfig(
           username: _usernameControllers[i].text.trim(),
           password: _passwordControllers[i].text,
-          channel: _channelValues[i],
+          channel: AccountConfig.normalizeChannel(_channelValues[i]),
           mark: _markControllers[i].text.trim(),
+          timeWindows: existingTw,
         ));
       }
     }
@@ -107,7 +111,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _usernameControllers.add(TextEditingController());
       _passwordControllers.add(TextEditingController());
       _markControllers.add(TextEditingController());
-      _channelValues.add('phone');
+      _channelValues.add('android');
     });
   }
 
@@ -290,8 +294,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              Text(i18n.channelPhoneDesc),
-              Text(i18n.channelPcDesc),
+              Text(i18n.channelAndroidDesc),
+              Text(i18n.channelIosDesc),
+              Text(i18n.channelMacosDesc),
+              Text(i18n.channelLinuxDesc),
+              Text(i18n.channelWindowsDesc),
               const SizedBox(height: 16),
               Text(
                 i18n.markHelpTitle,
@@ -377,7 +384,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _channelValues[index],
+                  value: AccountConfig.normalizeChannel(_channelValues[index]),
                   decoration: glassInputDecoration(
                     context,
                     label: i18n.fieldChannel,
@@ -385,8 +392,15 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   items: [
                     DropdownMenuItem(
-                        value: 'phone', child: Text(i18n.channelPhone)),
-                    DropdownMenuItem(value: 'pc', child: Text(i18n.channelPc)),
+                        value: 'android', child: Text(i18n.channelAndroid)),
+                    DropdownMenuItem(
+                        value: 'ios', child: Text(i18n.channelIos)),
+                    DropdownMenuItem(
+                        value: 'macos', child: Text(i18n.channelMacos)),
+                    DropdownMenuItem(
+                        value: 'linux', child: Text(i18n.channelLinux)),
+                    DropdownMenuItem(
+                        value: 'windows', child: Text(i18n.channelWindows)),
                   ],
                   onChanged: (value) {
                     if (value != null) {

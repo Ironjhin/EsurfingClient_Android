@@ -21,9 +21,13 @@
 * **应用开发框架**：基于 [Flutter Framework](https://flutter.dev/) —— 驱动上层 UI 状态机的高效渲染、异步日志流的增量轮询以及跨平台架构的构建。
 * **跨语言通信桥梁**：依托 Dart 原生 [Dart:FFI (Foreign Function Interface)](https://dart.dev/guides/libraries/c-interop) 机制 —— 实现了 Flutter 内存应用层与底层 C 语言编译期高并发线程（pthread）之间的低延迟双向数据穿透。
 
-## 与原版 CVersion 的差异修复
+## 与原版 CVersion 的差异与同步
 
-本项目基于 [BadGhost/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的 C 引擎，在此基础上做了大量修复和增强：
+本项目底层 C 引擎持续紧密跟随上游 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的演进，目前已同步至上游 **v2.0.8-r1**：
+* **SimSSL 独立加密引擎**：采用定制轻量 SimSSL 替代系统/第三方 OpenSSL，自带高效 MD5 与 EVP AES/3DES 算法。
+* **多渠道原生支持**：支持 Android (手机端)、iOS (苹果端，集成动态 LZMA 解包)、macOS (Mac 电脑端)、Linux (PC 电脑端) 及 Windows。
+* **分时段控制**：支持 `time_windows` 定时通行时间窗口配置与检查。
+* **多级探测链路**：结合 MIUI 204 探针、1.1.1.1 连通检测与认证服务器探针，并保留针对校园网 DNS 污染与未认证环境下的 Portal 域名公网 IP 重定向容错。
 
 ### 已修复的核心问题
 
@@ -37,7 +41,7 @@
 | 6 | `esurfing_client_stop()` 来源不明 | Flutter 切屏触发 lifecycle 变化，间接调用 stop 导致断网 | 添加 `LOG_DEBUG` 追踪调用者、增加 30 秒「认证后护盾」防止误重置 |
 | 7 | 设置页面「启用服务」不生效 | `enabled` 字段只用来显示状态文字，`_toggleAuth()` 从未被自动调用 | `_initApp()` 中检查 `enabled==true` 且有有效账号时自动调用开始认证 |
 | 8 | 日志没有「已连接」提示 | `LOG_INFO("已连接至互联网")` 放在未认证分支中 | 移到 REQUEST_SUCCESS 全局分支，认证后无条件输出 |
-| 9 | User-Agent 不匹配 | 移动端 UA 导致广东电信 portal 返回手机版页面，配置提取失败 | 恢复 PC 端 UA `CCTP/Linux64/1003` |
+| 9 | User-Agent 不匹配 | 移动端 UA 导致广东电信 portal 返回手机版页面，配置提取失败 | 升级支持 Android 2104 / Linux 1003 / iOS 4023 / macOS 5019 等全渠道 UA |
 | 10 | NULL 解引用闪退 | Portal 配置 XML 结尾标签缺失时未做容错 | 增加结尾标签缺失保护 |
 | 11 | 校园网标志 `readlink` 死循环 | `get_school_network_symbol()` 指针空悬 | 增加三层判空保护 |
 | 12 | 备用探针无意义 fallback | AC IP（`wlanacip`）不 serve portal 页面 | 删除 AC fallback 逻辑 |

@@ -85,7 +85,11 @@ There is redundancy between the outer `android/` and `esurfing_flutter/android/`
 The thing you can't see from any one file is split across three layers:
 
 1. **Native C daemon** (`android/app/src/main/cpp/...`)
-   - Owns libcurl + cJSON + pthreads. Auth state machine lives in `States.c`; protocol/crypto in `cipher/`; network IO in `NetClient.c` / `DialerClient.c`; logging + a small HTTP server in `utils/` and `webserver/`.
+   - Synced with upstream [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) v2.0.8-r1.
+   - Uses `utils/simssl` (custom standalone MD5/AES/3DES EVP implementation) completely eliminating OpenSSL dependencies.
+   - Supports 5 channels: 1 (Windows), 2 (Linux/PC), 3 (Android/phone), 4 (iOS with dynamic LZMA ZSM unpack), 5 (macOS).
+   - Time window control scheduler via `utils/TimeControl.c` (`time_windows` config).
+   - Owns libcurl + cJSON + pthreads. Auth state machine lives in `States.c`; protocol/crypto in `cipher/`; network IO in `NetClient.c` / `DialerClient.c`; logging in `utils/`.
    - Spawns its own background `pthread` for the dial-and-probe loop. `ffi_bridge.c` is the only file that crosses into Dart — it never calls back into Flutter, it only exports functions.
    - Logs to `<data_dir>/run.log` after `init_native_env(sandbox_path)` re-targets the C-side path.
 
@@ -94,7 +98,7 @@ The thing you can't see from any one file is split across three layers:
    - `auth_controller.dart` — wraps the blocking C calls in an `Isolate` so the UI thread never stalls; owns a small message protocol (`_StartCommand` / `_StopCommand`) and polls `esurfing_client_is_stopped()` to detect native thread death. **Critical**: the C side creates its own pthread, so the Dart Isolate is only the lifecycle container, not the worker.
 
 3. **Flutter side** (`lib/src/{ui,model,services,i18n}`, `lib/main.dart`)
-   - `model/config.dart` — single source of truth for credentials + channel (`phone` vs `pc` → different User-Agent strings) in `SharedPreferences`. Changing `userAgent` here is the supported way to switch between "手机版" and "PC 版" portal flows.
+   - `model/config.dart` — single source of truth for credentials + channel (`android`, `ios`, `macos`, `linux`, `windows`, with backward-compatible aliases `phone`/`pc` → different User-Agent strings) and optional `time_windows` in `SharedPreferences`.
    - `services/log_reader.dart` — 2-second `Timer`-based poll of `run.log`, **byte-offset incremental** (not full-rewindowed). Clear = in-process `esurfing_client_clear_log()` plus offset reset. Two truncation guards: (a) >1000 lines ⇒ call C-side clear + reset offset to 0; (b) >512k chars ⇒ truncate in-memory `_content` to the tail but **keep the offset at current file length** (resetting it to 0 here would re-read and duplicate the whole file). Rotation detection is separate: file length < recorded offset ⇒ reset offset to 0 and re-read from start.
    - `ui/home_page.dart`, `ui/settings_page.dart`, `widgets/log_viewer.dart` — Material 3, portrait-locked, light/dark via `Color(0xFF1565C0)` seed.
    - `i18n/app_localizations.dart` — manually-authored localizations (not ARB-generated); `main.dart` wires `GlobalMaterialLocalizations` + a custom `AppLocalizationsDelegate`.
