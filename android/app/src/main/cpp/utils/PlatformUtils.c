@@ -29,7 +29,9 @@
 #define IOS_UA "CCTP/iOSdy/4023"
 #define MACOS_UA "CCTP/macdy/5019"
 
-#ifdef __OPENWRT__
+#ifdef __MAGISK__
+static const char config_file[] = "/data/adb/esurfing/ESurfingClient.json";
+#elif defined(__OPENWRT__)
 static const char config_file[] = "/etc/config/esurfingclient";
 #else
 #define DIALER_CONFIG_FILE "ESurfingClient.json"
@@ -453,6 +455,117 @@ bytes_t str2bytes(const char* str)
     return ba;
 }
 
+static const char b64_enc[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+char* bytes2base64(const uint8_t* in, const size_t len)
+{
+    if (in == NULL && len > 0) return NULL;
+
+    const size_t olen = 4 * ((len + 2) / 3);
+    char* out = malloc(olen + 1);
+    if (!out) return NULL;
+
+    size_t i = 0, j = 0;
+    while (i < len)
+    {
+        const uint32_t a = i < len ? in[i++] : 0;
+        const uint32_t b = i < len ? in[i++] : 0;
+        const uint32_t c = i < len ? in[i++] : 0;
+        const uint32_t t = (a << 16) | (b << 8) | c;
+
+        out[j++] = b64_enc[(t >> 18) & 0x3F];
+        out[j++] = b64_enc[(t >> 12) & 0x3F];
+        out[j++] = b64_enc[(t >> 6)  & 0x3F];
+        out[j++] = b64_enc[t & 0x3F];
+    }
+
+    const size_t mod = len % 3;
+    if (mod == 1) { out[olen - 1] = '='; out[olen - 2] = '='; }
+    else if (mod == 2) { out[olen - 1] = '='; }
+
+    out[olen] = '\0';
+    return out;
+}
+
+uint8_t* base642bytes(const char* in, size_t* out_len)
+{
+    if (in == NULL || out_len == NULL) return NULL;
+
+    const size_t in_len = strlen(in);
+    if (in_len == 0)
+    {
+        uint8_t* p = malloc(1);
+        if (p) *out_len = 0;
+        return p;
+    }
+    if (in_len % 4 != 0) return NULL;
+
+    static int dec[256];
+    static int inited = 0;
+    if (!inited)
+    {
+        memset(dec, -1, sizeof(dec));
+        for (int i = 0; i < 64; i++) dec[(uint8_t)b64_enc[i]] = i;
+        inited = 1;
+    }
+
+    const size_t max_out = in_len / 4 * 3;
+    uint8_t* out = malloc(max_out);
+    if (!out) return NULL;
+
+    size_t j = 0;
+    for (size_t i = 0; i < in_len; i += 4)
+    {
+        const int v0 = dec[(uint8_t)in[i]];
+        const int v1 = dec[(uint8_t)in[i + 1]];
+        const int v2 = in[i + 2] == '=' ? -2 : dec[(uint8_t)in[i + 2]];
+        const int v3 = in[i + 3] == '=' ? -2 : dec[(uint8_t)in[i + 3]];
+
+        if (v0 < 0 || v1 < 0 || v2 == -1 || v3 == -1) { free(out); return NULL; }
+
+        const uint32_t t = (v0 << 18) | (v1 << 12) |
+                     ((v2 < 0 ? 0 : v2) << 6) |
+                      (v3 < 0 ? 0 : v3);
+
+        out[j++] = (t >> 16) & 0xFF;
+        if (v2 >= 0) out[j++] = (t >> 8) & 0xFF;
+        if (v3 >= 0) out[j++] = t & 0xFF;
+    }
+
+    *out_len = j;
+    return out;
+}
+
+void set_config_dir(const char* dir)
+{
+#if !defined(__OPENWRT__) && !defined(__MAGISK__)
+    if (dir && dir[0] != '\0')
+    {
+        snprintf(config_file, sizeof(config_file), "%s%c%s", dir, SEP, DIALER_CONFIG_FILE);
+    }
+#else
+    (void)dir;
+#endif
+}
+
+const char* get_config_path(void)
+{
+#if defined(__OPENWRT__) || defined(__MAGISK__)
+    return config_file;
+#else
+    if (config_file[0] == '\0')
+    {
+        char dir[PATH_MAX];
+        if (get_exec_dir(dir))
+        {
+            snprintf(config_file, sizeof(config_file), "%s%c%s", safe_str(dir), SEP, DIALER_CONFIG_FILE);
+        }
+    }
+    return config_file;
+#endif
+}
+
 uint64_t str2uint64(const char* str)
 {
     if (!str) return 0;
@@ -526,7 +639,8 @@ void sleep_ms(const uint64_t ms, const bool can_stop)
             }
             else
             {
-                if (g_need_exit)
+                if (g_need_exit || g_need_stop_now || g_need_restart_now ||
+                    (g_prog_status && g_prog_cnt > 0 && g_prog_status[0].runtime_status.is_need_reset))
                 {
                     return;
                 }
@@ -600,7 +714,7 @@ char* create_xml_payload(const XmlChoose choose)
 {
     char cur_tm[32];
     get_fmt_time(cur_tm, CONSOLE_FORMAT);
-    static char xml[XML_BUFFER_SIZE] = "";
+    static _Thread_local char xml[XML_BUFFER_SIZE] = "";
     LOG_DEBUG("XML 选择代码: %d", choose);
     uint16_t xml_len = 0;
     switch (choose)
@@ -688,7 +802,10 @@ char* create_xml_payload(const XmlChoose choose)
         return NULL;
     }
     LOG_DEBUG("创建 XML 完成");
-    LOG_VERBOSE("XML 内容为:\n%s", xml);
+    if (choose != LOGIN)
+    {
+        LOG_VERBOSE("XML 内容为:\n%s", xml);
+    }
     return xml;
 }
 
@@ -819,10 +936,10 @@ bool save_cfg(char* configs_str)
 
 bool load_cfg()
 {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) && !defined(__MAGISK__)
     return true;
 #else
-#ifndef __OPENWRT__
+#if !defined(__OPENWRT__) && !defined(__MAGISK__)
 
     char dir[PATH_MAX];
     if (get_exec_dir(dir) == false)
@@ -857,6 +974,11 @@ bool load_cfg()
         fprintf(new_cfg, "%s", s_default_cfg);
         fclose(new_cfg);
         LOG_INFO("创建完成, 请在 %s 填写账号数据, 然后重启", config_file);
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -865,6 +987,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     fseek(cfg_file, 0, SEEK_END);
@@ -881,6 +1004,11 @@ bool load_cfg()
     if (!cfg_json)
     {
         LOG_FATAL("JSON 解析失败, 请检查后重启");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -889,6 +1017,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     const cJSON* log_lv = cJSON_GetObjectItem(cfg_json, "log_lv");
@@ -901,10 +1030,35 @@ bool load_cfg()
         LOG_WARN("log_lv 参数不存在, 使用默认等级 (INFO)");
     }
 
+    const cJSON* ct_item = cJSON_GetObjectItem(cfg_json, "conn_timeout");
+    if (ct_item && cJSON_IsNumber(ct_item) && ct_item->valueint > 0)
+    {
+        g_conn_timeout = (long)ct_item->valueint;
+    }
+    else
+    {
+        g_conn_timeout = DEFAULT_CONN_TIMEOUT;
+    }
+
+    const cJSON* ot_item = cJSON_GetObjectItem(cfg_json, "op_timeout");
+    if (ot_item && cJSON_IsNumber(ot_item) && ot_item->valueint > 0)
+    {
+        g_op_timeout = (long)ot_item->valueint;
+    }
+    else
+    {
+        g_op_timeout = DEFAULT_OP_TIMEOUT;
+    }
+
     const cJSON* enabled = cJSON_GetObjectItem(cfg_json, "enabled");
     if (enabled == NULL)
     {
         LOG_WARN("enabled 参数不存在, 请填写后重启程序");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -914,10 +1068,16 @@ bool load_cfg()
             g_prog_enabled = false;
             sleep_ms(10000, true);
         }
+#endif
     }
     if (cJSON_IsFalse(enabled))
     {
         LOG_WARN("配置文件中禁用了程序启动, 请开启后重启程序");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -927,6 +1087,7 @@ bool load_cfg()
             g_prog_enabled = false;
             sleep_ms(10000, true);
         }
+#endif
     }
     g_prog_enabled = true;
 
@@ -935,6 +1096,11 @@ bool load_cfg()
     {
         LOG_FATAL("没有找到账号数据, 请添加后重启程序");
         cJSON_Delete(cfg_json);
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -943,6 +1109,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     const uint8_t cnt = cJSON_GetArraySize(accounts);
@@ -1127,6 +1294,11 @@ bool load_cfg()
     if (valid_cnt == 0)
     {
         LOG_FATAL("无可用配置, 请检查后重启程序");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -1135,6 +1307,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     g_prog_cnt = valid_cnt;

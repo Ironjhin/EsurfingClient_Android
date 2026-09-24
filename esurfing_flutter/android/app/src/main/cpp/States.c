@@ -28,6 +28,14 @@ bool g_prog_enabled = false;
 
 bool g_need_restart = false;
 
+volatile bool g_need_restart_now = false;
+
+volatile bool g_need_stop_now = false;
+
+long g_conn_timeout = DEFAULT_CONN_TIMEOUT;
+
+long g_op_timeout = DEFAULT_OP_TIMEOUT;
+
 static void reset_host_name()
 {
     auth_cfg_t* auth_cfg = &g_prog_status[tl_thread_idx].auth_cfg;

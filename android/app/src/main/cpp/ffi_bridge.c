@@ -28,6 +28,7 @@ void init_native_env(const char* sandbox_path)
         strncpy(g_data_dir, sandbox_path, sizeof(g_data_dir) - 1);
         g_data_dir[sizeof(g_data_dir) - 1] = '\0';
         set_log_dir(g_data_dir);
+        set_config_dir(g_data_dir);
     }
 }
 
@@ -38,6 +39,12 @@ static int parse_json(const char* json) {
     if (cJSON_IsBool(en)) g_prog_enabled = cJSON_IsTrue(en); else g_prog_enabled = 1;
     const cJSON* lv = cJSON_GetObjectItem(root, "log_lv");
     if (cJSON_IsNumber(lv)) set_logger_level((LogLevel)lv->valueint);
+    const cJSON* ct = cJSON_GetObjectItem(root, "conn_timeout");
+    if (cJSON_IsNumber(ct) && ct->valueint > 0) g_conn_timeout = (long)ct->valueint;
+    else g_conn_timeout = DEFAULT_CONN_TIMEOUT;
+    const cJSON* ot = cJSON_GetObjectItem(root, "op_timeout");
+    if (cJSON_IsNumber(ot) && ot->valueint > 0) g_op_timeout = (long)ot->valueint;
+    else g_op_timeout = DEFAULT_OP_TIMEOUT;
     const cJSON* acts = cJSON_GetObjectItem(root, "accounts");
     if (!acts || !cJSON_IsArray(acts) || cJSON_GetArraySize(acts) == 0) { cJSON_Delete(root); return -1; }
     int cnt = cJSON_GetArraySize(acts);
@@ -77,6 +84,7 @@ int32_t esurfing_client_init(const char* data_dir, const char* config_json) {
     if (!data_dir || !config_json) return -1;
     strncpy(g_data_dir, data_dir, sizeof(g_data_dir) - 1);
     set_log_dir(g_data_dir);
+    set_config_dir(g_data_dir);
     g_need_exit = false; g_thread_keep_alive = true; g_start_run_tm = get_cur_tm_ms(); tl_thread_idx = -1;
     init_logger();
     if (parse_json(config_json) != 0) return -1;
@@ -163,8 +171,11 @@ void esurfing_client_destroy(void) {
     }
     if (g_prog_status) {
         for (int i = 0; i < g_prog_cnt; i++) {
+            tl_thread_idx = (int8_t)i;
             if (g_prog_status[i].auth_cfg.cipher) destroy_cipher_factory();
+            zsm_blob_free(&g_prog_status[i].auth_cfg.blob);
         }
+        tl_thread_idx = -1;
         free(g_prog_status);
         g_prog_status = NULL;
     }

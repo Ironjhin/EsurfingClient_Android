@@ -37,16 +37,6 @@
 #define ZSM_JS_OFFSET 0x103
 #define ZSM_MAX_UNPACKED 0x8000000u
 
-typedef struct
-{
-    char algo_id[ALGO_ID_LEN];
-    uint8_t* key;
-    size_t key_len;
-    uint8_t* iv;
-    size_t iv_len;
-    char* js;
-} ios_zsm_blob_t;
-
 static void* lzma_alloc(ISzAllocPtr p, size_t size)
 {
     (void)p;
@@ -61,7 +51,7 @@ static void lzma_free(ISzAllocPtr p, void* address)
 
 static const ISzAlloc g_lzma_alloc = { lzma_alloc, lzma_free };
 
-static void zsm_blob_free(ios_zsm_blob_t* blob)
+void zsm_blob_free(ios_zsm_blob_t* blob)
 {
     if (!blob) return;
     s_free(blob->key);
@@ -647,6 +637,28 @@ bool init_ios_cipher_from_zsm(const uint8_t* data, size_t length, char* algo_id_
     }
 
     cipher = create_ios_ocode_cipher(type, blob.key, blob.key_len, blob.iv, blob.iv_len);
+    if (cipher == NULL)
+    {
+        zsm_blob_free(&blob);
+        LOG_ERROR("iOS ZSM 无法创建类型 %d 的加解密工厂", type);
+        return false;
+    }
+
+    s_free(blob.js);
+    blob.js = NULL;
+    zsm_blob_free(&g_prog_status[tl_thread_idx].auth_cfg.blob);
+    g_prog_status[tl_thread_idx].auth_cfg.type = (int8_t)type;
+    g_prog_status[tl_thread_idx].auth_cfg.dynamic = true;
+    g_prog_status[tl_thread_idx].auth_cfg.blob = blob;
+
+    g_prog_status[tl_thread_idx].auth_cfg.cipher = cipher;
+    LOG_DEBUG("iOS ZSM 加解密工厂已就绪");
+    return true;
+}
+
+bool init_ios_cipher_from_blob(const int8_t type, ios_zsm_blob_t blob)
+{
+    cipher_interface_t* cipher = create_ios_ocode_cipher(type, blob.key, blob.key_len, blob.iv, blob.iv_len);
     zsm_blob_free(&blob);
     if (cipher == NULL)
     {
@@ -658,3 +670,4 @@ bool init_ios_cipher_from_zsm(const uint8_t* data, size_t length, char* algo_id_
     LOG_DEBUG("iOS ZSM 加解密工厂已就绪");
     return true;
 }
+

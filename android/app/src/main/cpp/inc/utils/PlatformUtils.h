@@ -166,4 +166,9 @@ uint8_t parse_channel_json(const cJSON* chn, uint8_t cfg_no);
 void apply_channel_ua(login_cfg_t* cfg, uint8_t cfg_no);
 bool apply_time_windows(const cJSON* item, login_cfg_t* cfg);
 
+char* bytes2base64(const uint8_t* in, size_t len);
+uint8_t* base642bytes(const char* in, size_t* out_len);
+void set_config_dir(const char* dir);
+const char* get_config_path(void);
+
 #endif // ESURFINGCLIENT_PLATFORMUTILS_H

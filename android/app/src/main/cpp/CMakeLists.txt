@@ -140,7 +140,7 @@ target_compile_options(esurfing_client PRIVATE
 )
 
 target_compile_definitions(esurfing_client PRIVATE
-    PROGRAM_FULL_VERSION="v2.0.8-r1"
+    PROGRAM_FULL_VERSION="v2.1.3-r3"
 )
 
 target_include_directories(esurfing_client PUBLIC

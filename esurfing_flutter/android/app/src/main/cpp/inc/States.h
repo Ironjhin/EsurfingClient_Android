@@ -2,6 +2,7 @@
 #define ESURFINGCLIENT_STATES_H
 
 #include "cipher/CipherInterface.h"
+#include "cipher/IosZsm.h"
 #include "utils/SimThread.h"
 
 #include <setjmp.h>
@@ -35,6 +36,9 @@
 #define LOCATION_LEN 512
 #define LAST_LOCATION_LEN 1024
 
+#define DEFAULT_CONN_TIMEOUT 7
+#define DEFAULT_OP_TIMEOUT 10
+
 /** @brief 认证配置 */
 typedef struct
 {
@@ -62,14 +66,20 @@ typedef struct
     char client_ip[IP_LEN];
     /** @brief 服务端 IP */
     char ac_ip[IP_LEN];
+    /** @brief 是否为动态 ZSM 密钥 */
+    bool dynamic;
     /** @brief 加解密工厂 */
     cipher_interface_t* cipher;
+    /** @brief 动态 ZSM 密钥存档 */
+    ios_zsm_blob_t blob;
     /** @brief 重试时间 */
     uint64_t keep_retry;
     /** @brief 认证时间 */
     uint64_t auth_time;
     /** @brief 当前时间 (用于检测认证时间) */
     uint64_t tick;
+    /** @brief 动态 ZSM 算法类型 */
+    int8_t type;
 } auth_cfg_t;
 
 /** @brief 一周时间窗口 */
@@ -178,6 +188,16 @@ extern bool g_prog_enabled;
 
 /** @brief 需要重启 */
 extern bool g_need_restart;
+
+/** @brief Web 接口请求重启/停止 */
+extern volatile bool g_need_stop_now;
+extern volatile bool g_need_restart_now;
+
+/** @brief CURL 连接超时时长 (秒) */
+extern long g_conn_timeout;
+
+/** @brief CURL 操作超时时长 (秒) */
+extern long g_op_timeout;
 
 /** @brief 刷新状态函数 */
 void refresh_states();

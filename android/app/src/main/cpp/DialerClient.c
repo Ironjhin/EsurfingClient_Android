@@ -3,6 +3,7 @@
 
 #include "utils/PlatformUtils.h"
 #include "utils/TimeControl.h"
+#include "utils/LogoutState.h"
 #include "utils/Shutdown.h"
 #include "utils/Logger.h"
 
@@ -11,7 +12,7 @@
 #include "States.h"
 
 #ifndef PROGRAM_FULL_VERSION
-#define PROGRAM_FULL_VERSION "v2.0.8-r1"
+#define PROGRAM_FULL_VERSION "v2.1.3-r3"
 #endif
 
 #include <ctype.h>
@@ -82,7 +83,48 @@ static bool term()
 
     g_prog_status[tl_thread_idx].auth_cfg.auth_time = 0;
     g_prog_status[tl_thread_idx].runtime_status.is_authed = false;
+    logout_state_clear(g_prog_status[tl_thread_idx].login_cfg.idx);
     return true;
+}
+
+void logout_previous_session(void)
+{
+    if (tl_thread_idx < 0 || !g_prog_status) return;
+    prog_status_t* status = &g_prog_status[tl_thread_idx];
+    if (logout_state_load(status) == false) return;
+
+    LOG_WARN("检测到配置 %" PRIu8 " 上次异常退出残留的 logout 存档, 正在尝试补登出", status->login_cfg.idx);
+
+    bool inited = false;
+    if (status->auth_cfg.dynamic)
+    {
+        inited = init_ios_cipher_from_blob(status->auth_cfg.type, status->auth_cfg.blob);
+        memset(&status->auth_cfg.blob, 0, sizeof(status->auth_cfg.blob));
+    }
+    else
+    {
+        inited = init_cipher(status->auth_cfg.algo_id);
+    }
+
+    if (inited)
+    {
+        if (term())
+        {
+            LOG_INFO("上次残留会话补登出完成, 会话已从服务端释放");
+        }
+        else
+        {
+            LOG_WARN("上次残留会话补登出失败 (客户端 IP 可能已变化), 交给服务器超时下线");
+        }
+        destroy_cipher_factory();
+    }
+    else
+    {
+        LOG_WARN("恢复加解密工厂失败, 无法补登出");
+    }
+
+    zsm_blob_free(&status->auth_cfg.blob);
+    logout_state_clear(status->login_cfg.idx);
 }
 
 static bool heartbeat()
@@ -127,7 +169,15 @@ static bool heartbeat()
         LOG_ERROR("心跳内容解析失败");
         return false;
     }
-    g_prog_status[tl_thread_idx].auth_cfg.keep_retry = str2uint64(parsed_interval); // 将字符串时间转成 uint64_t 时间
+    const uint64_t tmp_retry = str2uint64(parsed_interval);
+    if (tmp_retry < (uint64_t)g_op_timeout * 5)
+    {
+        g_prog_status[tl_thread_idx].auth_cfg.keep_retry = tmp_retry;
+    }
+    else
+    {
+        g_prog_status[tl_thread_idx].auth_cfg.keep_retry = tmp_retry - (uint64_t)g_op_timeout * 5;
+    }
     free(parsed_interval);
     return true;
 }
@@ -214,7 +264,15 @@ static bool login()
         LOG_ERROR("解析 KeepRetry 失败");
         return false;
     }
-    g_prog_status[tl_thread_idx].auth_cfg.keep_retry = str2uint64(parsed_keep_retry); // 将字符串时间转成 uint64_t 时间
+    const uint64_t tmp_retry = str2uint64(parsed_keep_retry);
+    if (tmp_retry < (uint64_t)g_op_timeout * 5)
+    {
+        g_prog_status[tl_thread_idx].auth_cfg.keep_retry = tmp_retry;
+    }
+    else
+    {
+        g_prog_status[tl_thread_idx].auth_cfg.keep_retry = tmp_retry - (uint64_t)g_op_timeout * 5;
+    }
     free(parsed_keep_retry);
     LOG_INFO("下一次重试: %" PRIu64 " 秒后", g_prog_status[tl_thread_idx].auth_cfg.keep_retry);
     return true;
@@ -436,6 +494,7 @@ static bool load_cipher(const bytes_t zsm)
         LOG_ERROR("未知 Algo-ID: %s, 当前通道没有对应密钥", algo_id);
         return false;
     }
+    g_prog_status[tl_thread_idx].auth_cfg.dynamic = false;
     snprintf(g_prog_status[tl_thread_idx].auth_cfg.algo_id, ALGO_ID_LEN, "%s", safe_str(algo_id)); // 将 algo_id 填入认证配置中
     LOG_DEBUG("全局 AlgoID 已更新: %s", g_prog_status[tl_thread_idx].auth_cfg.algo_id);
     return true;
@@ -445,6 +504,7 @@ static void clean_session()
 {
     LOG_DEBUG("清除会话初始化状态");
     destroy_cipher_factory();
+    zsm_blob_free(&g_prog_status[tl_thread_idx].auth_cfg.blob);
     g_prog_status[tl_thread_idx].runtime_status.is_initialized = 0;
 }
 
@@ -615,6 +675,7 @@ static AuthStatus auth()
 
     g_prog_status[tl_thread_idx].runtime_status.is_authed = true;
     LOG_INFO("已认证登录");
+    logout_state_save(&g_prog_status[tl_thread_idx]);
     sleep_ms(5000, false);
     return AUTH_SUCCESS;
 }
@@ -636,6 +697,7 @@ static void clean()
         }
         clean_session(); // 清理会话
     }
+    zsm_blob_free(&g_prog_status[tl_thread_idx].auth_cfg.blob);
     memset(&g_prog_status[tl_thread_idx].auth_cfg, 0, sizeof(auth_cfg_t)); // 清除 auth_cfg 的内容, 并置零
     memset(&g_prog_status[tl_thread_idx].runtime_status, 0, sizeof(runtime_status_t)); // 清除 runtime_status 的内容, 并置零
     g_prog_status[tl_thread_idx].runtime_status.is_time_disabled = time_disabled; // 恢复时间控制禁用状态
@@ -649,9 +711,9 @@ static void reset()
 
 static RunStatus run()
 {
-    static uint8_t retry_timeout = 1;
-    static uint8_t retry_auth = 1;
-    static uint64_t retry_auth_time = 0;
+    static _Thread_local uint8_t retry_timeout = 1;
+    static _Thread_local uint8_t retry_auth = 1;
+    static _Thread_local uint64_t retry_auth_time = 0;
 
     // 时间控制/重置请求优先于一切网络操作：
     // 到点下线后不应再发送心跳包，也不应继续认证或重试。
@@ -661,6 +723,8 @@ static RunStatus run()
     }
     if (g_prog_status[tl_thread_idx].runtime_status.is_need_reset)
     {
+        retry_timeout = 1;
+        retry_auth = 1;
         return RUN_SUCCESS;
     }
 
@@ -775,6 +839,7 @@ int dialer_app(void* arg)
         g_prog_status[tl_thread_idx].thread_id,
         g_prog_status[tl_thread_idx].login_cfg.idx);
 
+    logout_previous_session(); // 补做上次异常退出可能遗留的登出
     refresh_states(); // 刷新数据 (algo_id, host_name, client_id, mac_addr)
     if (!get_last_location())
     {
@@ -846,6 +911,7 @@ int dialer_app(void* arg)
 void work()
 {
     g_thread_keep_alive = true;
+    g_start_run_tm = get_cur_tm_ms(); // 记录守护进程启动时间
 
     g_prog_status = calloc(1, sizeof(prog_status_t)); // 初始化 g_prog_status 指针并分配 1 个空间
 
@@ -869,68 +935,119 @@ void work()
     time_control_sync(); // 冷启动时先按当前时间同步各账号的时间控制状态
     if (time_control_init() == false) shut(1); // 启动时间控制定时线程
 
-    /**
-     * 检测网络状态
-     * 非重定向响应都会持续循环
-     */
-    uint8_t retry_network = 1;
-    bool quit = false;
-
-    while (quit == false)
+    if (g_prog_cnt > 0 && g_prog_enabled)
     {
-        if (g_need_exit)
+        /**
+         * 检测网络状态
+         * 非重定向响应都会持续循环
+         */
+        uint8_t retry_network = 1;
+        bool quit = false;
+
+        while (quit == false)
         {
-            break;
-        }
-        switch (check_network_status(true)) // 检查网络状态
-        {
-        case STATUS_OK:
-            // 正常连接到互联网
-            retry_network = 1;
-            LOG_INFO("已连接至互联网");
-            sleep_ms(10000, true);
-            break;
-        case STATUS_NEED_AUTH:
-            // 需要认证
-            quit = true;
-            break;
-        default:
-            // 网络错误
-            if (retry_network > 5)
+            if (g_need_exit)
             {
-                LOG_FATAL("超过最多重试次数");
-                shut(1);
+                break;
             }
-            LOG_WARN("网络错误, 重试: 第 %" PRIu8 " 次, 最多 5 次", retry_network);
-            retry_network++;
-            sleep_ms(1000, true);
+#ifdef __MAGISK__
+            /* 收到停止请求：干净退出，不 execv 重启 */
+            if (g_need_stop_now)
+            {
+                g_need_stop_now = false;
+                g_need_restart = false;
+                FILE* df = fopen("/data/adb/esurfing/disable", "w");
+                if (df) {
+                    fputs("1\n", df);
+                    fclose(df);
+                    LOG_INFO("已写入 /data/adb/esurfing/disable，开机将不再自动启动");
+                }
+                LOG_INFO("收到停止请求，正在停止服务...");
+                shut(0);
+                break;
+            }
+            /* 收到重启请求：设置 g_need_restart 由 shut() 执行 execv 重启 */
+            if (g_need_restart_now)
+            {
+                g_need_restart_now = false;
+                g_need_restart = true;
+                remove("/data/adb/esurfing/disable");
+                LOG_INFO("收到重启请求，正在重启服务...");
+                shut(0);
+                break;
+            }
+#endif
+            if (g_prog_status && g_prog_status[0].runtime_status.is_need_reset)
+            {
+                LOG_INFO("检测到强制认证/重置请求，退出就绪等待并启动认证流程");
+                g_prog_status[0].runtime_status.is_need_reset = false;
+                quit = true;
+                break;
+            }
+
+            switch (check_network_status(true)) // 检查网络状态
+            {
+            case STATUS_OK:
+                // 正常连接到互联网
+                retry_network = 1;
+                for (int8_t i = 0; i < g_prog_cnt; i++) {
+                    g_prog_status[i].runtime_status.is_connected = true;
+                }
+                LOG_INFO("已连接至互联网");
+                sleep_ms(10000, true);
+                break;
+            case STATUS_NEED_AUTH:
+                // 需要认证
+                for (int8_t i = 0; i < g_prog_cnt; i++) {
+                    g_prog_status[i].runtime_status.is_connected = false;
+                }
+                quit = true;
+                break;
+            default:
+                // 网络错误
+                for (int8_t i = 0; i < g_prog_cnt; i++) {
+                    g_prog_status[i].runtime_status.is_connected = false;
+                }
+                if (retry_network > 5)
+                {
+                    LOG_FATAL("超过最多重试次数");
+                    shut(1);
+                }
+                LOG_WARN("网络错误, 重试: 第 %" PRIu8 " 次, 最多 5 次", retry_network);
+                retry_network++;
+                sleep_ms(1000, true);
+            }
+        }
+
+        /**
+         * 根据配置数创建相应数量的线程
+         */
+        LOG_DEBUG("开始创建认证线程");
+        for (uint8_t i = 0; i < g_prog_cnt; i++)
+        {
+            if (g_prog_status[i].runtime_status.is_time_disabled)
+            {
+                LOG_INFO("配置 %" PRIu8 " 当前不在允许时段，暂不启动认证线程", g_prog_status[i].login_cfg.idx);
+                continue;
+            }
+            g_prog_status[i].thread = sim_thread_create(dialer_app, (void*)(intptr_t)i);
+            uint8_t retry_ct = 1;
+            while (g_prog_status[i].thread == NULL)
+            {
+                if (retry_ct > 5)
+                {
+                    LOG_FATAL("超过重试次数, 退出程序");
+                    shut(1);
+                }
+                LOG_ERROR("认证线程 %" PRIu8 " 创建失败, 重试中, 重试次数: %" PRIu8 ", 最多 5 次", i, retry_ct);
+                g_prog_status[i].thread = sim_thread_create(dialer_app, (void*)(intptr_t)i);
+                retry_ct++;
+            }
         }
     }
-
-    /**
-     * 根据配置数创建相应数量的线程
-     */
-    LOG_DEBUG("开始创建认证线程");
-    for (uint8_t i = 0; i < g_prog_cnt; i++)
+    else
     {
-        if (g_prog_status[i].runtime_status.is_time_disabled)
-        {
-            LOG_INFO("配置 %" PRIu8 " 当前不在允许时段，暂不启动认证线程", g_prog_status[i].login_cfg.idx);
-            continue;
-        }
-        g_prog_status[i].thread = sim_thread_create(dialer_app, (void*)(intptr_t)i);
-        uint8_t retry_ct = 1;
-        while (g_prog_status[i].thread == NULL)
-        {
-            if (retry_ct > 5)
-            {
-                LOG_FATAL("超过重试次数, 退出程序");
-                shut(1);
-            }
-            LOG_ERROR("认证线程 %" PRIu8 " 创建失败, 重试中, 重试次数: %" PRIu8 ", 最多 5 次", i, retry_ct);
-            g_prog_status[i].thread = sim_thread_create(dialer_app, (void*)(intptr_t)i);
-            retry_ct++;
-        }
+        LOG_INFO("当前无有效账号配置或已禁用，等待通过 WebUI 配置后启用");
     }
 
     /**
@@ -942,6 +1059,35 @@ void work()
     uint64_t check_time = 0;
     while (g_thread_keep_alive)
     {
+#ifdef __MAGISK__
+        /* 收到停止请求：干净退出，不 execv 重启 */
+        if (g_need_stop_now)
+        {
+            g_need_stop_now = false;
+            g_need_restart = false;
+            {
+                FILE* df = fopen("/data/adb/esurfing/disable", "w");
+                if (df) {
+                    fputs("1\n", df);
+                    fclose(df);
+                    LOG_INFO("已写入 /data/adb/esurfing/disable，开机将不再自动启动");
+                }
+            }
+            LOG_INFO("收到停止请求，正在停止服务...");
+            shut(0);
+            break;
+        }
+        /* 收到重启请求：设置 g_need_restart 让 shut() 执行 execv 重启 */
+        if (g_need_restart_now)
+        {
+            g_need_restart_now = false;
+            g_need_restart = true;
+            remove("/data/adb/esurfing/disable");
+            LOG_INFO("收到重启请求，正在重启服务...");
+            shut(0);
+            break;
+        }
+#endif
         if (check_time > 299999)
         {
             check_time = 0;

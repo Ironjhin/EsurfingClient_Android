@@ -5,6 +5,22 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef ALGO_ID_LEN
+#define ALGO_ID_LEN 37
+#endif
+
+typedef struct
+{
+    char algo_id[ALGO_ID_LEN];
+    uint8_t* key;
+    size_t key_len;
+    uint8_t* iv;
+    size_t iv_len;
+    char* js;
+} ios_zsm_blob_t;
+
+void zsm_blob_free(ios_zsm_blob_t* blob);
+
 /**
  * 从 iOS PacketTunnel ZSM 解包密钥并初始化加解密工厂.
  * ZSM 不是 Android/Linux 那种 UUID→硬编码密钥表, 正文是 TEA + LZMA 后的 JS,
@@ -18,6 +34,11 @@
 bool init_ios_cipher_from_zsm(const uint8_t* data, size_t length, char* algo_id_out);
 
 /**
+ * 从已存档的 ZSM blob (key/iv) 与算法类型重建加解密工厂 (用于补登出).
+ */
+bool init_ios_cipher_from_blob(int8_t type, ios_zsm_blob_t blob);
+
+/**
  * 判断 ticket 响应是否为 PacketTunnel IZsmModLoad 动态模块.
  * 头部是两个 Pascal 字符串, 随后 LZMA packed type nibble == 2.
  * 这种 ZSM 的 AID 不在 Android/Linux CipherFactory 里.
@@ -25,3 +46,4 @@ bool init_ios_cipher_from_zsm(const uint8_t* data, size_t length, char* algo_id_
 bool looks_like_ios_zsm(const uint8_t* data, size_t length);
 
 #endif
+
