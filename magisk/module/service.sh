@@ -44,4 +44,5 @@ fi
 # Note: work() handles logger init, web server, config load, and thread supervisor.
 # On crash, Magisk service.sh will NOT auto-restart (oneshot).
 # Use a watchdog wrapper if auto-restart is desired.
+echo esurfing_daemon > /sys/power/wake_lock 2>/dev/null || true
 exec "$DATA_DIR/esurfingd"
