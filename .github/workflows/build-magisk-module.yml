@@ -12,6 +12,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'false'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,7 +30,14 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
 
       - name: Install tools
         run: |
@@ -169,10 +179,11 @@ jobs:
             "---" \
             "" \
             "### ✨ 本次更新 ($VERSION)" \
-            "- **修复**: 账号带前导 0(如 0123456789)保存后 USR_LEN 过短导致 parse 失败 → 扩大到 64 字节" \
-            "- **Flutter APK 同步修复**: USR_LEN 扩大 + 从 Settings 返回自动启动(无需再杀 APP 重开)" \
-            "- **新增**: WebUI/Flutter 增加「强制重新认证」按钮，认证失败久等时无需等 300s/600s 回退计时" \
-            "- **KernelSU WebUI**: 同步 Magisk portal 功能（运行时间、日志刷新/导出）" \
+            "- **同步上游 v2.1.3-r3 核心引擎更新**" \
+            "- **新增**: `CURLOPT_RESOLVE` 固定小米连通性探测 IP (`220.181.104.183`)，防止校园网认证前 DNS 超时或污染" \
+            "- **新增**: 会话持久化与异常断电后启动自动补登出 (`.logout` 存档)，解决进程被杀后重连报异地已登录问题" \
+            "- **优化**: CURL 连接超时收敛至 7s/10s + 心跳重试提前 50s 安全余量 + 详细超时原因诊断日志" \
+            "- **安全**: 登录报文 (`LOGIN`) 日志脱敏，避免明文密码写入 `run.log`" \
             "" \
             "### ⚠️ Flutter APK 用户注意" \
             "长时间熄屏(约 30 分钟以上)Android 会回收进程,需重新打开 APP 才能继续守护。Magisk 版无此限制。" \
