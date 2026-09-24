@@ -18,6 +18,9 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #ifndef __OPENWRT__
 extern bool start_web_server();
@@ -809,6 +812,33 @@ static RunStatus run()
         return RUN_SUCCESS;
     case STATUS_ERROR: // 网络错误
         retry_auth = 1;
+        if (g_prog_status[tl_thread_idx].runtime_status.is_initialized &&
+            g_prog_status[tl_thread_idx].runtime_status.is_authed)
+        {
+            if ((g_prog_status[tl_thread_idx].auth_cfg.keep_retry != 0 &&
+                 get_cur_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.tick >= g_prog_status[tl_thread_idx].auth_cfg.keep_retry * 1000) ||
+                retry_timeout >= 3)
+            {
+                LOG_INFO("外网探测超时但处于已认证状态，直接向认证网关发送心跳保活");
+                if (heartbeat())
+                {
+                    LOG_INFO("心跳保活成功，会话仍然有效，下一次重试: %" PRIu64 " 秒后",
+                        g_prog_status[tl_thread_idx].auth_cfg.keep_retry);
+                    g_prog_status[tl_thread_idx].auth_cfg.tick = get_cur_tm_ms();
+                    g_prog_status[tl_thread_idx].runtime_status.is_connected = true;
+                    retry_timeout = 1;
+                    sleep_ms(5000, true);
+                    return RUN_SUCCESS;
+                }
+            }
+            if (retry_timeout > 5)
+            {
+                LOG_WARN("外网探测连续超时，保留当前认证会话继续等待，不主动登出");
+                retry_timeout = 1;
+                sleep_ms(10000, true);
+                return TIMEOUT_RETRY;
+            }
+        }
         g_prog_status[tl_thread_idx].runtime_status.is_connected = false;
         if (retry_timeout > 5)
         {
@@ -912,6 +942,20 @@ void work()
 {
     g_thread_keep_alive = true;
     g_start_run_tm = get_cur_tm_ms(); // 记录守护进程启动时间
+
+#ifdef __MAGISK__
+    /* 切换 GID 为 3005 (AID_NET_ADMIN)，自动命中 Box4Magisk / sing-box 的 BOX_LOCAL 首条直连放行规则 (UID 0 + GID 3005 -> RETURN) */
+    (void)setgid(3005);
+    /* 申请内核 WakeLock，防止手机息屏进入 Doze 深度休眠后冻结心跳定时器 */
+    {
+        FILE* wl = fopen("/sys/power/wake_lock", "w");
+        if (wl)
+        {
+            fputs("esurfing_daemon\n", wl);
+            fclose(wl);
+        }
+    }
+#endif
 
     g_prog_status = calloc(1, sizeof(prog_status_t)); // 初始化 g_prog_status 指针并分配 1 个空间
 
