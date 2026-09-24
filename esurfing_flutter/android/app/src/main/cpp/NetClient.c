@@ -341,33 +341,77 @@ static network_status_t curl_err_msg_out(const CURLcode curl_code)
 {
     switch (curl_code)
     {
-    case CURLE_COULDNT_RESOLVE_HOST:
-        LOG_ERROR("curl 错误码: 6, 错误原因: DNS 解析错误");
-        return STATUS_ERROR;
-    case CURLE_COULDNT_CONNECT:
-        LOG_ERROR("curl 错误码: 7, 错误原因: 连接服务器失败");
-        return STATUS_ERROR;
-    case CURLE_OPERATION_TIMEDOUT:
-        LOG_ERROR("curl 错误码: 28, 错误原因: 操作超时");
-        return STATUS_ERROR;
-    case CURLE_HTTP_RETURNED_ERROR:
-        LOG_ERROR("curl 错误码: 22, 错误原因: HTTP 状态码 ≥ 400");
-        return STATUS_ERROR;
-    case CURLE_GOT_NOTHING:
-        LOG_ERROR("curl 错误码: 52, 错误原因: 服务器返回空数据");
-        return STATUS_ERROR;
     case CURLE_URL_MALFORMAT:
         LOG_ERROR("curl 错误码: 3, 错误原因: URL 格式错误");
-        return STATUS_ERROR;
+        break;
+    case CURLE_COULDNT_RESOLVE_HOST:
+        LOG_ERROR("curl 错误码: 6, 错误原因: DNS 解析错误");
+        break;
+    case CURLE_COULDNT_CONNECT:
+        LOG_ERROR("curl 错误码: 7, 错误原因: 连接服务器失败");
+        break;
+    case CURLE_HTTP_RETURNED_ERROR:
+        LOG_ERROR("curl 错误码: 22, 错误原因: HTTP 状态码 ≥ 400");
+        break;
     case CURLE_WRITE_ERROR:
         LOG_ERROR("curl 错误码: 23, 错误原因: 写入数据失败");
-        return STATUS_ERROR;
+        break;
+    case CURLE_OPERATION_TIMEDOUT:
+        LOG_ERROR("curl 错误码: 28, 错误原因: 操作超时");
+        break;
     case CURLE_ABORTED_BY_CALLBACK:
         LOG_ERROR("curl 错误码: 42, 错误原因: 回调函数中止");
-        return STATUS_ERROR;
+        break;
+    case CURLE_GOT_NOTHING:
+        LOG_ERROR("curl 错误码: 52, 错误原因: 服务器返回空数据");
+        break;
+    case CURLE_RECV_ERROR:
+        LOG_ERROR("curl 错误码: 56, 错误原因: 接收数据时失败");
+        break;
     default:
         LOG_ERROR("未知错误");
-        return STATUS_ERROR;
+    }
+    return STATUS_ERROR;
+}
+
+static void log_curl_error(CURL* curl, const CURLcode code, const char* errbuf, const char* url, const char* func_name)
+{
+    LOG_ERROR("[%s] curl 请求失败: %s", func_name, curl_easy_strerror(code));
+    LOG_INFO("[%s] URL: %s", func_name, url ? url : "(null)");
+    LOG_INFO("[%s] CURLcode: %d", func_name, code);
+
+    if (errbuf && errbuf[0] != '\0')
+    {
+        LOG_INFO("[%s] 错误详情: %s", func_name, errbuf);
+    }
+
+    if (curl)
+    {
+        double connect_time = 0.0;
+        double total_time = 0.0;
+        curl_easy_getinfo(curl, CURLINFO_CONNECT_TIME, &connect_time);
+        curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total_time);
+
+        LOG_INFO("[%s] 实际连接耗时: %.3f 秒", func_name, connect_time);
+        LOG_INFO("[%s] 实际总耗时:   %.3f 秒", func_name, total_time);
+        LOG_INFO("[%s] 连接超时时长: %ld 秒", func_name, g_conn_timeout);
+        LOG_INFO("[%s] 总超时时长:   %ld 秒", func_name, g_op_timeout);
+
+        if (code == CURLE_OPERATION_TIMEDOUT)
+        {
+            if (g_conn_timeout > 0 && connect_time >= (double)g_conn_timeout * 0.9)
+            {
+                LOG_INFO("[%s] 结论: 连接时间超时 (CURLOPT_CONNECTTIMEOUT = %ld 秒)", func_name, g_conn_timeout);
+            }
+            else if (g_op_timeout > 0 && total_time >= (double)g_op_timeout * 0.9)
+            {
+                LOG_INFO("[%s] 结论: 总操作时间超时 (CURLOPT_TIMEOUT = %ld 秒)", func_name, g_op_timeout);
+            }
+            else
+            {
+                LOG_INFO("[%s] 结论: 超时原因不明确, 实际耗时未明显逼近设定阈值, 请检查网络稳定性或服务器响应", func_name);
+            }
+        }
     }
 }
 
@@ -377,6 +421,7 @@ curl_resp_t post(const char* url, const char* data)
     LOG_VERBOSE("POST 数据: %s", data);
 
     curl_resp_t resp = {0};
+    char errbuf[CURL_ERROR_SIZE] = {0};
 
     char md5_hash_str[MAX_LEN] = {0};
     char ua[MAX_LEN] = {0};
@@ -439,9 +484,10 @@ curl_resp_t post(const char* url, const char* data)
     // POST URL
     curl_easy_setopt(curl, CURLOPT_URL, url);
     // 连接超时时长
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, g_conn_timeout);
     // 总超时时长
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, g_op_timeout);
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
@@ -456,6 +502,7 @@ curl_resp_t post(const char* url, const char* data)
     const CURLcode curl_code = curl_easy_perform(curl);
     if (curl_code != CURLE_OK)
     {
+        log_curl_error(curl, curl_code, errbuf, url, "post");
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
         resp.status = curl_err_msg_out(curl_code);
@@ -504,11 +551,13 @@ curl_resp_t get(const char* url, const bool connect_only)
     LOG_VERBOSE("GET 地址: %s", url);
 
     curl_resp_t resp = {0};
+    char errbuf[CURL_ERROR_SIZE] = {0};
 
     char ua[MAX_LEN] = {0};
     char c_id[MAX_LEN] = {0};
 
     struct curl_slist* headers = NULL;
+    struct curl_slist* resolve = NULL;
 
     if (tl_thread_idx > -1)
     {
@@ -540,11 +589,18 @@ curl_resp_t get(const char* url, const bool connect_only)
     // GET URL
     curl_easy_setopt(curl, CURLOPT_URL, url);
     // 连接超时时长
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, 3L);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT, g_conn_timeout);
     // 总超时时长
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, g_op_timeout);
     // 是否跟随重定向 (当前否)
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L);
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+
+    if (connect_only || (url && strstr(url, "connect.rom.miui.com") != NULL))
+    {
+        resolve = curl_slist_append(resolve, "connect.rom.miui.com:80:220.181.104.183");
+        curl_easy_setopt(curl, CURLOPT_RESOLVE, resolve);
+    }
     if (connect_only) // 判断是否仅连接 (检测网络状态用)
     {
         curl_easy_setopt(curl, CURLOPT_CONNECT_ONLY, 2L);
@@ -565,8 +621,10 @@ curl_resp_t get(const char* url, const bool connect_only)
     const CURLcode curl_code = curl_easy_perform(curl);
     if (curl_code != CURLE_OK)
     {
+        log_curl_error(curl, curl_code, errbuf, url, "get");
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
+        curl_slist_free_all(resolve);
         resp.status = curl_err_msg_out(curl_code);
         resp.curl_code = curl_code;
         return resp;
@@ -578,6 +636,7 @@ curl_resp_t get(const char* url, const bool connect_only)
 
     curl_easy_cleanup(curl);
     curl_slist_free_all(headers);
+    curl_slist_free_all(resolve);
 
     if (resp_code == 200)
     {

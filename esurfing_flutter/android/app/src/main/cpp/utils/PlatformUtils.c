@@ -455,6 +455,117 @@ bytes_t str2bytes(const char* str)
     return ba;
 }
 
+static const char b64_enc[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+char* bytes2base64(const uint8_t* in, const size_t len)
+{
+    if (in == NULL && len > 0) return NULL;
+
+    const size_t olen = 4 * ((len + 2) / 3);
+    char* out = malloc(olen + 1);
+    if (!out) return NULL;
+
+    size_t i = 0, j = 0;
+    while (i < len)
+    {
+        const uint32_t a = i < len ? in[i++] : 0;
+        const uint32_t b = i < len ? in[i++] : 0;
+        const uint32_t c = i < len ? in[i++] : 0;
+        const uint32_t t = (a << 16) | (b << 8) | c;
+
+        out[j++] = b64_enc[(t >> 18) & 0x3F];
+        out[j++] = b64_enc[(t >> 12) & 0x3F];
+        out[j++] = b64_enc[(t >> 6)  & 0x3F];
+        out[j++] = b64_enc[t & 0x3F];
+    }
+
+    const size_t mod = len % 3;
+    if (mod == 1) { out[olen - 1] = '='; out[olen - 2] = '='; }
+    else if (mod == 2) { out[olen - 1] = '='; }
+
+    out[olen] = '\0';
+    return out;
+}
+
+uint8_t* base642bytes(const char* in, size_t* out_len)
+{
+    if (in == NULL || out_len == NULL) return NULL;
+
+    const size_t in_len = strlen(in);
+    if (in_len == 0)
+    {
+        uint8_t* p = malloc(1);
+        if (p) *out_len = 0;
+        return p;
+    }
+    if (in_len % 4 != 0) return NULL;
+
+    static int dec[256];
+    static int inited = 0;
+    if (!inited)
+    {
+        memset(dec, -1, sizeof(dec));
+        for (int i = 0; i < 64; i++) dec[(uint8_t)b64_enc[i]] = i;
+        inited = 1;
+    }
+
+    const size_t max_out = in_len / 4 * 3;
+    uint8_t* out = malloc(max_out);
+    if (!out) return NULL;
+
+    size_t j = 0;
+    for (size_t i = 0; i < in_len; i += 4)
+    {
+        const int v0 = dec[(uint8_t)in[i]];
+        const int v1 = dec[(uint8_t)in[i + 1]];
+        const int v2 = in[i + 2] == '=' ? -2 : dec[(uint8_t)in[i + 2]];
+        const int v3 = in[i + 3] == '=' ? -2 : dec[(uint8_t)in[i + 3]];
+
+        if (v0 < 0 || v1 < 0 || v2 == -1 || v3 == -1) { free(out); return NULL; }
+
+        const uint32_t t = (v0 << 18) | (v1 << 12) |
+                     ((v2 < 0 ? 0 : v2) << 6) |
+                      (v3 < 0 ? 0 : v3);
+
+        out[j++] = (t >> 16) & 0xFF;
+        if (v2 >= 0) out[j++] = (t >> 8) & 0xFF;
+        if (v3 >= 0) out[j++] = t & 0xFF;
+    }
+
+    *out_len = j;
+    return out;
+}
+
+void set_config_dir(const char* dir)
+{
+#if !defined(__OPENWRT__) && !defined(__MAGISK__)
+    if (dir && dir[0] != '\0')
+    {
+        snprintf(config_file, sizeof(config_file), "%s%c%s", dir, SEP, DIALER_CONFIG_FILE);
+    }
+#else
+    (void)dir;
+#endif
+}
+
+const char* get_config_path(void)
+{
+#if defined(__OPENWRT__) || defined(__MAGISK__)
+    return config_file;
+#else
+    if (config_file[0] == '\0')
+    {
+        char dir[PATH_MAX];
+        if (get_exec_dir(dir))
+        {
+            snprintf(config_file, sizeof(config_file), "%s%c%s", safe_str(dir), SEP, DIALER_CONFIG_FILE);
+        }
+    }
+    return config_file;
+#endif
+}
+
 uint64_t str2uint64(const char* str)
 {
     if (!str) return 0;
@@ -528,7 +639,8 @@ void sleep_ms(const uint64_t ms, const bool can_stop)
             }
             else
             {
-                if (g_need_exit)
+                if (g_need_exit || g_need_stop_now || g_need_restart_now ||
+                    (g_prog_status && g_prog_cnt > 0 && g_prog_status[0].runtime_status.is_need_reset))
                 {
                     return;
                 }
@@ -602,7 +714,7 @@ char* create_xml_payload(const XmlChoose choose)
 {
     char cur_tm[32];
     get_fmt_time(cur_tm, CONSOLE_FORMAT);
-    static char xml[XML_BUFFER_SIZE] = "";
+    static _Thread_local char xml[XML_BUFFER_SIZE] = "";
     LOG_DEBUG("XML 选择代码: %d", choose);
     uint16_t xml_len = 0;
     switch (choose)
@@ -690,7 +802,10 @@ char* create_xml_payload(const XmlChoose choose)
         return NULL;
     }
     LOG_DEBUG("创建 XML 完成");
-    LOG_VERBOSE("XML 内容为:\n%s", xml);
+    if (choose != LOGIN)
+    {
+        LOG_VERBOSE("XML 内容为:\n%s", xml);
+    }
     return xml;
 }
 
@@ -797,18 +912,22 @@ bool save_cfg(char* configs_str)
     {
         snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", password->valuestring);
     }
-    g_prog_status[0].login_cfg.chn = parse_channel_json(channel, 1);
-    apply_channel_ua(&g_prog_status[0].login_cfg, 1);
+    if (channel)
+    {
+        g_prog_status[0].login_cfg.chn = channel->valueint;
+    }
 
     // 透传 time_windows 到内存，保持桌面端与配置一致
     g_prog_status[0].login_cfg.has_time_control = tmp_window_count > 0;
     g_prog_status[0].login_cfg.time_window_count = tmp_window_count;
     memcpy(g_prog_status[0].login_cfg.time_windows, tmp_windows, sizeof(time_window_t) * tmp_window_count);
-
-    if (g_prog_cnt == 0 && g_prog_enabled)
-    {
-        g_prog_cnt = 1;
-    }
+  
+    g_prog_enabled = enabled->valueint;
+    set_logger_level(log_lv->valueint);
+    snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", username->valuestring);
+    snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", password->valuestring);
+    g_prog_status[0].login_cfg.chn = parse_channel_json(channel, 1);
+    apply_channel_ua(&g_prog_status[0].login_cfg, 1);
 
     cJSON_Delete(configs);
 
@@ -909,6 +1028,26 @@ bool load_cfg()
     else
     {
         LOG_WARN("log_lv 参数不存在, 使用默认等级 (INFO)");
+    }
+
+    const cJSON* ct_item = cJSON_GetObjectItem(cfg_json, "conn_timeout");
+    if (ct_item && cJSON_IsNumber(ct_item) && ct_item->valueint > 0)
+    {
+        g_conn_timeout = (long)ct_item->valueint;
+    }
+    else
+    {
+        g_conn_timeout = DEFAULT_CONN_TIMEOUT;
+    }
+
+    const cJSON* ot_item = cJSON_GetObjectItem(cfg_json, "op_timeout");
+    if (ot_item && cJSON_IsNumber(ot_item) && ot_item->valueint > 0)
+    {
+        g_op_timeout = (long)ot_item->valueint;
+    }
+    else
+    {
+        g_op_timeout = DEFAULT_OP_TIMEOUT;
     }
 
     const cJSON* enabled = cJSON_GetObjectItem(cfg_json, "enabled");
