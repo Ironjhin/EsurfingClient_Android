@@ -168,9 +168,23 @@
 - **核心变更（2026-09-27）**：
   - 手机端已弃用 `Box4Magisk`（`sing-box`），全面切换为 **`Surfing`**（基于 **`Mihomo` / `Clash.Meta`** 内核，配置与运行目录位于 `/data/adb/box_bll/`）。
   - **订阅与配置完全统一**：由于电脑端 `Clash Verge Rev` 与手机端 `Surfing` 现均使用 `Mihomo` 内核，手机端可直接共用 Sub-Store 的 ClashMeta YAML 订阅（`http://56.155.64.207:3000/api/file/%E6%97%A5%E6%9C%AC%2B%E9%A6%99%E6%B8%AF%2B%E7%BE%8E%E5%9B%BD`），且两端均原生支持后量子 `X25519MLKEM768`。
-  - **校园网共存要点**：
-    - 在 Surfing 的黑名单/分应用绕过列表（`package_list` / `blacklist`）中排除 `com.example.esurfing_client` 与 `com.cndatacom.campus.cdccportalgd`。
-    - 保持守护进程 `esurfingd` 的 `AID_NET_ADMIN` (`GID 3005`) 权限与 `wake_lock`，以及 YAML 配置中对校园网探测 IP（`220.181.104.183/32`、`14.146.227.141/32`、`121.8.177.212/32`、`1.1.1.1/32`、`100.0.0.0/8`）和 `fake-ip-filter`（`+.rom.miui.com`、`+.cndatacom.com`、`+.189.cn`、`+.edu.cn`）的直连豁免。
+  - **校园网共存要点与完整配置规范**：
+    - **`box.config` (`/data/adb/box_bll/scripts/box.config`)**：
+      - 必须配置 `gid_list=(3005)`，确保 `box.iptables` 生成 `BOX_LOCAL` 针对 `GID 3005`（`AID_NET_ADMIN`）的直连豁免（`UID 0 + GID 3005 -> RETURN`），让守护进程 `esurfingd` 的流量在被 TPROXY 标记之前直接出站。
+      - 在 `user_packages_list` 中确认包含 `"0:com.cndatacom.campus.cdccportalgd"` 与 `"0:com.example.esurfing_client"`。
+      - 在 `intranet` 中保持校园网直连 IP：`100.0.0.0/8`、`220.181.104.183/32`、`14.146.227.141/32`、`121.8.177.212/32`、`1.1.1.1/32`。
+    - **`box.iptables` (`/data/adb/box_bll/scripts/box.iptables`)**：
+      - 在 `CLASH_DNS_LOCAL`（NAT 与 Mangle）中必须对 `gid_list` 执行 `RETURN`，防止未认证时本地守护进程发出的 DNS 请求被重定向到未联网的 Clash 内置 DNS 导致超时卡死。
+      - 确保脚本换行符严格为 `LF`（避免 Windows CRLF 导致 `/system/bin/sh: ... No such file or directory`）。
+    - **`config.yaml` (`/data/adb/box_bll/clash/config.yaml`)**：
+      - 在 `rules:` 顶部（`DST-PORT,853,DNS连接` 之后）显式置顶校园网直连规则：
+        - `PROCESS-NAME,esurfingd,🌐 本机·本地直连`
+        - `PROCESS-NAME,com.example.esurfing_client,🌐 本机·本地直连`
+        - `PROCESS-NAME,com.cndatacom.campus.cdccportalgd,🌐 本机·本地直连`
+        - `DOMAIN,connect.rom.miui.com,🌐 本机·本地直连`
+        - `DOMAIN-SUFFIX,rom.miui.com/cndatacom.com/cdcc.cn/189.cn/gd189.cn/edu.cn,🌐 本机·本地直连`
+        - `IP-CIDR,220.181.104.183/32 / 14.146.227.141/32 / 121.8.177.212/32 / 1.1.1.1/32 / 100.0.0.0/8,🌐 本机·本地直连,no-resolve`
+      - 在 `dns.direct-nameserver` 中加入 `- system`，以便直接通过 Android 系统/DHCP 分配的网关 DNS 解析直连域名。
 - **PowerShell 跨平台命令传输铁律**：
   - 在 Windows PowerShell 中通过 `adb shell su -c` 或 `ssh` 执行包含引号、管道 `|`、`&` 或 Python/SQLite 的复杂命令时，**必须先在本地转为 Base64 字符串**，再通过 `echo <b64> | base64 -d | sh`（或 `sudo python3`）执行，彻底杜绝引号吞噬与参数截断。
 
