@@ -161,6 +161,7 @@ extern jmp_buf g_exit_jmp;
 
 /** @brief 程序开始运行时间 */
 extern uint64_t g_start_run_tm;
+extern uint64_t g_start_steady_tm;
 
 /** @brief 适配器数 */
 extern int8_t g_prog_cnt;

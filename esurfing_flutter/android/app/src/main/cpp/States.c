@@ -9,6 +9,7 @@ jmp_buf g_exit_jmp;
 #endif
 
 uint64_t g_start_run_tm = 0;
+uint64_t g_start_steady_tm = 0;
 
 int8_t g_prog_cnt = 0;
 

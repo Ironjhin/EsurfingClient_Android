@@ -2,6 +2,7 @@
 #define ESURFINGCLIENT_PLATFORMUTILS_H
 
 #include "States.h"
+#include "utils/cJSON.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -29,7 +30,7 @@
 #endif
 
 #define XML_BUFFER_SIZE 1024
-#define NAME_LENGTH 128
+#define NAME_LENGTH 256
 
 typedef enum
 {
@@ -100,6 +101,12 @@ char* uint642str(uint64_t num);
 uint64_t get_cur_tm_ms();
 
 /**
+ * @brief 获取单调时钟的毫秒时间戳 (不受系统时间/NTP调整影响)
+ * @return 64位单调时间戳
+ */
+uint64_t get_steady_tm_ms();
+
+/**
  * @brief 获取随机字节
  * @param buf 缓冲
  * @param len 长度
@@ -160,5 +167,14 @@ bool save_cfg(char* configs_str);
  * @brief 加载配置文件
  */
 bool load_cfg();
+
+uint8_t parse_channel_json(const cJSON* chn, uint8_t cfg_no);
+void apply_channel_ua(login_cfg_t* cfg, uint8_t cfg_no);
+bool apply_time_windows(const cJSON* item, login_cfg_t* cfg);
+
+char* bytes2base64(const uint8_t* in, size_t len);
+uint8_t* base642bytes(const char* in, size_t* out_len);
+void set_config_dir(const char* dir);
+const char* get_config_path(void);
 
 #endif // ESURFINGCLIENT_PLATFORMUTILS_H

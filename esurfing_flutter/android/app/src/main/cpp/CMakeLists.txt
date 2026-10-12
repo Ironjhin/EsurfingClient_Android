@@ -86,6 +86,7 @@ find_library(ANDROID_LOG log)
 file(GLOB ANDROID_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/android/*.c")
 file(GLOB LINUX_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/linux/*.c")
 file(GLOB IOS_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/*.c")
+file(GLOB WINDOWS_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/windows/*.c")
 file(GLOB LZMA_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma/*.c")
 
 file(GLOB UTILS_SOURCES
@@ -110,6 +111,7 @@ set(ALL_SOURCES
     ${ANDROID_CIPHER_SOURCES}
     ${LINUX_CIPHER_SOURCES}
     ${IOS_CIPHER_SOURCES}
+    ${WINDOWS_CIPHER_SOURCES}
     ${LZMA_CIPHER_SOURCES}
     ${UTILS_SOURCES}
     ${WEBSERVER_SOURCES}
@@ -140,7 +142,7 @@ target_compile_options(esurfing_client PRIVATE
 )
 
 target_compile_definitions(esurfing_client PRIVATE
-    PROGRAM_FULL_VERSION="v2.1.3-r3"
+    PROGRAM_FULL_VERSION="v2.1.5-r6"
 )
 
 target_include_directories(esurfing_client PUBLIC

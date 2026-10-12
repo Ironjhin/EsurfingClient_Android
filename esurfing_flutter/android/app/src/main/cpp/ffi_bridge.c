@@ -85,7 +85,7 @@ int32_t esurfing_client_init(const char* data_dir, const char* config_json) {
     strncpy(g_data_dir, data_dir, sizeof(g_data_dir) - 1);
     set_log_dir(g_data_dir);
     set_config_dir(g_data_dir);
-    g_need_exit = false; g_thread_keep_alive = true; g_start_run_tm = get_cur_tm_ms(); tl_thread_idx = -1;
+    g_need_exit = false; g_thread_keep_alive = true; g_start_run_tm = get_cur_tm_ms(); g_start_steady_tm = get_steady_tm_ms(); tl_thread_idx = -1;
     init_logger();
     if (parse_json(config_json) != 0) return -1;
     for (int8_t i = 0; i < g_prog_cnt; i++) { tl_thread_idx = i; refresh_states(); }

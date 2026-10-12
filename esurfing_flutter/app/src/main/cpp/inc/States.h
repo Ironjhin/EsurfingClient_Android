@@ -2,9 +2,11 @@
 #define ESURFINGCLIENT_STATES_H
 
 #include "cipher/CipherInterface.h"
+#include "cipher/IosZsm.h"
 #include "utils/SimThread.h"
 
 #include <setjmp.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #define SCHOOL_NETWORK_SYMBOL 8
@@ -12,7 +14,8 @@
 #define TICKET_URL_LEN 512
 #define USER_AGENT_LEN 32
 #define CLIENT_ID_LEN 40
-#define HOST_NAME_LEN 16
+#define HOST_NAME_LEN 32
+#define OSTAG_LEN 32
 #define KEEP_URL_LEN 256
 #define TERM_URL_LEN 256
 #define AUTH_URL_LEN 256
@@ -20,14 +23,21 @@
 #define ALGO_ID_LEN 37
 #define TICKET_LEN 40
 
-#define USR_LEN 16
+#define USR_LEN 64
 #define PWD_LEN 128
-#define CHN_LEN 8
+
+#define WEEK_MINUTES 10080
+#define MAX_TIME_WINDOWS 16
+#define TIME_WINDOW_STR_LEN 32
 
 #define IP_LEN 16
 #define IF_LEN 16
 
-#define LAST_LOCATION_LEN 512
+#define LOCATION_LEN 512
+#define LAST_LOCATION_LEN 1024
+
+#define DEFAULT_CONN_TIMEOUT 7
+#define DEFAULT_OP_TIMEOUT 10
 
 /** @brief 认证配置 */
 typedef struct
@@ -38,6 +48,8 @@ typedef struct
     char client_id[CLIENT_ID_LEN];
     /** @brief 主机名 */
     char host_name[HOST_NAME_LEN];
+    /** @brief 系统标识 */
+    char ostag[OSTAG_LEN];
     /** @brief 心跳 URL */
     char keep_url[KEEP_URL_LEN];
     /** @brief 登出 URL */
@@ -54,15 +66,30 @@ typedef struct
     char client_ip[IP_LEN];
     /** @brief 服务端 IP */
     char ac_ip[IP_LEN];
+    /** @brief 是否为动态 ZSM 密钥 */
+    bool dynamic;
     /** @brief 加解密工厂 */
     cipher_interface_t* cipher;
+    /** @brief 动态 ZSM 密钥存档 */
+    ios_zsm_blob_t blob;
     /** @brief 重试时间 */
     uint64_t keep_retry;
     /** @brief 认证时间 */
     uint64_t auth_time;
     /** @brief 当前时间 (用于检测认证时间) */
     uint64_t tick;
+    /** @brief 动态 ZSM 算法类型 */
+    int8_t type;
 } auth_cfg_t;
+
+/** @brief 一周时间窗口 */
+typedef struct
+{
+    /** @brief 开始周分钟 (0-10079, 0=周日 00:00) */
+    uint16_t start_week_min;
+    /** @brief 结束周分钟 (可大于 10080, 用于跨周窗口) */
+    uint16_t end_week_min;
+} time_window_t;
 
 /** @brief 登录配置 */
 typedef struct
@@ -72,7 +99,7 @@ typedef struct
     /** @brief 密码 */
     char pwd[PWD_LEN];
     /** @brief 认证通道 */
-    char chn[CHN_LEN];
+    uint8_t chn;
     /** @brief 设备 UA */
     char user_agent[USER_AGENT_LEN];
     /** @brief 标记值 */
@@ -81,6 +108,12 @@ typedef struct
     bool use_cus_mark;
     // /** @brief 自启状态 */
     // bool auto_start;
+    /** @brief 一周时间窗口列表 */
+    time_window_t time_windows[MAX_TIME_WINDOWS];
+    /** @brief 有效时间窗口数量 */
+    uint8_t time_window_count;
+    /** @brief 是否启用时间控制 */
+    bool has_time_control;
     /** @brief 配置序号 */
     uint8_t idx;
 } login_cfg_t;
@@ -94,8 +127,12 @@ typedef struct
     bool is_running;
     /** @brief 认证状态 */
     bool is_authed;
+    /** @brief 联网状态 (互联网可达) */
+    bool is_connected;
     /** @brief 需要重置 */
     bool is_need_reset;
+    /** @brief 时间控制禁用中 (仅内存状态, 不落盘) */
+    bool is_time_disabled;
 } runtime_status_t;
 
 /** @brief 认证线程状态 */
@@ -112,7 +149,7 @@ typedef struct
     /** @brief 线程 */
     sim_thread_t* thread;
     /** @brief 获取认证配置地址 */
-    char last_location[LAST_LOCATION_LEN];
+    char last_location[LAST_LOCATION_LEN * 2];
     /** @brief last_location 数据锁 */
     bool last_location_lock;
 } prog_status_t;
@@ -124,6 +161,7 @@ extern jmp_buf g_exit_jmp;
 
 /** @brief 程序开始运行时间 */
 extern uint64_t g_start_run_tm;
+extern uint64_t g_start_steady_tm;
 
 /** @brief 适配器数 */
 extern int8_t g_prog_cnt;
@@ -144,13 +182,23 @@ extern bool g_thread_keep_alive;
 extern bool g_is_webserver_running;
 
 /** @brief 需要退出 */
-extern volatile int g_need_exit;
+extern bool g_need_exit;
 
 /** @brief 程序启用状态 */
 extern bool g_prog_enabled;
 
 /** @brief 需要重启 */
 extern bool g_need_restart;
+
+/** @brief Web 接口请求重启/停止 */
+extern volatile bool g_need_stop_now;
+extern volatile bool g_need_restart_now;
+
+/** @brief CURL 连接超时时长 (秒) */
+extern long g_conn_timeout;
+
+/** @brief CURL 操作超时时长 (秒) */
+extern long g_op_timeout;
 
 /** @brief 刷新状态函数 */
 void refresh_states();

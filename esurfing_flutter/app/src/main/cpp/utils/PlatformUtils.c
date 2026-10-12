@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <stdio.h>
 #include <time.h>
+#ifndef _WIN32
+#include <strings.h>
+#endif
 
 #ifdef _WIN32
 
@@ -19,7 +22,16 @@
 
 #endif
 
-#ifdef __OPENWRT__
+#define WINDOWS_UA "CCTP/WinSVR5/1068"
+#define LINUX_UA "CCTP/Linux64/1003"
+#define OLD_ANDROID_UA "CCTP/android64_vpn/2093"
+#define ANDROID_UA "CCTP/android11_64/2104"
+#define IOS_UA "CCTP/iOSdy/4023"
+#define MACOS_UA "CCTP/macdy/5019"
+
+#ifdef __MAGISK__
+static const char config_file[] = "/data/adb/esurfing/ESurfingClient.json";
+#elif defined(__OPENWRT__)
 static const char config_file[] = "/etc/config/esurfingclient";
 #else
 #define DIALER_CONFIG_FILE "ESurfingClient.json"
@@ -39,14 +51,247 @@ static const char s_default_cfg[] = "{\n"
                                     "       {\n"
                                     "           \"username\": \"\",\n"
                                     "           \"password\": \"\",\n"
-                                    "           \"channel\": \"phone\",\n"
-                                    "           \"mark\": \"\"\n"
+                                    "           \"channel\": 3,\n"
+                                    "           \"mark\": \"\",\n"
+                                    "           \"time_windows\": []\n"
                                     "       }\n"
                                     "   ]\n"
                                     "}\n";
 
 static adapter_t* s_adaptor = NULL;
 static uint8_t s_adaptor_count = 0;
+
+static bool channel_str_eq(const char* a, const char* b)
+{
+#ifdef _WIN32
+    return _stricmp(a, b) == 0;
+#else
+    return strcasecmp(a, b) == 0;
+#endif
+}
+
+uint8_t parse_channel_json(const cJSON* chn, const uint8_t cfg_no)
+{
+    if (chn == NULL)
+    {
+        LOG_WARN("配置 %" PRIu8 " channel 参数不存在, 使用默认通道 3 (Android)", cfg_no);
+        return 3;
+    }
+
+    if (cJSON_IsNumber(chn))
+    {
+        const int value = chn->valueint;
+        if (value >= 1 && value <= 5)
+        {
+            return (uint8_t)value;
+        }
+        LOG_WARN("配置 %" PRIu8 " channel 参数错误, 使用默认通道 3 (Android)", cfg_no);
+        return 3;
+    }
+
+    if (cJSON_IsString(chn) && chn->valuestring != NULL)
+    {
+        const char* value = chn->valuestring;
+        if (channel_str_eq(value, "windows") || channel_str_eq(value, "1"))
+        {
+            return 1;
+        }
+        if (channel_str_eq(value, "linux") || channel_str_eq(value, "pc") || channel_str_eq(value, "2"))
+        {
+            return 2;
+        }
+        if (channel_str_eq(value, "android") || channel_str_eq(value, "phone") || channel_str_eq(value, "3"))
+        {
+            return 3;
+        }
+        if (channel_str_eq(value, "ios") || channel_str_eq(value, "iphone") || channel_str_eq(value, "4"))
+        {
+            return 4;
+        }
+        if (channel_str_eq(value, "macos") || channel_str_eq(value, "mac") || channel_str_eq(value, "osx") || channel_str_eq(value, "5"))
+        {
+            return 5;
+        }
+    }
+
+    LOG_WARN("配置 %" PRIu8 " channel 参数错误, 使用默认通道 3 (Android)", cfg_no);
+    return 3;
+}
+
+void apply_channel_ua(login_cfg_t* cfg, uint8_t cfg_no)
+{
+    switch (cfg->chn)
+    {
+    case 1:
+        LOG_INFO("使用通道 1: Windows (暂未实现, 使用 Android 通道)");
+        snprintf(cfg->user_agent, USER_AGENT_LEN, ANDROID_UA);
+        break;
+    case 2:
+        LOG_INFO("使用通道 2: Linux");
+        snprintf(cfg->user_agent, USER_AGENT_LEN, LINUX_UA);
+        break;
+    case 3:
+        LOG_INFO("使用通道 3: Android");
+        snprintf(cfg->user_agent, USER_AGENT_LEN, ANDROID_UA);
+        break;
+    case 4:
+        LOG_INFO("使用通道 4: iOS");
+        snprintf(cfg->user_agent, USER_AGENT_LEN, IOS_UA);
+        break;
+    case 5:
+        LOG_INFO("使用通道 5: macOS");
+        snprintf(cfg->user_agent, USER_AGENT_LEN, MACOS_UA);
+        break;
+    default:
+        LOG_WARN("配置 %" PRIu8 " channel 参数错误, 使用默认通道 3 (Android)", cfg_no);
+        cfg->chn = 3;
+        snprintf(cfg->user_agent, USER_AGENT_LEN, ANDROID_UA);
+        break;
+    }
+}
+
+/**
+ * @brief 将英文星期缩写转为周起始偏移 (0=周日 ... 6=周六)
+ * @return 0-6, 失败返回 -1
+ */
+static int week_day_from_str(const char* str)
+{
+    if (!str) return -1;
+    const char d0 = (char)tolower((unsigned char)str[0]);
+    const char d1 = (char)tolower((unsigned char)str[1]);
+    const char d2 = (char)tolower((unsigned char)str[2]);
+
+    if (d0 == 'm' && d1 == 'o' && d2 == 'n') return 1;
+    if (d0 == 't' && d1 == 'u' && d2 == 'e') return 2;
+    if (d0 == 'w' && d1 == 'e' && d2 == 'd') return 3;
+    if (d0 == 't' && d1 == 'h' && d2 == 'u') return 4;
+    if (d0 == 'f' && d1 == 'r' && d2 == 'i') return 5;
+    if (d0 == 's' && d1 == 'a' && d2 == 't') return 6;
+    if (d0 == 's' && d1 == 'u' && d2 == 'n') return 0;
+    return -1;
+}
+
+/**
+ * @brief 解析 "mon 08:13" 格式
+ * @param str 原始字符串
+ * @param week_min 输出周分钟 (0-10079)
+ * @return 是否合法
+ */
+static bool parse_week_time(const char* str, uint16_t* week_min)
+{
+    if (!str || strlen(str) != 9) return false;
+    if (str[3] != ' ') return false;
+    if (isdigit((unsigned char)str[4]) == 0 ||
+        isdigit((unsigned char)str[5]) == 0 ||
+        isdigit((unsigned char)str[7]) == 0 ||
+        isdigit((unsigned char)str[8]) == 0 ||
+        str[6] != ':')
+    {
+        return false;
+    }
+
+    const int day = week_day_from_str(str);
+    if (day < 0) return false;
+
+    const int hour = (str[4] - '0') * 10 + (str[5] - '0');
+    const int minute = (str[7] - '0') * 10 + (str[8] - '0');
+    if (hour > 23 || minute > 59) return false;
+
+    if (week_min) *week_min = (uint16_t)(day * 1440 + hour * 60 + minute);
+    return true;
+}
+
+/**
+ * @brief 解析一个 time_windows 数组元素 { "start": "mon 08:13", "end": "sun 23:57" }
+ * @param item cJSON 对象
+ * @param win 输出窗口
+ * @return 是否合法 (end <= start 时按跨周处理)
+ */
+static bool parse_time_window(const cJSON* item, time_window_t* win)
+{
+    if (!item || !cJSON_IsObject(item)) return false;
+
+    const cJSON* start_item = cJSON_GetObjectItem(item, "start");
+    const cJSON* end_item = cJSON_GetObjectItem(item, "end");
+    if (!start_item || !cJSON_IsString(start_item) ||
+        !end_item || !cJSON_IsString(end_item))
+    {
+        return false;
+    }
+
+    uint16_t start = 0;
+    uint16_t end = 0;
+    if (parse_week_time(start_item->valuestring, &start) == false ||
+        parse_week_time(end_item->valuestring, &end) == false)
+    {
+        return false;
+    }
+
+    if (start == end) return false;
+
+    if (end <= start)
+    {
+        end = (uint16_t)(end + WEEK_MINUTES);
+    }
+
+    if (win)
+    {
+        win->start_week_min = start;
+        win->end_week_min = end;
+    }
+    return true;
+}
+
+/**
+ * @brief 从 cJSON 数组解析 time_windows
+ * @param arr cJSON 数组 (允许 NULL/空)
+ * @param windows 输出窗口数组
+ * @param count 输出窗口数量
+ * @return 是否合法
+ */
+static bool parse_time_windows(const cJSON* arr, time_window_t* windows, uint8_t* count)
+{
+    if (count) *count = 0;
+
+    if (arr == NULL)
+    {
+        return true;
+    }
+    if (cJSON_IsArray(arr) == false)
+    {
+        return false;
+    }
+
+    const int size = cJSON_GetArraySize(arr);
+    if (size < 0 || size > MAX_TIME_WINDOWS) return false;
+
+    for (int i = 0; i < size; i++)
+    {
+        time_window_t win;
+        if (parse_time_window(cJSON_GetArrayItem(arr, i), &win) == false)
+        {
+            return false;
+        }
+        if (windows) windows[i] = win;
+    }
+
+    if (count) *count = (uint8_t)size;
+    return true;
+}
+
+/**
+ * @brief 解析 time_windows 并写入 login_cfg
+ * @return 是否合法
+ */
+bool apply_time_windows(const cJSON* item, login_cfg_t* cfg)
+{
+    if (parse_time_windows(item, cfg->time_windows, &cfg->time_window_count) == false)
+    {
+        return false;
+    }
+    cfg->has_time_control = cfg->time_window_count > 0;
+    return true;
+}
 
 static void get_adapters()
 {
@@ -210,6 +455,117 @@ bytes_t str2bytes(const char* str)
     return ba;
 }
 
+static const char b64_enc[] =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+char* bytes2base64(const uint8_t* in, const size_t len)
+{
+    if (in == NULL && len > 0) return NULL;
+
+    const size_t olen = 4 * ((len + 2) / 3);
+    char* out = malloc(olen + 1);
+    if (!out) return NULL;
+
+    size_t i = 0, j = 0;
+    while (i < len)
+    {
+        const uint32_t a = i < len ? in[i++] : 0;
+        const uint32_t b = i < len ? in[i++] : 0;
+        const uint32_t c = i < len ? in[i++] : 0;
+        const uint32_t t = (a << 16) | (b << 8) | c;
+
+        out[j++] = b64_enc[(t >> 18) & 0x3F];
+        out[j++] = b64_enc[(t >> 12) & 0x3F];
+        out[j++] = b64_enc[(t >> 6)  & 0x3F];
+        out[j++] = b64_enc[t & 0x3F];
+    }
+
+    const size_t mod = len % 3;
+    if (mod == 1) { out[olen - 1] = '='; out[olen - 2] = '='; }
+    else if (mod == 2) { out[olen - 1] = '='; }
+
+    out[olen] = '\0';
+    return out;
+}
+
+uint8_t* base642bytes(const char* in, size_t* out_len)
+{
+    if (in == NULL || out_len == NULL) return NULL;
+
+    const size_t in_len = strlen(in);
+    if (in_len == 0)
+    {
+        uint8_t* p = malloc(1);
+        if (p) *out_len = 0;
+        return p;
+    }
+    if (in_len % 4 != 0) return NULL;
+
+    static int dec[256];
+    static int inited = 0;
+    if (!inited)
+    {
+        memset(dec, -1, sizeof(dec));
+        for (int i = 0; i < 64; i++) dec[(uint8_t)b64_enc[i]] = i;
+        inited = 1;
+    }
+
+    const size_t max_out = in_len / 4 * 3;
+    uint8_t* out = malloc(max_out);
+    if (!out) return NULL;
+
+    size_t j = 0;
+    for (size_t i = 0; i < in_len; i += 4)
+    {
+        const int v0 = dec[(uint8_t)in[i]];
+        const int v1 = dec[(uint8_t)in[i + 1]];
+        const int v2 = in[i + 2] == '=' ? -2 : dec[(uint8_t)in[i + 2]];
+        const int v3 = in[i + 3] == '=' ? -2 : dec[(uint8_t)in[i + 3]];
+
+        if (v0 < 0 || v1 < 0 || v2 == -1 || v3 == -1) { free(out); return NULL; }
+
+        const uint32_t t = (v0 << 18) | (v1 << 12) |
+                     ((v2 < 0 ? 0 : v2) << 6) |
+                      (v3 < 0 ? 0 : v3);
+
+        out[j++] = (t >> 16) & 0xFF;
+        if (v2 >= 0) out[j++] = (t >> 8) & 0xFF;
+        if (v3 >= 0) out[j++] = t & 0xFF;
+    }
+
+    *out_len = j;
+    return out;
+}
+
+void set_config_dir(const char* dir)
+{
+#if !defined(__OPENWRT__) && !defined(__MAGISK__)
+    if (dir && dir[0] != '\0')
+    {
+        snprintf(config_file, sizeof(config_file), "%s%c%s", dir, SEP, DIALER_CONFIG_FILE);
+    }
+#else
+    (void)dir;
+#endif
+}
+
+const char* get_config_path(void)
+{
+#if defined(__OPENWRT__) || defined(__MAGISK__)
+    return config_file;
+#else
+    if (config_file[0] == '\0')
+    {
+        char dir[PATH_MAX];
+        if (get_exec_dir(dir))
+        {
+            snprintf(config_file, sizeof(config_file), "%s%c%s", safe_str(dir), SEP, DIALER_CONFIG_FILE);
+        }
+    }
+    return config_file;
+#endif
+}
+
 uint64_t str2uint64(const char* str)
 {
     if (!str) return 0;
@@ -249,6 +605,21 @@ uint64_t get_cur_tm_ms()
 #endif
 }
 
+uint64_t get_steady_tm_ms()
+{
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    if (QueryPerformanceFrequency(&freq) == 0 || freq.QuadPart == 0) return 0;
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)(counter.QuadPart / freq.QuadPart * 1000
+        + counter.QuadPart % freq.QuadPart * 1000 / freq.QuadPart);
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+#endif
+}
+
 void get_rand_bytes(uint8_t* buf, const size_t len)
 {
 #ifdef _WIN32
@@ -274,7 +645,7 @@ void sleep_ms(const uint64_t ms, const bool can_stop)
 
         while (elapsed < ms && g_thread_keep_alive)
         {
-            if (tl_thread_idx != -1)
+            if (tl_thread_idx > -1)
             {
                 if (g_prog_status[tl_thread_idx].runtime_status.is_running == false || g_prog_status[tl_thread_idx].runtime_status.is_need_reset)
                 {
@@ -283,7 +654,8 @@ void sleep_ms(const uint64_t ms, const bool can_stop)
             }
             else
             {
-                if (g_need_exit)
+                if (g_need_exit || g_need_stop_now || g_need_restart_now ||
+                    (g_prog_status && g_prog_cnt > 0 && g_prog_status[0].runtime_status.is_need_reset))
                 {
                     return;
                 }
@@ -357,7 +729,7 @@ char* create_xml_payload(const XmlChoose choose)
 {
     char cur_tm[32];
     get_fmt_time(cur_tm, CONSOLE_FORMAT);
-    static char xml[XML_BUFFER_SIZE] = "";
+    static _Thread_local char xml[XML_BUFFER_SIZE] = "";
     LOG_DEBUG("XML 选择代码: %d", choose);
     uint16_t xml_len = 0;
     switch (choose)
@@ -382,7 +754,7 @@ char* create_xml_payload(const XmlChoose choose)
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.host_name),
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.client_ip),
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.mac_addr),
-            safe_str(g_prog_status[tl_thread_idx].auth_cfg.host_name),
+            safe_str(g_prog_status[tl_thread_idx].auth_cfg.ostag),
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.ac_ip)
         );
         break;
@@ -427,7 +799,7 @@ char* create_xml_payload(const XmlChoose choose)
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.client_ip),
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.ticket),
             safe_str(g_prog_status[tl_thread_idx].auth_cfg.mac_addr),
-            safe_str(g_prog_status[tl_thread_idx].auth_cfg.host_name)
+            safe_str(g_prog_status[tl_thread_idx].auth_cfg.ostag)
         );
         break;
     default:
@@ -445,7 +817,10 @@ char* create_xml_payload(const XmlChoose choose)
         return NULL;
     }
     LOG_DEBUG("创建 XML 完成");
-    LOG_VERBOSE("XML 内容为:\n%s", xml);
+    if (choose != LOGIN)
+    {
+        LOG_VERBOSE("XML 内容为:\n%s", xml);
+    }
     return xml;
 }
 
@@ -492,32 +867,82 @@ bool save_cfg(char* configs_str)
     LOG_INFO("保存配置中");
     LOG_INFO("仅会保存第一个可用配置");
 
-    FILE* cfg_file = fopen(config_file, "w");
-    if (!cfg_file)
+    cJSON* configs = cJSON_Parse(configs_str);
+    if (!configs)
     {
-        LOG_ERROR("无法生成文件: %s", config_file);
+        LOG_ERROR("配置 JSON 解析失败");
         return false;
     }
-    fprintf(cfg_file, "%s", configs_str);
-    fclose(cfg_file);
-
-    cJSON* configs = cJSON_Parse(configs_str);
 
     const cJSON* enabled = cJSON_GetObjectItem(configs, "enabled");
     const cJSON* log_lv = cJSON_GetObjectItem(configs, "log_lv");
 
     const cJSON* accounts = cJSON_GetObjectItem(configs, "accounts");
-    const cJSON* account = cJSON_GetArrayItem(accounts, 0);
+    const cJSON* account = accounts ? cJSON_GetArrayItem(accounts, 0) : NULL;
+    if (account == NULL)
+    {
+        LOG_ERROR("配置中没有账号数据");
+        cJSON_Delete(configs);
+        return false;
+    }
 
     const cJSON* username = cJSON_GetObjectItem(account, "username");
     const cJSON* password = cJSON_GetObjectItem(account, "password");
     const cJSON* channel = cJSON_GetObjectItem(account, "channel");
+    const cJSON* time_windows_item = cJSON_GetObjectItem(account, "time_windows");
 
+    // 保存前先校验 time_windows，避免把非法配置写盘
+    time_window_t tmp_windows[MAX_TIME_WINDOWS];
+    uint8_t tmp_window_count = 0;
+    if (parse_time_windows(time_windows_item, tmp_windows, &tmp_window_count) == false)
+    {
+        LOG_ERROR("time_windows 非法, 应为 [{ \"start\": \"mon 08:13\", \"end\": \"mon 23:57\" }, ...]");
+        cJSON_Delete(configs);
+        return false;
+    }
+
+    FILE* cfg_file = fopen(config_file, "w");
+    if (!cfg_file)
+    {
+        LOG_ERROR("无法生成文件: %s", config_file);
+        cJSON_Delete(configs);
+        return false;
+    }
+    fprintf(cfg_file, "%s", configs_str);
+    fclose(cfg_file);
+
+    if (enabled)
+    {
+        g_prog_enabled = enabled->valueint;
+    }
+    if (log_lv)
+    {
+        set_logger_level(log_lv->valueint);
+    }
+    if (username)
+    {
+        snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", username->valuestring);
+    }
+    if (password)
+    {
+        snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", password->valuestring);
+    }
+    if (channel)
+    {
+        g_prog_status[0].login_cfg.chn = channel->valueint;
+    }
+
+    // 透传 time_windows 到内存，保持桌面端与配置一致
+    g_prog_status[0].login_cfg.has_time_control = tmp_window_count > 0;
+    g_prog_status[0].login_cfg.time_window_count = tmp_window_count;
+    memcpy(g_prog_status[0].login_cfg.time_windows, tmp_windows, sizeof(time_window_t) * tmp_window_count);
+  
     g_prog_enabled = enabled->valueint;
     set_logger_level(log_lv->valueint);
     snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", username->valuestring);
     snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", password->valuestring);
-    snprintf(g_prog_status[0].login_cfg.chn, CHN_LEN, "%s", channel->valuestring);
+    g_prog_status[0].login_cfg.chn = parse_channel_json(channel, 1);
+    apply_channel_ua(&g_prog_status[0].login_cfg, 1);
 
     cJSON_Delete(configs);
 
@@ -526,20 +951,18 @@ bool save_cfg(char* configs_str)
 
 bool load_cfg()
 {
-#ifndef __OPENWRT__
+#if defined(__ANDROID__) && !defined(__MAGISK__)
+    return true;
+#else
+#if !defined(__OPENWRT__) && !defined(__MAGISK__)
 
     char dir[PATH_MAX];
     if (get_exec_dir(dir) == false)
     {
         LOG_ERROR("获取可执行文件路径失败, 请检查权限后重启");
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return false;
     }
     snprintf(config_file, PATH_MAX + 1 + sizeof(DIALER_CONFIG_FILE), "%s%c%s", safe_str(dir), SEP, DIALER_CONFIG_FILE);
 
@@ -565,7 +988,12 @@ bool load_cfg()
         }
         fprintf(new_cfg, "%s", s_default_cfg);
         fclose(new_cfg);
-        LOG_INFO("创建完成, 请在 %s 填写账号数据, 然后重启");
+        LOG_INFO("创建完成, 请在 %s 填写账号数据, 然后重启", config_file);
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -574,6 +1002,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     fseek(cfg_file, 0, SEEK_END);
@@ -590,6 +1019,11 @@ bool load_cfg()
     if (!cfg_json)
     {
         LOG_FATAL("JSON 解析失败, 请检查后重启");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -598,6 +1032,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     const cJSON* log_lv = cJSON_GetObjectItem(cfg_json, "log_lv");
@@ -610,10 +1045,35 @@ bool load_cfg()
         LOG_WARN("log_lv 参数不存在, 使用默认等级 (INFO)");
     }
 
+    const cJSON* ct_item = cJSON_GetObjectItem(cfg_json, "conn_timeout");
+    if (ct_item && cJSON_IsNumber(ct_item) && ct_item->valueint > 0)
+    {
+        g_conn_timeout = (long)ct_item->valueint;
+    }
+    else
+    {
+        g_conn_timeout = DEFAULT_CONN_TIMEOUT;
+    }
+
+    const cJSON* ot_item = cJSON_GetObjectItem(cfg_json, "op_timeout");
+    if (ot_item && cJSON_IsNumber(ot_item) && ot_item->valueint > 0)
+    {
+        g_op_timeout = (long)ot_item->valueint;
+    }
+    else
+    {
+        g_op_timeout = DEFAULT_OP_TIMEOUT;
+    }
+
     const cJSON* enabled = cJSON_GetObjectItem(cfg_json, "enabled");
     if (enabled == NULL)
     {
         LOG_WARN("enabled 参数不存在, 请填写后重启程序");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -623,10 +1083,16 @@ bool load_cfg()
             g_prog_enabled = false;
             sleep_ms(10000, true);
         }
+#endif
     }
     if (cJSON_IsFalse(enabled))
     {
         LOG_WARN("配置文件中禁用了程序启动, 请开启后重启程序");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -636,6 +1102,7 @@ bool load_cfg()
             g_prog_enabled = false;
             sleep_ms(10000, true);
         }
+#endif
     }
     g_prog_enabled = true;
 
@@ -644,6 +1111,11 @@ bool load_cfg()
     {
         LOG_FATAL("没有找到账号数据, 请添加后重启程序");
         cJSON_Delete(cfg_json);
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -652,6 +1124,7 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     const uint8_t cnt = cJSON_GetArraySize(accounts);
@@ -683,6 +1156,7 @@ bool load_cfg()
         const cJSON* pwd = cJSON_GetObjectItem(account, "password");
         const cJSON* chn = cJSON_GetObjectItem(account, "channel");
         const cJSON* mark = cJSON_GetObjectItem(account, "mark");
+        const cJSON* time_windows_item = cJSON_GetObjectItem(account, "time_windows");
 
         // 检查账号
         if (usr == NULL)
@@ -708,38 +1182,22 @@ bool load_cfg()
             continue;
         }
 
+        // 检查时间控制字段
+        if (apply_time_windows(time_windows_item, &g_prog_status[valid_i].login_cfg) == false)
+        {
+            LOG_FATAL("配置 %" PRIu8 " time_windows 非法, 应为 [{ \"start\": \"mon 08:13\", \"end\": \"mon 23:57\" }, ...]", i + 1);
+            cJSON_Delete(cfg_json);
+            return false;
+        }
+
         snprintf(g_prog_status[valid_i].login_cfg.usr, USR_LEN, "%s", safe_str(usr->valuestring));
         snprintf(g_prog_status[valid_i].login_cfg.pwd, PWD_LEN, "%s", safe_str(pwd->valuestring));
 
-        // 检查通道
-        if (chn == NULL)
-        {
-            LOG_WARN("配置 %" PRIu8 " channel 参数不存在, 使用默认通道", i + 1);
-            snprintf(g_prog_status[valid_i].login_cfg.chn, CHN_LEN, "%s", "phone");
-        }
-        else if (chn->valuestring[0] == '\0')
-        {
-            LOG_WARN("配置 %" PRIu8 " channel 参数为空, 使用默认通道", i + 1);
-            snprintf(g_prog_status[valid_i].login_cfg.chn, CHN_LEN, "%s", "phone");
-        }
-        else
-        {
-            snprintf(g_prog_status[valid_i].login_cfg.chn, CHN_LEN, "%s", safe_str(chn->valuestring));
-        }
+        g_prog_status[valid_i].login_cfg.chn = parse_channel_json(chn, i + 1);
+        apply_channel_ua(&g_prog_status[valid_i].login_cfg, i + 1);
 
-        // 转化成 UA
-        if (strcmp(g_prog_status[valid_i].login_cfg.chn, "pc") == 0)
-        {
-            snprintf(g_prog_status[valid_i].login_cfg.user_agent, USER_AGENT_LEN, "CCTP/Linux64/1003");
-            LOG_DEBUG("使用 UA: %s", g_prog_status[valid_i].login_cfg.user_agent);
-            LOG_DEBUG("当前使用下标: %" PRIu8, valid_i);
-        }
-        else
-        {
-            snprintf(g_prog_status[valid_i].login_cfg.user_agent, USER_AGENT_LEN, "CCTP/android64_vpn/2093");
-            LOG_DEBUG("使用 UA: %s", g_prog_status[valid_i].login_cfg.user_agent);
-            LOG_DEBUG("当前使用下标: %" PRIu8, valid_i);
-        }
+        LOG_DEBUG("使用 UA: %s", g_prog_status[valid_i].login_cfg.user_agent);
+        LOG_DEBUG("当前使用下标: %" PRIu8, valid_i);
 
         // 检查标记值
         if (mark == NULL)
@@ -795,6 +1253,7 @@ bool load_cfg()
         const cJSON* usr = cJSON_GetObjectItem(account, "username");
         const cJSON* pwd = cJSON_GetObjectItem(account, "password");
         const cJSON* chn = cJSON_GetObjectItem(account, "channel");
+        const cJSON* time_windows_item = cJSON_GetObjectItem(account, "time_windows");
 
         // 检查账号
         if (usr == NULL)
@@ -820,38 +1279,22 @@ bool load_cfg()
             continue;
         }
 
+        // 检查时间控制字段
+        if (apply_time_windows(time_windows_item, &g_prog_status[0].login_cfg) == false)
+        {
+            LOG_FATAL("配置 %" PRIu8 " time_windows 非法, 应为 [{ \"start\": \"mon 08:13\", \"end\": \"mon 23:57\" }, ...]", i + 1);
+            cJSON_Delete(cfg_json);
+            return false;
+        }
+
         snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", safe_str(usr->valuestring));
         snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", safe_str(pwd->valuestring));
 
-        // 检查通道
-        if (chn == NULL)
-        {
-            LOG_WARN("配置 %" PRIu8 " channel 参数不存在, 使用默认通道", i + 1);
-            snprintf(g_prog_status[0].login_cfg.chn, CHN_LEN, "%s", "phone");
-        }
-        else if (chn->valuestring[0] == '\0')
-        {
-            LOG_WARN("配置 %" PRIu8 " channel 参数为空, 使用默认通道", i + 1);
-            snprintf(g_prog_status[0].login_cfg.chn, CHN_LEN, "%s", "phone");
-        }
-        else
-        {
-            snprintf(g_prog_status[0].login_cfg.chn, CHN_LEN, "%s", safe_str(chn->valuestring));
-        }
+        g_prog_status[0].login_cfg.chn = parse_channel_json(chn, i + 1);
+        apply_channel_ua(&g_prog_status[0].login_cfg, i + 1);
 
-        // 转化成 UA
-        if (strcmp(g_prog_status[0].login_cfg.chn, "pc") == 0)
-        {
-            snprintf(g_prog_status[0].login_cfg.user_agent, USER_AGENT_LEN, "CCTP/Linux64/1003");
-            LOG_DEBUG("使用 UA: %s", g_prog_status[0].login_cfg.user_agent);
-            LOG_DEBUG("当前使用下标: 0");
-        }
-        else
-        {
-            snprintf(g_prog_status[0].login_cfg.user_agent, USER_AGENT_LEN, "CCTP/android64_vpn/2093");
-            LOG_DEBUG("使用 UA: %s", g_prog_status[0].login_cfg.user_agent);
-            LOG_DEBUG("当前使用下标: 0");
-        }
+        LOG_DEBUG("使用 UA: %s", g_prog_status[0].login_cfg.user_agent);
+        LOG_DEBUG("当前使用下标: 0");
 
         g_prog_status[0].login_cfg.idx = 1;
         LOG_INFO("配置 %" PRIu8 " 可用, 将会尝试使用", i + 1);
@@ -866,6 +1309,11 @@ bool load_cfg()
     if (valid_cnt == 0)
     {
         LOG_FATAL("无可用配置, 请检查后重启程序");
+#ifdef __MAGISK__
+        g_prog_enabled = false;
+        g_prog_cnt = 0;
+        return true;
+#else
         while (true)
         {
             if (g_need_exit)
@@ -874,9 +1322,11 @@ bool load_cfg()
             }
             sleep_ms(10000, true);
         }
+#endif
     }
 
     g_prog_cnt = valid_cnt;
 
     return true;
+#endif
 }

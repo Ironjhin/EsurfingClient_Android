@@ -96,7 +96,7 @@ bool logout_state_save(const prog_status_t* status)
     cJSON* root = cJSON_CreateObject();
     if (root == NULL) return false;
 
-    cJSON_AddBoolToObject(root, "dynamic", status->auth_cfg.dynamic || status->login_cfg.chn == 4 || status->login_cfg.chn == 5);
+    cJSON_AddBoolToObject(root, "dynamic", status->auth_cfg.dynamic || status->login_cfg.chn == 1 || status->login_cfg.chn == 4 || status->login_cfg.chn == 5);
     cJSON_AddNumberToObject(root, "account", status->login_cfg.idx);
     cJSON_AddStringToObject(root, "user_agent", safe_str(status->login_cfg.user_agent));
     cJSON_AddStringToObject(root, "term_url", safe_str(status->auth_cfg.term_url));

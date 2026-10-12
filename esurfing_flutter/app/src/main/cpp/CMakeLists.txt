@@ -10,12 +10,15 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/cipher
+    ${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma
     ${CMAKE_CURRENT_SOURCE_DIR}/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/utils/simssl
     ${CMAKE_CURRENT_SOURCE_DIR}/webserver
     ${CMAKE_CURRENT_SOURCE_DIR}/external
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
     ${CMAKE_CURRENT_SOURCE_DIR}/inc/cipher
     ${CMAKE_CURRENT_SOURCE_DIR}/inc/utils
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc/utils/simssl
     ${CMAKE_CURRENT_SOURCE_DIR}/inc/webserver
 )
 
@@ -80,14 +83,20 @@ find_library(ANDROID_LOG log)
 # ============================================================
 #  源文件
 # ============================================================
-file(GLOB CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/impl/*.c")
+file(GLOB ANDROID_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/android/*.c")
+file(GLOB LINUX_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/linux/*.c")
+file(GLOB IOS_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/*.c")
+file(GLOB WINDOWS_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/windows/*.c")
+file(GLOB LZMA_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma/*.c")
 
-file(GLOB UTILS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/utils/*.c")
+file(GLOB UTILS_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/utils/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/utils/simssl/*.c"
+)
 
 file(GLOB WEBSERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/webserver/*.c")
 
 set(MAIN_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/Main.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/DialerClient.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/NetClient.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/States.c"
@@ -95,12 +104,15 @@ set(MAIN_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/cipher/CipherFactory.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/cipher/KeyData.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/cipher/CipherUtils.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/external/md5.c"
 )
 
 set(ALL_SOURCES
     ${MAIN_SOURCES}
-    ${CIPHER_SOURCES}
+    ${ANDROID_CIPHER_SOURCES}
+    ${LINUX_CIPHER_SOURCES}
+    ${IOS_CIPHER_SOURCES}
+    ${WINDOWS_CIPHER_SOURCES}
+    ${LZMA_CIPHER_SOURCES}
     ${UTILS_SOURCES}
     ${WEBSERVER_SOURCES}
 )
@@ -113,6 +125,7 @@ add_library(esurfing_client SHARED ${ALL_SOURCES})
 target_link_libraries(esurfing_client
     libcurl
     ${ANDROID_LOG}
+    m
 )
 
 target_compile_options(esurfing_client PRIVATE
@@ -128,8 +141,14 @@ target_compile_options(esurfing_client PRIVATE
     -D__OPENWRT__=0
 )
 
+target_compile_definitions(esurfing_client PRIVATE
+    PROGRAM_FULL_VERSION="v2.1.5-r6"
+)
+
 target_include_directories(esurfing_client PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/external
     ${CMAKE_CURRENT_SOURCE_DIR}/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/inc/utils/simssl
+    ${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma
 )
