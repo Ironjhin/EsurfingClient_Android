@@ -1,5 +1,6 @@
 #include "cipher/CipherInterface.h"
 #include "cipher/IosZsm.h"
+#include "cipher/WinZsm.h"
 
 #include "utils/PlatformUtils.h"
 #include "utils/TimeControl.h"
@@ -12,7 +13,7 @@
 #include "States.h"
 
 #ifndef PROGRAM_FULL_VERSION
-#define PROGRAM_FULL_VERSION "v2.1.3-r3"
+#define PROGRAM_FULL_VERSION "v2.1.5-r6"
 #endif
 
 #include <ctype.h>
@@ -451,6 +452,20 @@ static bool load_cipher(const bytes_t zsm)
     }
 
     /**
+     * Windows 通道 (chn == 1): 如果 ticket 返回了动态 ZSM, 优先用 Win ZSM 解包
+     */
+    if (chn == 1)
+    {
+        if (init_win_cipher_from_zsm(zsm.data, zsm.length, algo_id))
+        {
+            snprintf(g_prog_status[tl_thread_idx].auth_cfg.algo_id, ALGO_ID_LEN, "%s", safe_str(algo_id));
+            LOG_INFO("Windows ZSM 解包成功, Algo-ID: %s", g_prog_status[tl_thread_idx].auth_cfg.algo_id);
+            return true;
+        }
+        LOG_WARN("Windows ZSM 解包失败, 回退到通用路径");
+    }
+
+    /**
      * iOS PacketTunnel / macOS GDCV 的 ZSM 都是 TEA+LZMA 后的 JS 模块,
      * 头部 UUID 只是模块 ID, 不在 Android/Linux CipherFactory 里.
      * 通道号只决定 UA/主机名, 不决定密钥解包方式.
@@ -488,6 +503,12 @@ static bool load_cipher(const bytes_t zsm)
     if (init_cipher(algo_id) == false)
     {
         LOG_WARN("CipherFactory 没有 Algo-ID %s, 尝试按动态 ZSM 解包", algo_id);
+        if (chn == 1 && init_win_cipher_from_zsm(zsm.data, zsm.length, algo_id))
+        {
+            snprintf(g_prog_status[tl_thread_idx].auth_cfg.algo_id, ALGO_ID_LEN, "%s", safe_str(algo_id));
+            LOG_DEBUG("全局 AlgoID 已更新: %s", g_prog_status[tl_thread_idx].auth_cfg.algo_id);
+            return true;
+        }
         if (init_ios_cipher_from_zsm(zsm.data, zsm.length, algo_id))
         {
             snprintf(g_prog_status[tl_thread_idx].auth_cfg.algo_id, ALGO_ID_LEN, "%s", safe_str(algo_id));
@@ -672,9 +693,9 @@ static AuthStatus auth()
     }
     LOG_DEBUG("完成登录");
 
-    g_prog_status[tl_thread_idx].auth_cfg.tick = get_cur_tm_ms(); // 获取当前 tick
-    g_prog_status[tl_thread_idx].auth_cfg.auth_time = get_cur_tm_ms(); // 获取认证时间
-    LOG_DEBUG("登录时间戳: %" PRIu64, g_prog_status[tl_thread_idx].auth_cfg.auth_time);
+    g_prog_status[tl_thread_idx].auth_cfg.tick = get_steady_tm_ms(); // 获取当前 tick (单调钟)
+    g_prog_status[tl_thread_idx].auth_cfg.auth_time = get_steady_tm_ms(); // 获取认证时间 (单调钟)
+    LOG_DEBUG("登录时刻 (单调钟): %" PRIu64, g_prog_status[tl_thread_idx].auth_cfg.auth_time);
 
     g_prog_status[tl_thread_idx].runtime_status.is_authed = true;
     LOG_INFO("已认证登录");
@@ -700,6 +721,7 @@ static void clean()
         }
         clean_session(); // 清理会话
     }
+    destroy_cipher_factory();
     zsm_blob_free(&g_prog_status[tl_thread_idx].auth_cfg.blob);
     memset(&g_prog_status[tl_thread_idx].auth_cfg, 0, sizeof(auth_cfg_t)); // 清除 auth_cfg 的内容, 并置零
     memset(&g_prog_status[tl_thread_idx].runtime_status, 0, sizeof(runtime_status_t)); // 清除 runtime_status 的内容, 并置零
@@ -749,7 +771,7 @@ static RunStatus run()
                  * 检测经过的时间是否达到重试时间
                  * 达到就发送心跳包
                  */
-                if (get_cur_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.tick >= g_prog_status[tl_thread_idx].auth_cfg.keep_retry * 1000)
+                if (get_steady_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.tick >= g_prog_status[tl_thread_idx].auth_cfg.keep_retry * 1000)
                 {
                     LOG_INFO("发送心跳包");
                     uint8_t retry_heartbeat = 1;
@@ -769,7 +791,7 @@ static RunStatus run()
                     }
                     LOG_INFO("下一次重试: %" PRIu64 " 秒后",
                         g_prog_status[tl_thread_idx].auth_cfg.keep_retry);
-                    g_prog_status[tl_thread_idx].auth_cfg.tick = get_cur_tm_ms(); // 重新给 tick 赋值
+                    g_prog_status[tl_thread_idx].auth_cfg.tick = get_steady_tm_ms(); // 重新给 tick 赋值 (单调钟)
                 }
             }
         }
@@ -816,7 +838,7 @@ static RunStatus run()
             g_prog_status[tl_thread_idx].runtime_status.is_authed)
         {
             if ((g_prog_status[tl_thread_idx].auth_cfg.keep_retry != 0 &&
-                 get_cur_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.tick >= g_prog_status[tl_thread_idx].auth_cfg.keep_retry * 1000) ||
+                 get_steady_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.tick >= g_prog_status[tl_thread_idx].auth_cfg.keep_retry * 1000) ||
                 retry_timeout >= 3)
             {
                 LOG_INFO("外网探测超时但处于已认证状态，直接向认证网关发送心跳保活");
@@ -824,7 +846,7 @@ static RunStatus run()
                 {
                     LOG_INFO("心跳保活成功，会话仍然有效，下一次重试: %" PRIu64 " 秒后",
                         g_prog_status[tl_thread_idx].auth_cfg.keep_retry);
-                    g_prog_status[tl_thread_idx].auth_cfg.tick = get_cur_tm_ms();
+                    g_prog_status[tl_thread_idx].auth_cfg.tick = get_steady_tm_ms();
                     g_prog_status[tl_thread_idx].runtime_status.is_connected = true;
                     retry_timeout = 1;
                     sleep_ms(5000, true);
@@ -942,6 +964,7 @@ void work()
 {
     g_thread_keep_alive = true;
     g_start_run_tm = get_cur_tm_ms(); // 记录守护进程启动时间
+    g_start_steady_tm = get_steady_tm_ms(); // 记录单调时钟启动时刻
 
 #ifdef __MAGISK__
     /* 切换 GID 为 3005 (AID_NET_ADMIN)，自动命中 Box4Magisk / sing-box 的 BOX_LOCAL 首条直连放行规则 (UID 0 + GID 3005 -> RETURN) */
@@ -1142,9 +1165,11 @@ void work()
             /**
              * 认证时间超过 172200000 毫秒 (1 天 23 时 50 分) 自动重启认证
              */
-            if (get_cur_tm_ms() - g_prog_status[i].auth_cfg.auth_time >= 172200000 && g_prog_status[i].auth_cfg.auth_time != 0)
+            if (get_steady_tm_ms() - g_prog_status[i].auth_cfg.auth_time >= 172200000 && g_prog_status[i].auth_cfg.auth_time != 0)
             {
-                LOG_DEBUG("当前时间戳: %" PRIu64, get_cur_tm_ms());
+                LOG_DEBUG("当前时刻 (单调钟): %" PRIu64 ", 已认证: %" PRIu64 " 毫秒",
+                    get_steady_tm_ms(),
+                    get_steady_tm_ms() - g_prog_status[i].auth_cfg.auth_time);
                 LOG_WARN("认证时间超过 172200000 毫秒 (1 天 23 时 50 分), 为避免被远程服务器踢下线, 正在重新进行认证");
                 for (uint8_t j = 0; j < g_prog_cnt; j++)
                 {

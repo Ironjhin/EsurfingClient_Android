@@ -89,6 +89,7 @@ find_library(ANDROID_LOG log)
 file(GLOB ANDROID_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/android/*.c")
 file(GLOB LINUX_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/linux/*.c")
 file(GLOB IOS_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/ios/*.c")
+file(GLOB WINDOWS_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/windows/*.c")
 file(GLOB LZMA_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/ios/lzma/*.c")
 
 file(GLOB UTILS_SOURCES
@@ -113,6 +114,7 @@ set(ALL_SOURCES
     ${ANDROID_CIPHER_SOURCES}
     ${LINUX_CIPHER_SOURCES}
     ${IOS_CIPHER_SOURCES}
+    ${WINDOWS_CIPHER_SOURCES}
     ${LZMA_CIPHER_SOURCES}
     ${UTILS_SOURCES}
     ${WEBSERVER_SOURCES}
@@ -145,7 +147,7 @@ target_compile_options(esurfingd PRIVATE
 )
 
 target_compile_definitions(esurfingd PRIVATE
-    PROGRAM_FULL_VERSION="v2.1.3-r3"
+    PROGRAM_FULL_VERSION="v2.1.5-r6"
 )
 
 target_include_directories(esurfingd PUBLIC

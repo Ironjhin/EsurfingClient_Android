@@ -605,6 +605,21 @@ uint64_t get_cur_tm_ms()
 #endif
 }
 
+uint64_t get_steady_tm_ms()
+{
+#ifdef _WIN32
+    LARGE_INTEGER freq, counter;
+    if (QueryPerformanceFrequency(&freq) == 0 || freq.QuadPart == 0) return 0;
+    QueryPerformanceCounter(&counter);
+    return (uint64_t)(counter.QuadPart / freq.QuadPart * 1000
+        + counter.QuadPart % freq.QuadPart * 1000 / freq.QuadPart);
+#else
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL;
+#endif
+}
+
 void get_rand_bytes(uint8_t* buf, const size_t len)
 {
 #ifdef _WIN32

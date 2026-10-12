@@ -101,6 +101,12 @@ char* uint642str(uint64_t num);
 uint64_t get_cur_tm_ms();
 
 /**
+ * @brief 获取单调时钟的毫秒时间戳 (不受系统时间/NTP调整影响)
+ * @return 64位单调时间戳
+ */
+uint64_t get_steady_tm_ms();
+
+/**
  * @brief 获取随机字节
  * @param buf 缓冲
  * @param len 长度

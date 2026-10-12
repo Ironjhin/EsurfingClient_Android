@@ -87,11 +87,11 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             if (mg_match(hm->uri, mg_str("/api/status/uptime"), NULL))
             {
                 cJSON* uptime = cJSON_CreateObject();
-                uint64_t now = get_cur_tm_ms();
-                uint64_t start = g_start_run_tm;
-                uint64_t elapsed_ms = (start > 0) ? (now - start) : 0;
+                uint64_t now_steady = get_steady_tm_ms();
+                uint64_t start_steady = g_start_steady_tm;
+                uint64_t elapsed_ms = (start_steady > 0 && now_steady >= start_steady) ? (now_steady - start_steady) : 0;
                 cJSON_AddNumberToObject(uptime, "uptime_ms", (double)elapsed_ms);
-                cJSON_AddNumberToObject(uptime, "start_ms", (double)start);
+                cJSON_AddNumberToObject(uptime, "start_ms", (double)g_start_run_tm);
                 char* uptime_str = cJSON_Print(uptime);
                 mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", uptime_str);
                 free(uptime_str);
