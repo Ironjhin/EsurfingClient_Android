@@ -1,116 +1,125 @@
-# 天翼校园网认证客户端 — Magisk/KernelSU 模块
+# 天翼校园网认证客户端 (Android & Magisk)
 
-氛围编程的产物，我是小白一枚
+专为 Android 移动平台设计的高可用广东天翼校园网认证客户端。上层提供现代化 **Flutter 原生拟态界面**，底层核心由纯 C 语言高并发引擎驱动，具备超低内存占用、智能掉线重连与全天候后台保活能力。
 
-纯 C 守护进程的 Magisk 模块，认证核心与 Flutter 版完全一致，去掉 Flutter UI，内存占用 ~1-2MB。
+同时提供 **Magisk / KernelSU 专属 Root 守护进程模块**，开机即连、无感常驻、自带 WebUI 控制台。
 
-支持 **Magisk** 和 **KernelSU** 双平台：
-- **Magisk**: 安装后桌面出现 **ESurfing** 图标，点击进入 Web 管理页面
-- **KernelSU**: KernelSU Manager → 模块 → WebUI 入口直接打开管理页面
+---
 
-------
-本分支 `magisk` — Magisk/KernelSU 模块版本。
-另有 **Flutter APK 版本** 在 [main 分支](https://github.com/Ironjhin/EsurfingClient_Android/tree/main)，带原生 UI 界面。
+## 🌟 核心特性
 
-## 与原版 CVersion 的差异修复
+- **⚡ 纯 C 驱动，极速低耗**：底层认证、心跳保活与加解密引擎基于纯 C 语言与 libcurl 静态构建，无庞大运行时依赖，模块守护进程仅占 **1~2 MB 内存**。
+- **🔄 同步上游最新协议引擎 (v2.1.7-r4)**：
+  - **全渠道加解密支持**：原生支持 Android、Linux (PC)、Windows、macOS 与 iOS 动态 ZSM（TEA + LZMA）密钥解包。
+  - **单调时钟防混乱**：心跳与超时全面采用单调时钟（`CLOCK_MONOTONIC`），杜绝设备息屏休眠、系统时间调整或 NTP 校时引发的会话突变。
+  - **配置尽力解析机制**：即使配置未激活或部分参数缺失，也会完整保留已填账号信息，彻底杜绝 Web 端保存时配置被空值覆盖清空。
+  - **异常断电与会话持久化**：具备会话现场归档（`.logout`），进程遇异常强杀或断电后，下次开机自动执行补登出，防止网关残留“异地已登录”限制。
+- **📱 灵活的双形态支持**：
+  - **Flutter APK 版 (本分支 `main`)**：免 Root、现代化 Material You / Liquid Glass 拟态界面、支持多账号快速切换、运行时间秒级显示、实时日志分析导出、前台服务防杀保活。
+  - **Magisk / KernelSU 模块版 (`magisk` 分支)**：Root 专属、开机无感静默认证、后台永久驻留、内置 WebUI 管理面板 (`http://127.0.0.1:8888`)、支持 KernelSU WebUI 与 Action 免重启启停。
+- **🛡️ 透明代理完美共存**：
+  - 模块守护进程开机自动获取 `AID_NET_ADMIN` (`GID 3005`) 权限，原生命中 `Surfing` / `Mihomo` / `Clash.Meta` / `sing-box` / `Box4Magisk` 的首条直连豁免规则，彻底防止 TPROXY 误劫持与死循环断流。
+  - 自动申请内核 `wake_lock`，有效抵御系统深度 Doze 睡眠冻结心跳。
 
-本项目基于 [BadGhost/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的 C 引擎，在此基础上做了大量修复和增强：
+---
 
-### 已修复的核心问题
+## 🆚 双形态对比与选择
 
-| # | 问题 | 原因 | 修复 |
-|---|------|------|------|
-| 1 | 认证后 10 秒断网 | 主探测返回 curl 56（网关重置），备用探测 DNS 解析失败（curl 6），双失败 → 线程报错退出 → 发送 term 登出 | 备用探针改用不可路由 IP `192.0.2.1`，超时判定为已连接（与 PC 客户端一致） |
-| 2 | `FOLLOWLOCATION` 掩盖重定向 | curl 跟随 302 后目标 DNS 解析失败，返回 curl 6，CODE 只看结果不知道之前有重定向 | 在检查 `curl_easy_perform` 返回值之前先查 `CURLINFO_REDIRECT_COUNT` |
-| 3 | 线程死后无法重启 | 线程退出后 `pthread_t` 句柄仍非 NULL，`esurfing_client_start()` 直接返回 0 | 增加 `_is_thread_alive()` 检测线程真实存活状态，死线程先 join 再重建 |
-| 4 | Portal 域名 DNS 不可达 | 校园网认证前无法解析内部 DNS（如 `enet.10000.gd.cn`） | 检测到 captive portal 重定向后，将已知 portal 域名替换为公网 IP `125.88.59.131` |
-| 5 | 探测 URL 返回 502 不会用备用 | 单探针失败即判定为网络错误 | 统一 fallback 链：主探针非 302/非 204 → 自动尝试备用 |
-| 6 | `esurfing_client_stop()` 来源不明 | Flutter 切屏触发 lifecycle 变化，间接调用 stop 导致断网 | 添加 `LOG_DEBUG` 追踪调用者、增加 30 秒「认证后护盾」防止误重置 |
-| 7 | 设置页面「启用服务」不生效 | `enabled` 字段只用来显示状态文字，`_toggleAuth()` 从未被自动调用 | `_initApp()` 中检查 `enabled==true` 且有有效账号时自动调用开始认证 |
-| 8 | 日志没有「已连接」提示 | `LOG_INFO("已连接至互联网")` 放在未认证分支中 | 移到 REQUEST_SUCCESS 全局分支，认证后无条件输出 |
-| 9 | User-Agent 不匹配 | 移动端 UA 导致广东电信 portal 返回手机版页面，配置提取失败 | 恢复 PC 端 UA `CCTP/Linux64/1003` |
-| 10 | NULL 解引用闪退 | Portal 配置 XML 结尾标签缺失时未做容错 | 增加结尾标签缺失保护 |
-| 11 | 校园网标志 `readlink` 死循环 | `get_school_network_symbol()` 指针空悬 | 增加三层判空保护 |
-| 12 | 备用探针无意义 fallback | AC IP（`wlanacip`）不 serve portal 页面 | 删除 AC fallback 逻辑 |
-| 13 | 上游算法更迭后无法识别新 Algo ID | Magisk 版仅包含旧 Android 与 PC/Linux 算法 | 同步 CVersion v2.0.6-r1 的 9 个新 Android 算法；停用 9 个上游已弃用的旧 Android 算法，保留仍有效的 6 个 PC/Linux 算法 |
+| 维度 | Flutter APK 原生版 (`main`) | Magisk / KernelSU 守护进程版 (`magisk`) |
+| :--- | :--- | :--- |
+| **运行权限** | 普通用户应用（免 Root） | 系统 Root 守护进程 (`root:3005`) |
+| **内存占用** | 约 40 ~ 70 MB（Flutter 运行时） | **约 1 ~ 2 MB**（纯 C 二进制 `esurfingd`） |
+| **交互界面** | 原生 Flutter App（支持动态取色与拟态） | 内置轻量 WebUI + 桌面专用管理图标 |
+| **保活能力** | 前台通知服务 + 无障碍服务辅助保活 | **Root 级永驻**，系统杀后台机制完全免疫 |
+| **开机自启** | 依赖系统自启管理与广播唤醒 | **系统开机阶段挂载启动**，亮屏前已联网 |
+| **适用人群** | 未解锁 Bootloader、免 Root 日常使用 | 已 Root 玩家、需要极致省电与无感挂机体验 |
 
-## 安装
+---
 
-### 从 Release 安装
+## 🚀 下载与安装
 
-1. 前往 [Releases](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk) 下载 `esurfing-daemon-arm64-v8a.zip`
-2. **Magisk**: Magisk Manager → 模块 → 从本地安装 → 选择 zip
-3. **KernelSU**: KernelSU Manager → 模块 → 从本地安装 → 选择 zip
-4. 重启手机
+云端 CI 流水线对每次代码提交均提供全架构自动化打包编译：
 
-### 首次配置
+### 1. Flutter APK 版 (免 Root)
+1. 前往仓库的 [Releases 页面](https://github.com/Ironjhin/EsurfingClient_Android/releases)。
+2. 找到带有 `v1.0.xx` 标签的最新 Release。
+3. 下载附件中的 `app-release.apk`，在手机文件管理器中直接点击安装。
 
-**Magisk**: 桌面会出现 **ESurfing** 应用图标，打开即可管理。
-**KernelSU**: 打开 KernelSU Manager → 模块 → 点击 **ESurfing Daemon** 的 **WebUI** 按钮。
-或在浏览器中打开 `http://127.0.0.1:8888/`。
+### 2. Magisk / KernelSU 模块版 (需 Root)
+1. 前往仓库 [Releases 页面](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk)。
+2. 下载 `esurfing-daemon-arm64-v8a.zip`。
+3. 打开 **Magisk Manager** 或 **KernelSU Manager** $\to$ 「模块」 $\to$ 「从本地安装」选择该 zip 包。
+4. 安装完成重启手机后：
+   - 桌面会自动生成 **ESurfing** Web 控制端应用图标。
+   - 也可直接在手机浏览器中访问 `http://127.0.0.1:8888/` 进行配置管理。
+   - KernelSU 用户可在管理器模块卡片中直接点击 **WebUI** 按钮或 **Action** 按钮免重启启停服务。
 
-## 与原版的差异
+---
 
-| 方面 | 原版 CVersion | 本模块 |
-|------|--------------|--------|
-| 平台 | Windows/Linux x64 | Android arm64 Magisk/KernelSU 模块 |
-| 部署 | 手动编译或下载可执行文件 | Magisk/KernelSU Manager 一键安装 |
-| 管理 | 控制台命令行 | Web 管理后台 + WebUI（Magisk桌面APK / KernelSU内置） |
-| 守护 | 需 systemd 或任务计划 | 开机自动启动，root 级守护 |
-| 日志 | 终端输出 | 文件日志 + Web 页面实时查看 |
-| DNS | 未处理校园网 DNS 不可达 | 域名重写 + 公网 IP 直连 |
-| 探测 | 单一 204 探测 | 双探针 + 超时降级（连通判定） |
-| 线程 | 退出需手动重启 | 自动守护重启 |
-| 闪退恢复 | 无 | `service.sh` 启动后常驻 |
+## 🛠️ 底层引擎演进与核心修复 (v2.1.7-r4)
 
-## 目录结构
+本项目底层 C 引擎持续跟进上游 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的最新更新，并在移动端环境下做了深度优化与排坑：
 
-```
-/data/adb/esurfing/
-├── esurfingd               # 守护进程可执行文件
-├── ESurfingClient.json     # 配置文件
-├── esurfingd.pid           # PID 文件
-├── run.log                 # 运行日志
-├── *.rotate.log            # 轮转归档
-├── portal/
-│   ├── index.html          # Web 前端（Magisk 桌面图标使用，相对路径）
-│   └── run.log -> ../run.log
-└── webroot/
-    └── index.html          # WebUI 前端（KernelSU 管理器内置使用，绝对路径）
-```
+| # | 问题 / 功能 | 诱因与现象 | 修复与改进实现 |
+|---|---|---|---|
+| **1** | **Windows 通道 ZSM 动态解密** | 上游 Windows 通道改用动态 TEA+LZMA 模块下发密钥 | 集成 `win_zsm` 模块动态解密解包算法，修正 `apply_channel_ua` 的 UA 传递 |
+| **2** | **配置尽力解析防清空** | 配置文件在 `enabled: false` 时提前退出，导致内存账号为空，用户在 Web 端点保存直接冲掉原账号密码 | `load_cfg` 改为尽力解析模式：先填充内存再判定可用性，WebUI 无论何时都能读取磁盘真实现场 |
+| **3** | **单调时钟防 Doze 混乱** | 息屏深度睡眠或连接 Wi-Fi 后 NTP 校时跳变，造成墙钟减法出现负数或超大数字，误触发心跳超时或一天重拨 | 全面改用 `get_steady_tm_ms()`（单调钟）测算心跳与会话寿命，彻底免疫系统时间调整 |
+| **4** | **会话持久化与补登出** | 客户端被异常结束、断电重启后，网关依然记录该 MAC 在线，重连时返回异地登录错误 | 认证成功后自动将凭据持久化至 `.logout` 文件，下次启动时若探测到历史残留，优先补发 `term` 登出注销 |
+| **5** | **息屏断流与 GID 豁免** | 息屏后系统冻结网络、或透明代理将网关探测与心跳流量误当成入站包劫持导致握手卡死 | 模块版自动申请 `wake_lock`，并赋予 `setgid(3005)`，无缝穿透 sing-box/Mihomo 透明代理直连出站 |
+| **6** | **DNS 探针死锁与防污染** | 校园网在未认证时会劫持或污染 DNS，导致探测域名解析超时阻塞认证 | 采用多探针降级机制，支持公网 IP 直连与备用探针，探测超时智能判定网络连通状态 |
+| **7** | **WebUI 状态与热重载** | Web 线程做耗时网络请求会锁死事件循环，且保存配置需要重启整个进程 | 状态接口读取内存缓存标志（非阻塞），应用配置支持平滑重载认证线程 |
 
-### portal vs webroot 说明
+---
 
-- **portal/** — Magisk 使用。由 daemon 内置的 mongoose 服务器以相对路径方式 serve。URL 为 `http://127.0.0.1:8888/`。
-- **webroot/** — KernelSU 使用。由 KernelSU Manager 在容器中 serve。API 请求使用绝对路径 `http://127.0.0.1:8888/api/...` 跨容器通信。
-- 两者功能完全一致，仅 API 调用方式不同（相对路径 vs 绝对路径）。
+## 🌐 透明代理（Surfing / Mihomo / Box4Magisk）共存配置指南
 
-## 常见问题
+若你的 Android 设备同时运行透明代理（如基于 Mihomo/Clash.Meta 内核的 **Surfing**，或 **Box4Magisk**）：
 
-**Q: WebUI 显示"未认证"但我能正常上网？**
-A: 这是正常的。WebUI 的认证状态有三种显示：
-- **已认证** — 通过本工具完成认证，心跳保活中
-- **已联网（未通过本工具认证）** — 网络可达，但未通过本工具认证（可能是系统自动认证或其他方式）
-- **未认证** — 网络不可达，需要认证
+1. **GID 3005 直连豁免（最关键）**：
+   - 守护进程 `esurfingd` 启动时已自带 `GID 3005`。
+   - 在 Surfing 的 `box.config` (`/data/adb/box_bll/scripts/box.config`) 中配置：
+     ```ini
+     gid_list=(3005)
+     ```
+   - 确保 iptables 规则命中 `UID 0 + GID 3005 -> RETURN` 直连，避免未认证时的认证包被 TPROXY 拦截死锁。
+2. **应用过滤排除名单**：
+   - 在代理排除包名列表（`user_packages_list` 或 `exclude.list`）中加入：
+     - `com.example.esurfing_client`（Flutter 版应用）
+     - `com.cndatacom.campus.cdccportalgd`（官方客户端）
+3. **校园网认证服务器与内网放行**：
+   - 将以下校园网网段加入直连路由与 DNS 直连白名单：
+     - 探测地址：`connect.rom.miui.com`、`1.1.1.1/32`、`220.181.104.183/32`
+     - 认证与心跳服务器：`14.146.227.141/32`、`14.146.227.142/32`、`121.8.177.212/32`、`100.0.0.0/8`
+     - 域名后缀：`+.cndatacom.com`、`+.cdcc.cn`、`+.189.cn`、`+.gd189.cn`、`+.edu.cn`
 
-如果你能正常上网但显示"未认证"，说明你的网络不需要 captive portal 认证，或者系统已自动完成认证。
+---
 
-**Q: 怎么确认 daemon 在运行？**
-```bash
-su -c "ps -A | grep esurfingd"
-```
+## 🔍 常见运行状态判定
 
-**Q: 怎么重启 daemon？**
-```bash
-su -c "killall esurfingd && sleep 1 && /data/adb/esurfing/esurfingd &"
-```
+打开 Flutter App 或 WebUI 后，日志面板会输出当前网络状态，可据此判断网关环境：
 
-**Q: KernelSU WebUI 打开后看不到内容？**
-A: 确认 daemon 正在运行（参考上一条命令）。WebUI 页面需要 daemon 的 API 在 `127.0.0.1:8888` 正常响应。
+- **`已连接至互联网 / Status code: 204`**：
+  - 说明网络已连通，或者当前网关已放行本机物理 MAC。若此时不需要再次拨号，系统将转为低频心跳待命状态。
+- **`需要认证 / Status code: 302`**：
+  - 说明网络流量被校园网 Portal 拦截，客户端会自动提取 Portal 认证配置、动态拉取 ticket、解包算法模块并完成登录。
+- **`已认证登录 / 发送心跳包`**：
+  - 认证成功并已建立会话，心跳定时器将在租约周期内周期性保活，维持网络通畅。
 
-**Q: 卸载模块后会残留文件吗？**
-A: 卸载脚本会清理 `/data/adb/esurfing/` 下所有数据。
+---
 
-## License
+## 🤝 开源致谢与引用
 
-Apache-2.0
+本项目的实现高度依赖开源社区的无私贡献：
+
+- **核心协议与算法来源**：[BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion)（遵循 Apache-2.0 协议）
+- **日志显示与思路借鉴**：[anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)
+- **底层网络通信库**：[libcurl](https://curl.se/)
+- **嵌入式 Web 服务器**：[Cesanta Mongoose](https://cesanta.com/)
+- **UI 框架与跨语言互操作**：[Flutter Framework](https://flutter.dev/) & [Dart:FFI](https://dart.dev/guides/libraries/c-interop)
+
+---
+
+## 📄 License
+
+本项目基于 [Apache License 2.0](LICENSE) 许可证开源。仅供计算机网络协议学习与技术交流使用，请勿用于违反校园网使用规范或商业用途。
