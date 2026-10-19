@@ -190,6 +190,12 @@ extern bool g_prog_enabled;
 /** @brief 需要重启 */
 extern bool g_need_restart;
 
+extern bool g_cfg_loaded;
+
+extern bool g_need_reload;
+
+extern bool g_waiting_cfg;
+
 /** @brief Web 接口请求重启/停止 */
 extern volatile bool g_need_stop_now;
 extern volatile bool g_need_restart_now;

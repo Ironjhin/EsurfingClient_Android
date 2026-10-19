@@ -101,10 +101,33 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
             // 获取配置
             if (mg_match(hm->uri, mg_str("/api/getConfigs"), NULL))
             {
+                /**
+                 * 配置还没加载起来时 (停在"等配置"状态, 或者网页刚保存、重新加载还没跑完)
+                 * 若内存里还没有账号，直接返回配置文件里的内容，防止用户点保存覆盖原有账号密码
+                 */
+                if (g_cfg_loaded == false && g_prog_status[0].login_cfg.usr[0] == '\0')
+                {
+                    char* cfg_text = read_cfg_file();
+                    if (cfg_text != NULL)
+                    {
+                        cJSON* probe = cJSON_Parse(cfg_text);
+                        if (probe != NULL)
+                        {
+                            cJSON_Delete(probe);
+                            mg_http_reply(c, 200, "Content-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\n", "%s", cfg_text);
+                            free(cfg_text);
+                            return;
+                        }
+                        free(cfg_text);
+                    }
+                }
+
                 cJSON* configs = cJSON_CreateObject();
 
                 cJSON_AddBoolToObject(configs, "enabled", g_prog_enabled);
                 cJSON_AddNumberToObject(configs, "log_lv", get_logger_level());
+                cJSON_AddNumberToObject(configs, "conn_timeout", (double)g_conn_timeout);
+                cJSON_AddNumberToObject(configs, "op_timeout", (double)g_op_timeout);
 
                 cJSON* accounts = cJSON_CreateArray();
                 cJSON* account = cJSON_CreateObject();
@@ -122,6 +145,22 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 default: chn_str = "android"; break;
                 }
                 cJSON_AddStringToObject(account, "channel", chn_str);
+
+                cJSON* time_windows = cJSON_CreateArray();
+                for (uint8_t i = 0; i < g_prog_status[0].login_cfg.time_window_count; i++)
+                {
+                    const time_window_t* win = &g_prog_status[0].login_cfg.time_windows[i];
+                    char start_str[TIME_WINDOW_STR_LEN];
+                    char end_str[TIME_WINDOW_STR_LEN];
+                    format_week_min(win->start_week_min, start_str);
+                    format_week_min(win->end_week_min, end_str);
+
+                    cJSON* window_obj = cJSON_CreateObject();
+                    cJSON_AddStringToObject(window_obj, "start", start_str);
+                    cJSON_AddStringToObject(window_obj, "end", end_str);
+                    cJSON_AddItemToArray(time_windows, window_obj);
+                }
+                cJSON_AddItemToObject(account, "time_windows", time_windows);
 
                 cJSON_AddItemToArray(accounts, account);
                 cJSON_AddItemToObject(configs, "accounts", accounts);
@@ -241,12 +280,12 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 data[body->len] = '\0';
 
                 cJSON* operation_json = cJSON_Parse(data);
+                cJSON* apply = operation_json ? cJSON_GetObjectItem(operation_json, "apply") : NULL;
 
-                cJSON* apply = cJSON_GetObjectItem(operation_json, "apply");
-
-                if (apply->valueint)
+                if (apply && (cJSON_IsTrue(apply) || apply->valueint))
                 {
                     mg_http_reply(c, 204, "Access-Control-Allow-Origin: *\r\n", "");
+                    g_need_reload = true;
                     g_need_restart = true;
                     g_need_restart_now = true;
                 }
@@ -256,7 +295,7 @@ static void fn(struct mg_connection *c, const int ev, void *ev_data)
                 }
 
                 free(data);
-                cJSON_Delete(operation_json);
+                if (operation_json) cJSON_Delete(operation_json);
                 return;
             }
         }

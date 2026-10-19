@@ -123,8 +123,8 @@ void apply_channel_ua(login_cfg_t* cfg, uint8_t cfg_no)
     switch (cfg->chn)
     {
     case 1:
-        LOG_INFO("使用通道 1: Windows (暂未实现, 使用 Android 通道)");
-        snprintf(cfg->user_agent, USER_AGENT_LEN, ANDROID_UA);
+        LOG_INFO("使用通道 1: Windows");
+        snprintf(cfg->user_agent, USER_AGENT_LEN, WINDOWS_UA);
         break;
     case 2:
         LOG_INFO("使用通道 2: Linux");
@@ -148,6 +148,22 @@ void apply_channel_ua(login_cfg_t* cfg, uint8_t cfg_no)
         snprintf(cfg->user_agent, USER_AGENT_LEN, ANDROID_UA);
         break;
     }
+}
+
+static const char* week_day_to_str(const int day)
+{
+    static const char* names[] = {"sun", "mon", "tue", "wed", "thu", "fri", "sat"};
+    if (day < 0 || day > 6) return "sun";
+    return names[day];
+}
+
+void format_week_min(const uint16_t week_min, char* out)
+{
+    const uint16_t mod = week_min % WEEK_MINUTES;
+    const int day = mod / 1440;
+    const int hour = (mod % 1440) / 60;
+    const int minute = mod % 60;
+    snprintf(out, TIME_WINDOW_STR_LEN, "%s %02d:%02d", week_day_to_str(day), hour, minute);
 }
 
 /**
@@ -862,6 +878,43 @@ char* clean_CDATA(const char* text)
     return extract_between_tags(text, "<![CDATA[", "]]>");
 }
 
+char* read_cfg_file(void)
+{
+    const char* path = get_config_path();
+    if (path == NULL || path[0] == '\0') return NULL;
+
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) return NULL;
+
+    fseek(file, 0, SEEK_END);
+    const long len = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    if (len <= 0)
+    {
+        fclose(file);
+        return NULL;
+    }
+
+    char* text = malloc((size_t)len + 1);
+    if (text == NULL)
+    {
+        fclose(file);
+        return NULL;
+    }
+
+    const size_t read_len = fread(text, 1, (size_t)len, file);
+    fclose(file);
+    text[read_len] = '\0';
+
+    if (read_len == 0)
+    {
+        free(text);
+        return NULL;
+    }
+
+    return text;
+}
+
 bool save_cfg(char* configs_str)
 {
     LOG_INFO("保存配置中");
@@ -911,36 +964,28 @@ bool save_cfg(char* configs_str)
     fprintf(cfg_file, "%s", configs_str);
     fclose(cfg_file);
 
-    if (enabled)
+    if (enabled && cJSON_IsBool(enabled))
     {
-        g_prog_enabled = enabled->valueint;
+        g_prog_enabled = cJSON_IsTrue(enabled);
     }
-    if (log_lv)
+    if (log_lv && cJSON_IsNumber(log_lv))
     {
         set_logger_level(log_lv->valueint);
     }
-    if (username)
+    if (username && cJSON_IsString(username))
     {
-        snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", username->valuestring);
+        snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", safe_str(username->valuestring));
     }
-    if (password)
+    if (password && cJSON_IsString(password))
     {
-        snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", password->valuestring);
-    }
-    if (channel)
-    {
-        g_prog_status[0].login_cfg.chn = channel->valueint;
+        snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", safe_str(password->valuestring));
     }
 
     // 透传 time_windows 到内存，保持桌面端与配置一致
     g_prog_status[0].login_cfg.has_time_control = tmp_window_count > 0;
     g_prog_status[0].login_cfg.time_window_count = tmp_window_count;
     memcpy(g_prog_status[0].login_cfg.time_windows, tmp_windows, sizeof(time_window_t) * tmp_window_count);
-  
-    g_prog_enabled = enabled->valueint;
-    set_logger_level(log_lv->valueint);
-    snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", username->valuestring);
-    snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", password->valuestring);
+
     g_prog_status[0].login_cfg.chn = parse_channel_json(channel, 1);
     apply_channel_ua(&g_prog_status[0].login_cfg, 1);
 
@@ -954,6 +999,9 @@ bool load_cfg()
 #if defined(__ANDROID__) && !defined(__MAGISK__)
     return true;
 #else
+    g_cfg_loaded = false;
+    bool usable = true;
+
 #if !defined(__OPENWRT__) && !defined(__MAGISK__)
 
     char dir[PATH_MAX];
@@ -971,37 +1019,26 @@ bool load_cfg()
     FILE* cfg_file = fopen(config_file, "r");
     if (!cfg_file || fgetc(cfg_file) == EOF)
     {
+        if (cfg_file) fclose(cfg_file);
         LOG_ERROR("无法打开配置文件或配置文件为空: %s", config_file);
         LOG_INFO("创建新的默认配置文件");
         FILE* new_cfg = fopen(config_file, "w");
         if (!new_cfg)
         {
             LOG_FATAL("无法生成文件: %s, 请检查权限后重启", config_file);
-            while (true)
-            {
-                if (g_need_exit)
-                {
-                    return false;
-                }
-                sleep_ms(10000, true);
-            }
+            g_prog_enabled = false;
+            g_prog_cnt = 0;
+            return false;
         }
         fprintf(new_cfg, "%s", s_default_cfg);
         fclose(new_cfg);
         LOG_INFO("创建完成, 请在 %s 填写账号数据, 然后重启", config_file);
-#ifdef __MAGISK__
         g_prog_enabled = false;
         g_prog_cnt = 0;
+#ifdef __MAGISK__
         return true;
 #else
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        return false;
 #endif
     }
 
@@ -1019,19 +1056,12 @@ bool load_cfg()
     if (!cfg_json)
     {
         LOG_FATAL("JSON 解析失败, 请检查后重启");
-#ifdef __MAGISK__
         g_prog_enabled = false;
         g_prog_cnt = 0;
+#ifdef __MAGISK__
         return true;
 #else
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        return false;
 #endif
     }
 
@@ -1069,61 +1099,30 @@ bool load_cfg()
     if (enabled == NULL)
     {
         LOG_WARN("enabled 参数不存在, 请填写后重启程序");
-#ifdef __MAGISK__
         g_prog_enabled = false;
-        g_prog_cnt = 0;
-        return true;
-#else
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            g_prog_enabled = false;
-            sleep_ms(10000, true);
-        }
-#endif
+        usable = false;
     }
-    if (cJSON_IsFalse(enabled))
+    else if (cJSON_IsFalse(enabled))
     {
         LOG_WARN("配置文件中禁用了程序启动, 请开启后重启程序");
-#ifdef __MAGISK__
         g_prog_enabled = false;
-        g_prog_cnt = 0;
-        return true;
-#else
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            g_prog_enabled = false;
-            sleep_ms(10000, true);
-        }
-#endif
+        usable = false;
     }
-    g_prog_enabled = true;
+    else
+    {
+        g_prog_enabled = true;
+    }
 
     const cJSON* accounts = cJSON_GetObjectItem(cfg_json, "accounts");
     if (accounts == NULL || cJSON_IsArray(accounts) == false || cJSON_GetArraySize(accounts) == 0)
     {
         LOG_FATAL("没有找到账号数据, 请添加后重启程序");
         cJSON_Delete(cfg_json);
-#ifdef __MAGISK__
-        g_prog_enabled = false;
         g_prog_cnt = 0;
+#ifdef __MAGISK__
         return true;
 #else
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        return false;
 #endif
     }
 
@@ -1143,6 +1142,7 @@ bool load_cfg()
     else
     {
         LOG_FATAL("重分配内存失败");
+        cJSON_Delete(cfg_json);
         return false;
     }
 
@@ -1159,7 +1159,7 @@ bool load_cfg()
         const cJSON* time_windows_item = cJSON_GetObjectItem(account, "time_windows");
 
         // 检查账号
-        if (usr == NULL)
+        if (usr == NULL || usr->valuestring == NULL)
         {
             LOG_WARN("配置 %" PRIu8 " username 参数不存在, 跳过当前配置", i + 1);
             continue;
@@ -1171,7 +1171,7 @@ bool load_cfg()
         }
 
         // 检查密码
-        if (pwd == NULL)
+        if (pwd == NULL || pwd->valuestring == NULL)
         {
             LOG_WARN("配置 %" PRIu8 " password 参数不存在, 跳过当前配置", i + 1);
             continue;
@@ -1200,7 +1200,7 @@ bool load_cfg()
         LOG_DEBUG("当前使用下标: %" PRIu8, valid_i);
 
         // 检查标记值
-        if (mark == NULL)
+        if (mark == NULL || mark->valuestring == NULL)
         {
             if (use_cus_mark)
             {
@@ -1234,8 +1234,6 @@ bool load_cfg()
             }
         }
 
-        // g_prog_status[valid_i].login_cfg.auto_start = auto_start->valueint;
-
         g_prog_status[valid_i].login_cfg.idx = i + 1;
         LOG_INFO("配置 %" PRIu8 " 可用, 将会尝试使用", i + 1);
         valid_cnt++;
@@ -1255,48 +1253,63 @@ bool load_cfg()
         const cJSON* chn = cJSON_GetObjectItem(account, "channel");
         const cJSON* time_windows_item = cJSON_GetObjectItem(account, "time_windows");
 
+        /**
+         * 先把这一项里用户写过的东西按原样填进内存, 再判它能不能用。
+         *
+         * 配置不可用时程序会带着网页停在"等配置"的状态, 网页上的配置页正是从
+         * 这块内存取值的 —— 不填的话网页显示的是空账号, 用户点一次保存就把
+         * 自己写过的账号密码覆盖成空的了
+         */
+        login_cfg_t* login = &g_prog_status[0].login_cfg;
+        snprintf(login->usr, USR_LEN, "%s", safe_str((usr && usr->valuestring) ? usr->valuestring : ""));
+        snprintf(login->pwd, PWD_LEN, "%s", safe_str((pwd && pwd->valuestring) ? pwd->valuestring : ""));
+        login->chn = parse_channel_json(chn, i + 1);
+        apply_channel_ua(login, i + 1);
+
+        // 记真实序号: 首个配置可能不可用而被跳过, 写死 1 会让日志报错配置号
+        login->idx = i + 1;
+
+        // 检查时间控制字段
+        if (apply_time_windows(time_windows_item, login) == false)
+        {
+            LOG_FATAL("配置 %" PRIu8 " time_windows 非法, 应为 [{ \"start\": \"mon 08:13\", \"end\": \"mon 23:57\" }, ...]", i + 1);
+            login->time_window_count = 0;
+            login->has_time_control = false;
+            usable = false;
+            continue;
+        }
+
         // 检查账号
-        if (usr == NULL)
+        if (usr == NULL || usr->valuestring == NULL)
         {
             LOG_WARN("配置 %" PRIu8 " username 参数不存在, 跳过当前配置", i + 1);
+            usable = false;
             continue;
         }
         if (usr->valuestring[0] == '\0')
         {
             LOG_WARN("配置 %" PRIu8 " username 参数为空, 跳过当前配置", i + 1);
+            usable = false;
             continue;
         }
 
         // 检查密码
-        if (pwd == NULL)
+        if (pwd == NULL || pwd->valuestring == NULL)
         {
             LOG_WARN("配置 %" PRIu8 " password 参数不存在, 跳过当前配置", i + 1);
+            usable = false;
             continue;
         }
         if (pwd->valuestring[0] == '\0')
         {
             LOG_WARN("配置 %" PRIu8 " password 参数为空, 跳过当前配置", i + 1);
+            usable = false;
             continue;
         }
 
-        // 检查时间控制字段
-        if (apply_time_windows(time_windows_item, &g_prog_status[0].login_cfg) == false)
-        {
-            LOG_FATAL("配置 %" PRIu8 " time_windows 非法, 应为 [{ \"start\": \"mon 08:13\", \"end\": \"mon 23:57\" }, ...]", i + 1);
-            cJSON_Delete(cfg_json);
-            return false;
-        }
-
-        snprintf(g_prog_status[0].login_cfg.usr, USR_LEN, "%s", safe_str(usr->valuestring));
-        snprintf(g_prog_status[0].login_cfg.pwd, PWD_LEN, "%s", safe_str(pwd->valuestring));
-
-        g_prog_status[0].login_cfg.chn = parse_channel_json(chn, i + 1);
-        apply_channel_ua(&g_prog_status[0].login_cfg, i + 1);
-
-        LOG_DEBUG("使用 UA: %s", g_prog_status[0].login_cfg.user_agent);
+        LOG_DEBUG("使用 UA: %s", login->user_agent);
         LOG_DEBUG("当前使用下标: 0");
 
-        g_prog_status[0].login_cfg.idx = 1;
         LOG_INFO("配置 %" PRIu8 " 可用, 将会尝试使用", i + 1);
         valid_cnt++;
         break;
@@ -1309,23 +1322,21 @@ bool load_cfg()
     if (valid_cnt == 0)
     {
         LOG_FATAL("无可用配置, 请检查后重启程序");
-#ifdef __MAGISK__
-        g_prog_enabled = false;
+        usable = false;
+    }
+
+    if (usable == false)
+    {
         g_prog_cnt = 0;
+#ifdef __MAGISK__
         return true;
 #else
-        while (true)
-        {
-            if (g_need_exit)
-            {
-                return false;
-            }
-            sleep_ms(10000, true);
-        }
+        return false;
 #endif
     }
 
     g_prog_cnt = valid_cnt;
+    g_cfg_loaded = true;
 
     return true;
 #endif

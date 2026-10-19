@@ -147,7 +147,7 @@ target_compile_options(esurfingd PRIVATE
 )
 
 target_compile_definitions(esurfingd PRIVATE
-    PROGRAM_FULL_VERSION="v2.1.5-r6"
+    PROGRAM_FULL_VERSION="v2.1.7-r4"
 )
 
 target_include_directories(esurfingd PUBLIC
