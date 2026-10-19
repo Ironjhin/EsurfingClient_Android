@@ -24,7 +24,7 @@ static void remove_pid()
 }
 
 #ifndef PROGRAM_FULL_VERSION
-#define PROGRAM_FULL_VERSION "v2.1.5-r6"
+#define PROGRAM_FULL_VERSION "v2.1.7-r4"
 #endif
 
 int main(int argc, char* argv[])

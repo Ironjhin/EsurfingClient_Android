@@ -29,6 +29,12 @@ bool g_prog_enabled = false;
 
 bool g_need_restart = false;
 
+bool g_cfg_loaded = false;
+
+bool g_need_reload = false;
+
+bool g_waiting_cfg = false;
+
 volatile bool g_need_restart_now = false;
 
 volatile bool g_need_stop_now = false;

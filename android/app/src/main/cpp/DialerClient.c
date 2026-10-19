@@ -13,7 +13,7 @@
 #include "States.h"
 
 #ifndef PROGRAM_FULL_VERSION
-#define PROGRAM_FULL_VERSION "v2.1.5-r6"
+#define PROGRAM_FULL_VERSION "v2.1.7-r4"
 #endif
 
 #include <ctype.h>

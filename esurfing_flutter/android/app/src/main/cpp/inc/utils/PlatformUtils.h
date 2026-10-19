@@ -176,5 +176,7 @@ char* bytes2base64(const uint8_t* in, size_t len);
 uint8_t* base642bytes(const char* in, size_t* out_len);
 void set_config_dir(const char* dir);
 const char* get_config_path(void);
+char* read_cfg_file(void);
+void format_week_min(uint16_t week_min, char* out);
 
 #endif // ESURFINGCLIENT_PLATFORMUTILS_H
