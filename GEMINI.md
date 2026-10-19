@@ -23,9 +23,13 @@
 "D:\UNLOCKER\莫离然然搞机工具箱v4.7.5-2026.3.17\Tools\fastboot.exe"
 ```
 
-### PowerShell 文件输出编码禁忌（重要）
-- **严禁在 PowerShell 中使用 `>` 重定向写入将被推送至 Android / Linux 的文本文件**！PowerShell 5.1 的 `>` 默认输出为 `UTF-16 LE` 编码，会导致 Android WebView 将中文渲染为乱码且 JavaScript 语法解析崩溃。
-- 生成推送到设备的配置文件或 HTML 时，必须使用 Python 二进制模式写入、`[System.IO.File]::WriteAllBytes`，或显式指定 `-Encoding utf8`。
+### PowerShell 7 (pwsh) 与统一 UTF-8 规范（铁律）
+- **全面锁定使用 PowerShell 7 (`pwsh`)**：
+  - 本机已安装并默认启用 **PowerShell 7 (`pwsh.exe`)**（路径为 `C:\Users\LFQ\AppData\Local\Microsoft\WindowsApps\Microsoft.PowerShell_8wekyb3d8bbwe\pwsh.exe`，命令行直接调用 `pwsh`）。
+  - 后续所有终端命令、自动化脚本、构建任务与交互**必须统一使用 `pwsh`**，全面弃用系统自带的旧 Windows PowerShell 5.1（`powershell.exe`）。
+- **统一 UTF-8 编码规范**：
+  - 虽然 PowerShell 7 的重定向（`>`）与管道默认编码已为标准无 BOM 的 `utf8NoBOM`，但在向 Android / Linux / 远程服务器生成、写入或传输任何配置文件、HTML、Shell 脚本时，**必须显式声明 UTF-8 编码**（如 `Set-Content -Encoding utf8`、`Out-File -Encoding utf8`、Python 二进制模式写入或 `[System.IO.File]::WriteAllBytes`）。
+  - 严禁产生任何带 BOM 或 UTF-16 的非标准格式，杜绝中文乱码、语法解析崩溃与 `/bin/sh: ...^M: not found` 换行符异常。
 
 ### 接口调试与 Mongoose 避坑
 - **严禁使用 `curl -I` 探测守护进程 Web 接口**：`WebServer.c` 的轻量路由仅匹配了 `GET` 和 `POST`。发送 `HEAD` 动词（`curl -I`）会导致连接无任何响应并挂起死锁。应使用 `curl -s -i` 并配合超时参数。
@@ -89,20 +93,24 @@
 
 ## 6. Windows Clash Verge Rev TUN 模式与校园网防掉认证经验
 
-### 掉认证根因分析
-1. **默认路由吞包**：TUN 开启后 Windows 将 `0.0.0.0/1` 和 `128.0.0.0/1` 接管至 `wintun` 虚拟网卡。若未配置 `route-exclude-address`，发往网关 AC（如 `100.2.0.1`）和认证服务器（`14.146.227.141`、`121.8.177.212`、`1.1.1.1`）的心跳与状态包均被 TUN 截获，经由用户态网络栈二次代理，破坏了二层 ARP 绑定与原生连接，AC 判定心跳丢失进而踢下线。
-2. **全局模式（Global）陷阱**：在 `Global` 模式下，Mihomo 完全忽略 `rules`，所有经过 TUN 的流量被强制发往节点 VPS，由于 VPS 无法访问校内 IP，直接引发 `curl` 错误码 28（操作超时）或 52（空数据）。
-3. **Fake-IP 劫持探测**：`dns_config.yaml` 默认覆盖配置 DNS。若 `fake-ip-filter` 缺少校园网域名，客户端探测 `connect.rom.miui.com` 被赋予 `198.18.x.x` 假 IP，导致认证状态机误判。
+### 掉认证四大致命根因
+1. **心跳服务器漏排除（最致命）**：DialerClient.c 登录成功后获取的 Keep-Url 实测为 http://14.146.227.142:7001/keep.cgi！若 
+oute-exclude-address 仅配置了 14.146.227.141/32，每几秒发送一次的心跳包被 TUN 劫持，经由 Wintun 用户态协议栈 NAT 转发破坏了会话与 MAC/IP 绑定，网关 AC 判定心跳超时强行剔除。
+2. **认证重定向与 AC 网关漏排除**：校园网 Portal 重定向地址为 net.10000.gd.cn:10001（对应公网 IP 61.140.12.23、125.88.59.131），AC 网关地址为 119.146.175.80。若未排除这些网段，重定向包被海外节点拉取时返回空数据（CURL 52），客户端误以为掉线并无限触发重登。
+3. **DoH 探测死锁（CURL 6: DNS 失败）**：
+ameserver-policy 若将 
+om.miui.com 设为 DoH（https://223.5.5.5/dns-query），在刚开 TUN 或网络握手瞬间，未就绪的 HTTPS 握手会导致 connect.rom.miui.com 解析超时报错，NetClient.c 误判断网。
+4. **备用探测 1.1.1.1 阻塞**：电信骨干网封锁对 1.1.1.1:80 的 HTTP 访问。主探测若失败，备用探测 1.1.1.1 会 100% 超时（CURL 28）。
 
-### 防断连核心配置
-1. **TUN 排除路由（`route-exclude-address`）**：
-   在 `config.yaml`、Script/Merge 中确保包含：
-   ```yaml
+### 终极防掉线配置标准
+1. **TUN 排除路由（route-exclude-address）全段覆盖**：
+   在 clash-verge.yaml、Merge 与 Script 中确保包含整个 B 类/C 类网段：
+   `yaml
    tun:
      enable: true
      stack: gvisor # 或 mixed
      auto-route: true
-     strict-route: false # 严禁设为 true，否则会破坏物理网卡默认路由
+     strict-route: false # 严禁设为 true
      auto-detect-interface: true
      dns-hijack:
        - any:53
@@ -113,28 +121,50 @@
        - 172.16.0.0/12
        - 192.168.0.0/16
        - 1.1.1.1/32
-       - 14.146.227.141/32
-       - 121.8.177.212/32
-   ```
-2. **Fake-IP 过滤白名单**：
-   在 `dns_config.yaml` 的 `dns.fake-ip-filter` 中加入：
-   ```yaml
-   - '+.cndatacom.com'
-   - '+.cdcc.cn'
-   - '+.189.cn'
-   - '+.gd189.cn'
-   - '+.edu.cn'
-   - connect.rom.miui.com
-   - '1.1.1.1'
-   - '14.146.227.141'
-   - '121.8.177.212'
-   ```
+       - 14.146.0.0/16        # 覆盖 14.146.227.141 认证与 14.146.227.142 心跳 Keep-Url
+       - 121.8.0.0/16         # 覆盖 121.8.177.212 备用认证服务器
+       - 125.88.59.0/24       # 覆盖 125.88.59.131 Portal 节点
+       - 61.140.0.0/16        # 覆盖 61.140.12.23 (enet.10000.gd.cn 认证重定向)
+       - 119.146.0.0/16       # 覆盖 119.146.175.80 (WLAN AC 网关)
+       - 220.181.104.0/24     # 覆盖 connect.rom.miui.com 主 IP
+       - 202.69.4.0/24        # 覆盖 connect.rom.miui.com 备用 IP
+       - 18.178.182.212/32
+       - 40.81.16.9/32
+       - 54.214.98.50/32
+       - 173.230.145.114/32
+   `
+2. **Fake-IP 过滤白名单与纯 UDP DNS 策略**：
+   - 在 dns.fake-ip-filter 中加入：
+     `yaml
+     -  +.cndatacom.com
+     - +.cdcc.cn
+     - +.189.cn
+     - +.gd189.cn
+     - +.10000.gd.cn
+     - +.gd.cn
+     - +.edu.cn
+     - connect.rom.miui.com
+     - 1.1.1.1
+     - 14.146.*
+     - 121.8.*
+     `
+   - **nameserver-policy 必须使用纯 UDP DNS**：
+     `yaml
+     nameserver-policy:
+       +.rom.miui.com: [223.5.5.5, 119.29.29.29]
+       +.edu.cn: [223.5.5.5, 119.29.29.29]
+       +.cndatacom.com: [223.5.5.5, 119.29.29.29]
+       +.cdcc.cn: [223.5.5.5, 119.29.29.29]
+       +.189.cn: [223.5.5.5, 119.29.29.29]
+       +.gd189.cn: [223.5.5.5, 119.29.29.29]
+       +.10000.gd.cn: [223.5.5.5, 119.29.29.29]
+       +.gd.cn: [223.5.5.5, 119.29.29.29]
+     `
 3. **模式与进程规则**：
    - 必须使用 **Rule（规则模式）**。
-   - 规则前置：`- PROCESS-NAME,ESurfingClient.exe,DIRECT`。
+   - 规则首行置顶：- PROCESS-NAME,ESurfingClient.exe,DIRECT。
 
 ---
-
 ## 7. 3x-ui 面板升级、Xray Reality 与 Sub-Store 避坑经验
 
 ### 1. 3x-ui (v3.8.5+) 与 Xray 内核版本兼容性（电脑 Mihomo + 手机 sing-box 共存）
@@ -156,7 +186,7 @@
   1. **香港 (`40.81.16.9`)**：`aarch64` (`arm64`)，`ssh -i "C:\Users\LFQ\Downloads\gha_key.pem" azureuser@40.81.16.9`（Azure East Asia 香港，注意用户名为 `azureuser`，内核二进制为 `/usr/local/x-ui/bin/xray-linux-arm64`，面板端口 `2000`，订阅端口 `2096`，Reality 端口 `443`。**现为 Sub-Store 与 Caddy 核心中枢主机**，HTTPS 端口 `3002`，直连延迟 84ms）。
   2. **美国俄勒冈 (`54.214.98.50`)**：`amd64`，`ssh -i "C:\Users\LFQ\Downloads\LightsailDefaultKey-us-west-2.pem" ubuntu@54.214.98.50`（AWS Lightsail 俄勒冈 `us-west-2`，内核统一为 `/usr/local/x-ui/bin/xray-linux-amd64` `v25.3.6`，面板端口 `2000`，订阅端口 `2096`，Reality 端口 `443`。纯 IPv4 WARP 出站秒过 CF）。
   3. **日本东京 (`18.178.182.212`)**：`amd64`，`ssh -i "C:\Users\LFQ\Downloads\LightsailDefaultKey-ap-northeast-1.pem" ubuntu@18.178.182.212`（AWS Lightsail 东京 `ap-northeast-1`，内核统一为 `/usr/local/x-ui/bin/xray-linux-amd64` `v25.3.6`，面板端口 `2000`，订阅端口 `2096`，Reality 端口 `443`，纯 IPv4 WARP 出站。已完全替换原 `13.112.159.221`，延迟 124ms）。
-  4. **美国加州 Fremont (`173.230.145.114`)**：`amd64`，`ssh -i "C:\Users\LFQ\.ssh\id_ed25519" root@173.230.145.114`（Akamai Connected Cloud 4核8G，**5 Gbps 物理端口，5TB 月流量大池**。已部署 **TCP Brutal 1000M (1 Gbps) 锁定**、纯 `fq` 队列、64MB 极限缓冲、Xray `v25.3.6` Reality 443 `gateway.icloud.com`，国内直连延迟 159-170ms，0% 丢包。作为超大流量 4K 与高速主力机）。
+  4. **美国加州 Fremont (`173.230.145.114`)**：`amd64`，`ssh -i "C:\Users\LFQ\.ssh\id_ed25519" root@173.230.145.114`（Akamai Connected Cloud 4核8G，**5 Gbps 物理端口，5TB 月流量大池**。已部署 **原生 BBR + 纯 `fq` 队列**、64MB 极限缓冲、Xray `v25.3.6` Reality 443 `gateway.icloud.com`，国内直连延迟 159-170ms，0% 丢包。作为超大流量 4K 与高速主力机）。
 - **Sub-Store 远程文件同步规范**：
   - Clash Verge 主订阅对应的 Sub-Store 接口为：`https://sub.ironjhin.us.ci:3002/api/wholeFile/%E6%97%A5%E6%9C%AC%2B%E9%A6%99%E6%B8%AF%2B%E7%BE%8E%E5%9B%BD`。
   - Sub-Store 网页控制台与 HTTPS 入口为：`https://sub.ironjhin.us.ci:3002/`（由 Azure 香港 Caddy 反代至本地 3000/3001，配置 Let's Encrypt 正式证书与 HTTP/3 支持）。
@@ -219,22 +249,22 @@
     1. 全节点必须安装 `Xray v25.3.6` 二进制，严禁使用 26.x（防止 MLKEM768 导致客户端验签失败）。
     2. Lightsail Ubuntu 默认缺少外部 IPv6 连通，必须配置 `net.ipv6.conf.all.disable_ipv6 = 1`，并将 Xray `dns.servers` 设为 `["localhost"]`，防止 Reality 伪装域名（如 `gateway.icloud.com`）解析返回 AAAA 导致握手回落到未就绪的目标。
     3. **网卡 MTU 9001 超大帧与队列避坑**：Lightsail 默认分配 `mtu 9001`（Jumbo Frame）且队列为 `mq -> fq_codel`。在跨海公网（115ms+ RTT）下，`fq_codel` 的 5ms 目标延迟会误判拥塞疯狂丢包摧毁 BBR，且 9001 MTU 引发 PMTU 黑洞。必须强制配置 `ip link set dev ens5 mtu 1500`、`net.core.default_qdisc = fq`、`tc qdisc replace dev ens5 root fq` 以及 `tcp_rmem/wmem` 64MB 极限缓冲区与 `tcp_mtu_probing = 1`。
-    4. **TCP Brutal 暴力发包拥塞控制加固**：
-       - 安装 `tcp-brutal` DKMS 模块（`bash <(curl -fsSL https://tcp.hy2.sh/)`）。
-       - 通过 `/etc/systemd/system/brutalctl-rules.service` 在开机时向国内核心网段（`119.0.0.0/8`、`14.0.0.0/8`、`183.0.0.0/8`、`120.0.0.0/8`、`113.0.0.0/8`、`121.0.0.0/8`、`58.0.0.0/8`、`59.0.0.0/8`、`218.0.0.0/8`、`222.0.0.0/8`）注入 `congctl lock brutal`，强制锁定 **300 Mbps** 暴力发包速率。
-       - **效果**：单线程下载速度从 0.5 MB/s 暴增至 5.1 MB/s（提升 10 倍），且全程保留 VLESS Reality 伪装与 TCP 443 协议，100% 免疫校园网 UDP QoS 封锁与 5G 手机断流。
+    4. **拥塞控制架构演进（从 TCP Brutal 回归纯血 BBR + FQ，2026-10-16）**：
+       - **Brutal 致命缺陷**：Brutal 是固定盲发机制，当设定 300 Mbps 时，若客户端处于校园网限速（如 50~60 Mbps Policer）或 163 晚高峰瓶颈，网关会硬件直接抹除多余报文，导致数学上必现 `(300-60)/300 = 80%` 极端物理丢包，触发严重 TCP 重传风暴与队头阻塞，视频播放彻底卡死。
+       - **现行标准**：全节点已彻底注销停用 `brutalctl-rules.service/timer` 并执行 `brutalctl flush`，统一回归 **Linux 原生 BBR (`net.ipv4.tcp_congestion_control = bbr`)** + **Fair Queueing (`net.core.default_qdisc = fq`)**，由 BBR 自动贴合探测链路真实瓶颈，丢包率压制至最低。
   - **Lightsail 新加坡（`47.130.x.x`）国际骨干丢包避坑**：
     - `47.130.x.x` 网段经 NTT 至中国电信 163 骨干网（`202.97.66.190`）在高峰期存在约 40% 物理丢包，导致 TCP SYN 重传引发延迟与假死。
     - 应对策略：(1) 在 Lightsail 控制台 Networking 免费解绑并重新分配 Static IP（抽到 `18.140.x.x`、`18.141.x.x` 或 `13.250.x.x` 即可避开该拥堵路由）；(2) 或利用香港 Azure（`40.81.16.9`，45ms 直连新加坡，0 丢包）作为 `dialer-proxy` 链式前置。
 
-### 6. Akamai Fremont 1 Gbps TCP Brutal 极限调优与 Ubuntu 24.04 网络栈排坑
-- **1000 Mbps (1 Gbps) 暴力发包锁定规范**：
-  - 针对国内三大运营商核心 16 个 `/8` 网段（`119/8`, `14/8`, `183/8`, `120/8`, `113/8`, `121/8`, `58/8`, `59/8`, `218/8`, `222/8`, `221/8`, `223/8`, `36/8`, `39/8`, `42/8`, `27/8`），统一调用 `brutalctl add <prefix> 1000 gain=25`。
-  - 必须确保 `ROUTE: yes`（若内核未自动打路由，需执行 `ip route replace <prefix> via <gw> dev eth0 proto 233 congctl lock brutal`）。
-  - 自启脚本位于 `/usr/local/bin/apply-brutal-rules.sh`，由 `/etc/systemd/system/brutalctl-rules.service` 开机保活。
-- **Ubuntu 24.04 `fq_codel 5ms` 限速陷阱**：
-  - Ubuntu 24.04 默认使用 `fq_codel`。在跨海公网（160ms RTT）下，其 5ms 拥塞保护会误判丢包触发严重限速。
-  - **铁律**：必须强制 `tc qdisc replace dev eth0 root fq`，并配置 64MB 极限 `tcp_rmem/tcp_wmem`、MTU 1500、`tcp_mtu_probing = 1`。
+### 6. Akamai Fremont 与各海外节点网络栈调优规范
+- **内核网络栈标准基线**：
+  - 队列调度器统一采用纯 `fq`（`tc qdisc replace dev eth0 root fq`，避免 `fq_codel` 5ms 误判）。
+  - MTU 1500，`tcp_mtu_probing = 1`，缓冲区配置 64MB 极限 `tcp_rmem / tcp_wmem`。
+  - 全节点停用 Brutal 强发路由，保持纯血 BBR 自动拟合。
+- **纯 IPv4 出站与永久禁用 IPv6 规范（2026-10-15）**：
+  - Akamai Fremont 默认分配了 `2600:3c01::...` IPv6 地址，导致双栈 DNS 竞速时出站优先走 IPv6，引发网站 IP 归属地偏差或校园网丢包。
+  - 已通过 `/etc/sysctl.d/99-disable-ipv6.conf` 注入 `net.ipv6.conf.all/default/lo.disable_ipv6 = 1`，彻底停用内核 IPv6 栈并重启 Xray。
+  - 当前出站 100% 锁定纯净美西 IPv4（`173.230.145.114`），开机自动永久生效。
 
 ### 7. 全球四节点流量监控、配额熔断与桌面一键看板规范
 - **各云厂商流量计费规则**：
@@ -247,4 +277,3 @@
   - 本地 Python 脚本 `C:\Users\LFQ\Desktop\esurfing_flutter\check_vps_traffic.py` 采用 `ThreadPoolExecutor` 并发读取四台 VPS 的 `/etc/x-ui/x-ui.db` 底层计数器，2 秒内完成探测并生成彩色进度条看板。
   - 桌面快捷入口：`C:\Users\LFQ\Desktop\查询节点流量.bat`。
   - 服务端守护进程：Fremont 已部署 `vnstat`，支持 `vnstat -d`、`vnstat -m`、`vnstat -l`。
-
