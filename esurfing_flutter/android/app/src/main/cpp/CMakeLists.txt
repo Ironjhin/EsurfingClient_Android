@@ -4,22 +4,25 @@ project("esurfing_client" LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+set(PROGRAM_VERSION_MAJOR 2)
+set(PROGRAM_VERSION_MINOR 2)
+set(PROGRAM_VERSION_PATCH 0)
+set(PROGRAM_VERSION_RELEASE 3)
+
+set(PROGRAM_VERSION "..")
+set(PROGRAM_FULL_VERSION "-r")
+
+add_definitions(-DPROGRAM_VERSION="")
+add_definitions(-DPROGRAM_FULL_VERSION="")
+
 # ============================================================
 #  头文件搜索路径
 # ============================================================
 include_directories(
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/cipher
-    ${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma
-    ${CMAKE_CURRENT_SOURCE_DIR}/utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/utils/simssl
-    ${CMAKE_CURRENT_SOURCE_DIR}/webserver
-    ${CMAKE_CURRENT_SOURCE_DIR}/external
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc/cipher
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc/utils
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc/utils/simssl
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc/webserver
+    
+    /include
+    /src
+    /third_party
 )
 
 # ============================================================
@@ -73,7 +76,7 @@ set(CURL_DISABLE_TELNET   ON   CACHE BOOL "")
 set(CURL_DISABLE_TFTP     ON   CACHE BOOL "")
 
 FetchContent_MakeAvailable(curl)
-include_directories(${curl_SOURCE_DIR}/include)
+include_directories(/include)
 
 # ============================================================
 #  Android NDK log library
@@ -81,50 +84,27 @@ include_directories(${curl_SOURCE_DIR}/include)
 find_library(ANDROID_LOG log)
 
 # ============================================================
-#  源文件
+#  源文件：全量纳入核心库，排除含有 main() 的 Main.c
 # ============================================================
-file(GLOB ANDROID_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/android/*.c")
-file(GLOB LINUX_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/linux/*.c")
-file(GLOB IOS_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/*.c")
-file(GLOB WINDOWS_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/windows/*.c")
-file(GLOB LZMA_CIPHER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma/*.c")
-
-file(GLOB UTILS_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/utils/*.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/utils/simssl/*.c"
+file(GLOB_RECURSE CORE_SOURCES
+    "/src/*.c"
+    "/third_party/*.c"
 )
-
-file(GLOB WEBSERVER_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/webserver/*.c")
-
-set(MAIN_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/DialerClient.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/NetClient.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/States.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ffi_bridge.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cipher/CipherFactory.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cipher/KeyData.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cipher/CipherUtils.c"
-)
+list(FILTER CORE_SOURCES EXCLUDE REGEX ".*/Main\\.c$")
 
 set(ALL_SOURCES
-    ${MAIN_SOURCES}
-    ${ANDROID_CIPHER_SOURCES}
-    ${LINUX_CIPHER_SOURCES}
-    ${IOS_CIPHER_SOURCES}
-    ${WINDOWS_CIPHER_SOURCES}
-    ${LZMA_CIPHER_SOURCES}
-    ${UTILS_SOURCES}
-    ${WEBSERVER_SOURCES}
+    
+    "/ffi_bridge.c"
 )
 
 # ============================================================
-#  Build shared library
+#  Build shared library for Android Flutter
 # ============================================================
-add_library(esurfing_client SHARED ${ALL_SOURCES})
+add_library(esurfing_client SHARED )
 
 target_link_libraries(esurfing_client
     libcurl
-    ${ANDROID_LOG}
+    
     m
 )
 
@@ -142,13 +122,12 @@ target_compile_options(esurfing_client PRIVATE
 )
 
 target_compile_definitions(esurfing_client PRIVATE
-    PROGRAM_FULL_VERSION="v2.1.7-r4"
+    PROGRAM_FULL_VERSION=""
 )
 
 target_include_directories(esurfing_client PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/external
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc
-    ${CMAKE_CURRENT_SOURCE_DIR}/inc/utils/simssl
-    ${CMAKE_CURRENT_SOURCE_DIR}/cipher/algo/ios/lzma
+    
+    /include
+    /src
+    /third_party
 )
