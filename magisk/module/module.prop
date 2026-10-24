@@ -1,6 +1,6 @@
 id=esurfing-daemon
 name=ESurfing Daemon
-version=1.1.2 (v2.1.7-r4)
-versionCode=1
+version=1.1.66 (v2.2.0-r3)
+versionCode=66
 author=EsurfingClient
 description=广东天翼校园网认证守护进程 — 启动后自动连接校园网，提供 Web 后台；KernelSU Action 可免重启启停

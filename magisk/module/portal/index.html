@@ -1,405 +1,758 @@
-<!DOCTYPE html>
-<html lang="zh-CN">
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ESurfing Daemon</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #e6edf3; padding: 20px; }
-.container { max-width: 720px; margin: 0 auto; }
-h1 { font-size: 1.5rem; margin-bottom: 4px; }
-.subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 24px; }
-.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-.card h2 { font-size: 1rem; margin-bottom: 16px; color: #58a6ff; }
-.row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
-.row:last-child { border-bottom: none; }
-.label { color: #8b949e; font-size: 0.9rem; }
-.value { font-size: 0.9rem; }
-.badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
-.badge-ok { background: #1a3a2a; color: #3fb950; }
-.badge-fail { background: #3a1a1a; color: #f85149; }
-.badge-warn { background: #3a2e1a; color: #d29922; }
-.form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 0.85rem; color: #8b949e; margin-bottom: 4px; }
-.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 0.9rem; }
-.form-group input:focus, .form-group select:focus { outline: none; border-color: #58a6ff; }
-.check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-.check-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #58a6ff; }
-.btn { padding: 8px 20px; border: none; border-radius: 6px; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
-.btn-primary { background: #238636; color: #fff; }
-.btn-primary:hover { background: #2ea043; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-danger { background: #da3633; color: #fff; }
-.btn-danger:hover { background: #f85149; }
-.actions { display: flex; gap: 8px; margin-top: 16px; }
-.toast { visibility: hidden; min-width: 200px; background: #238636; color: #fff; text-align: center; padding: 10px 16px; border-radius: 6px; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 0.85rem; z-index: 100; }
-.toast.error { background: #da3633; }
-.toast.show { visibility: visible; animation: fadeInOut 2.5s; }
-@keyframes fadeInOut { 0% { opacity: 0; bottom: 0; } 10% { opacity: 1; bottom: 24px; } 80% { opacity: 1; } 100% { opacity: 0; bottom: 0; } }
-.log-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; max-height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #7ee787; margin-top: 8px; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ESurfing 客户端控制面板</title>
+  <link rel="icon" id="favicon" type="image/svg+xml"
+        href="assets/svg/dashboard.svg" />
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet"
+        type="text/css" />
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
+  <style>
+    /* Alpine 初始化前隐藏面板, 避免所有面板同时闪现 */
+    [x-cloak] {
+      display: none !important;
+    }
+
+    /* 图标: 外部 svg 经 mask 上色, 颜色跟随文字色 (资源本身 fill 是固定深色) */
+    .icon {
+      display: inline-block;
+      flex: none;
+      background-color: currentColor;
+      -webkit-mask: var(--icon) center / contain no-repeat;
+      mask: var(--icon) center / contain no-repeat;
+    }
+  </style>
 </head>
+
 <body>
-<div class="container">
-  <h1>🔌 ESurfing Daemon</h1>
-  <p class="subtitle">广东天翼校园网认证守护进程 — 管理后台</p>
-
-  <!-- Status -->
-  <div class="card">
-    <h2>运行状态</h2>
-    <div class="row"><span class="label">认证状态</span><span class="value" id="authStatus">检测中...</span></div>
-    <div class="row"><span class="label">网络状态</span><span class="value" id="onlineStatus">检测中...</span></div>
-    <div class="row"><span class="label">运行时间</span><span class="value" id="uptime">-</span></div>
-    <div class="actions" style="margin-top:12px;">
-      <button class="btn btn-danger" onclick="forceAuthReset()">🔄 强制重新认证</button>
-      <button class="btn btn-danger" onclick="restartService()" style="background:#b62324;">🔁 重启服务</button>
-      <button class="btn btn-danger" onclick="stopService()" style="background:#6e7681;">⏹ 停止服务</button>
+<div id="class-keeper" class="hidden alert-info alert-success alert-warning alert-error" aria-hidden="true"></div>
+<div class="toast toast-top toast-end z-50" x-data>
+  <template x-for="item in $store.notify.items" :key="item.id">
+    <div class="alert shadow-lg" :class="item.cls">
+      <span class="text-sm" x-text="item.text"></span>
     </div>
-    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击"强制重新认证"立即重试。<br>服务彻底卡死、久连不上时点"重启服务"重启守护进程（会短暂断开几秒）。<br>点"停止服务"仅退出守护进程，无需重启手机；KernelSU 模块列表的 Action 可再次启动。</p>
+  </template>
+</div>
+<div class="drawer lg:drawer-open" x-data
+     x-init="$store.main.init(); $store.status.start()">
+  <input id="main-drawer" type="checkbox" class="drawer-toggle" />
+  <div class="drawer-content flex flex-col min-h-screen">
+    <div class="navbar bg-base-200 w-full shadow-sm">
+      <div class="flex-none lg:hidden">
+        <label for="main-drawer" aria-label="open sidebar"
+               class="btn btn-square btn-ghost">
+          <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/menu.svg)"></span>
+        </label>
+      </div>
+      <div class="mx-2 flex-1 px-2 text-xl font-bold"
+           x-text="$store.main.menuText"></div>
+      <div class="flex items-center mr-4" x-data="restartAuth">
+        <button class="btn btn-soft btn-warning" @click="open()"
+                :disabled="busy">
+              <span class="loading loading-spinner loading-sm" x-show="busy"
+                    x-cloak></span>
+          <span x-text="busy ? '重启中' : '重启认证'"></span>
+        </button>
+        <dialog x-ref="restartModal" class="modal modal-top">
+          <div class="modal-box max-w-[90%] mx-auto mt-18 rounded-t-lg">
+            <h3 class="text-lg font-bold">重启认证</h3>
+            <div class="py-4 text-lg">
+              将重启程序 (多进程模式下只重启认证进程), 然后重新登录; 期间网络会短暂中断, 确定继续吗?
+            </div>
+            <div class="modal-action">
+              <button class="btn btn-soft btn-neutral"
+                      @click="$refs.restartModal.close()">取消</button>
+              <button class="btn btn-soft btn-warning"
+                      @click="confirm()">确定</button>
+            </div>
+          </div>
+        </dialog>
+      </div>
+      <div class="flex items-center mr-4">
+        <div id="authStatus" class="status mr-2"
+             :class="$store.status.authStatusOk === true ? 'status-success' : 'status-error'"></div>
+        <span x-text="$store.status.authStatusText"></span>
+      </div>
+      <div class="flex items-center mr-4">
+        <div id="onlineStatus" class="status mr-2"
+             :class="$store.status.onlineStatusLevel === 'success' ? 'status-success' : ($store.status.onlineStatusLevel === 'warning' ? 'status-warning' : 'status-error')"></div>
+        <span x-text="$store.status.onlineStatusText"></span>
+      </div>
+      <div class="flex-none mr-2">
+        <label class="swap swap-rotate">
+          <input type="checkbox" class="theme-controller" id="themeToggle"
+                 value="synthwave" />
+
+          <svg class="swap-off h-10 w-10 fill-current"
+               xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+                    d="M5.64,17l-.71.71a1,1,0,0,0,0,1.41,1,1,0,0,0,1.41,0l.71-.71A1,1,0,0,0,5.64,17ZM5,12a1,1,0,0,0-1-1H3a1,1,0,0,0,0,2H4A1,1,0,0,0,5,12Zm7-7a1,1,0,0,0,1-1V3a1,1,0,0,0-2,0V4A1,1,0,0,0,12,5ZM5.64,7.05a1,1,0,0,0,.7.29,1,1,0,0,0,.71-.29,1,1,0,0,0,0-1.41l-.71-.71A1,1,0,0,0,4.93,6.34Zm12,.29a1,1,0,0,0,.7-.29l.71-.71a1,1,0,1,0-1.41-1.41L17,5.64a1,1,0,0,0,0,1.41A1,1,0,0,0,17.66,7.34ZM21,11H20a1,1,0,0,0,0,2h1a1,1,0,0,0,0-2Zm-9,8a1,1,0,0,0-1,1v1a1,1,0,0,0,2,0V20A1,1,0,0,0,12,19ZM18.36,17A1,1,0,0,0,17,18.36l.71.71a1,1,0,0,0,1.41,0,1,1,0,0,0,0-1.41ZM12,6.5A5.5,5.5,0,1,0,17.5,12,5.51,5.51,0,0,0,12,6.5Zm0,9A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z" />
+          </svg>
+
+          <svg class="swap-on h-10 w-10 fill-current"
+               xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path
+                    d="M21.64,13a1,1,0,0,0-1.05-.14,8.05,8.05,0,0,1-3.37.73A8.15,8.15,0,0,1,9.08,5.49a8.59,8.59,0,0,1,.25-2A1,1,0,0,0,8,2.36,10.14,10.14,0,1,0,22,14.05,1,1,0,0,0,21.64,13Zm-9.5,6.69A8.14,8.14,0,0,1,7.08,5.22v.27A10.15,10.15,0,0,0,17.22,15.63a9.79,9.79,0,0,0,2.1-.22A8.11,8.11,0,0,1,12.14,19.73Z" />
+          </svg>
+        </label>
+      </div>
+    </div>
+    <div
+            class="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 place-content-start gap-4 p-10"
+            x-show="$store.main.activePanel === 'dashboard'" x-cloak
+            x-data="dashboard">
+      <div class="card bg-base-300 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/connection_status.svg)"></span>
+            连接状态</h2>
+          <div class="divider my-1"></div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">认证状态</span>
+            <span class="badge"
+                  :class="$store.status.authStatusOk === true ? 'badge-success' : ($store.status.authStatusOk === false ? 'badge-error' : 'badge-ghost')"
+                  x-text="$store.status.authStatusText"></span>
+          </div>
+          <div class="flex justify-between items-start gap-3 py-1" x-show="$store.status.authErrorText" x-cloak>
+            <span class="opacity-70 shrink-0">失败原因</span>
+            <span class="text-right text-warning break-all" x-text="$store.status.authErrorText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">联网状态</span>
+            <span class="badge"
+                  :class="$store.status.onlineStatusLevel === 'success' ? 'badge-success' : ($store.status.onlineStatusLevel === 'warning' ? 'badge-warning' : 'badge-error')"
+                  x-text="$store.status.onlineStatusText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">上次检测</span>
+            <span x-text="statusCheckText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">程序启用</span>
+            <span class="badge"
+                  :class="$store.main.configs.enabled ? 'badge-success' : 'badge-ghost'"
+                  x-text="$store.main.configs.enabled ? '已启用' : '已禁用'"></span>
+          </div>
+          <div class="card-actions justify-end mt-2">
+            <button class="btn btn-sm btn-soft btn-info"
+                    @click="$store.status.refreshNow()">立即检测</button>
+            <button class="btn btn-sm btn-soft btn-warning"
+                    @click="restart()" :disabled="restarting">
+                  <span class="loading loading-spinner loading-xs"
+                        x-show="restarting" x-cloak></span>
+              重启认证
+            </button>
+          </div>
+        </div>
+      </div>
+      <div id="traffic-card" class="card bg-base-300 shadow-md" x-data="trafficPanel" x-show="$store.networkTools.enabled" x-cloak>
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/network_status.svg)"></span>
+            实时网速
+            <span class="badge badge-warning badge-sm" x-show="experimental" x-cloak>实验性</span>
+          </h2>
+          <div class="divider my-1"></div>
+          <div class="flex justify-between items-center py-1">
+            <span>上传速度</span>
+            <span class="font-bold" style="font-variant-numeric:tabular-nums" x-text="uploadText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span>下载速度</span>
+            <span class="font-bold" style="font-variant-numeric:tabular-nums" x-text="downloadText"></span>
+          </div>
+          <label for="traffic-adapter" class="text-sm mt-2">上联网卡</label>
+          <select id="traffic-adapter" class="select select-bordered w-full" style="min-width:0;max-width:100%"
+                  x-model="selectedId" @change="selectAdapter()" :disabled="!adapters.length">
+            <option value="" x-show="!adapters.length">等待网卡数据</option>
+            <option :value="selectedId" x-show="selectedId &amp;&amp; !adapter">所选网卡已断开</option>
+            <template x-for="item in adapters" :key="item.id">
+              <option :value="item.id" x-text="item.connected === false ? item.name + '（未连接）' : item.name"></option>
+            </template>
+          </select>
+          <p class="text-sm mt-2" role="status" x-text="message"></p>
+          <p class="text-xs">包含热点共享流量；不是套餐带宽或测速结果。</p>
+        </div>
+      </div>
+      <div id="hotspot-card" class="card bg-base-300 shadow-md" x-data="hotspotPanel" x-show="$store.networkTools.enabled &amp;&amp; $store.networkTools.hotspotControls" x-cloak>
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/hotspot.svg)"></span>
+            热点功能
+            <span class="badge badge-warning badge-sm" x-show="experimental" x-cloak>实验性</span>
+          </h2>
+          <div class="divider my-1"></div>
+          <div class="flex justify-between items-center py-1">
+            <span>热点状态</span>
+            <span class="badge" :class="online &amp;&amp; adapter?.state === 'On' ? 'badge-success' : 'badge-ghost'" x-text="stateText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1" style="gap:8px">
+            <span style="flex-shrink:0">热点名称</span>
+            <span style="overflow-wrap:anywhere;text-align:right" x-text="online ? (adapter?.ssid || '—') : '—'"></span>
+          </div>
+          <label for="hotspot-adapter" class="text-sm mt-2">共享上联网卡</label>
+          <select id="hotspot-adapter" class="select select-bordered w-full" style="min-width:0;max-width:100%"
+                  x-model="selectedId" :disabled="!online || locked || !adapters.length">
+            <option value="" x-show="!adapters.length">暂无可用网卡</option>
+            <template x-for="item in adapters" :key="item.id">
+              <option :value="item.id" x-text="item.connected === false ? item.name + '（未连接）' : item.name"></option>
+            </template>
+          </select>
+          <div class="card-actions mt-2">
+            <button class="btn btn-sm btn-soft btn-info" :disabled="!canStart" @click="change('start')">开启热点</button>
+            <button class="btn btn-sm btn-soft btn-neutral" :disabled="!canStop" @click="change('stop')">关闭热点</button>
+            <a class="btn btn-sm btn-soft btn-neutral" href="ms-settings:network-mobilehotspot">名称 / 密码设置</a>
+          </div>
+          <p class="text-sm mt-2" role="status" x-text="error || message"></p>
+          <p class="text-xs">首次开启可能引发无线重连，建议使用有线上联。</p>
+        </div>
+      </div>
+      <div class="card bg-base-300 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/account.svg)"></span>
+            当前账号</h2>
+          <div class="divider my-1"></div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">账号</span>
+            <span class="font-mono"
+                  x-text="$store.main.account?.username || '(未填写)'"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">通道</span>
+            <span x-text="$store.main.channelText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">时间控制</span>
+            <span x-text="$store.main.timeWindowText"></span>
+          </div>
+          <template x-if="$store.main.account?.time_windows?.length">
+            <div class="mt-1 rounded-lg bg-base-200 p-2">
+              <template
+                      x-for="(window, index) in $store.main.account.time_windows"
+                      :key="index">
+                <div class="flex justify-between items-center text-xs py-0.5">
+                  <span class="opacity-60" x-text="'时段 ' + (index + 1)"></span>
+                  <span
+                          x-text="window.start + ' → ' + window.end"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+          <template x-if="!$store.main.account?.time_windows?.length">
+            <p class="text-xs opacity-60 mt-1">未设置时间段, 全天可认证</p>
+          </template>
+          <div class="card-actions justify-end mt-2">
+            <button class="btn btn-sm btn-soft btn-neutral"
+                    @click="$store.main.setPanel('settings', '设置')">前往设置</button>
+          </div>
+        </div>
+      </div>
+      <div class="card bg-base-300 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/program.svg)"></span>
+            程序信息</h2>
+          <div class="divider my-1"></div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">程序版本</span>
+            <span x-text="versionText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">运行时长</span>
+            <span x-text="uptimeText"></span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="opacity-70">日志等级</span>
+            <span x-text="logLevelText"></span>
+          </div>
+          <div class="flex justify-between items-start py-1 gap-2">
+            <span class="opacity-70 shrink-0">日志目录</span>
+            <span class="text-right break-all font-mono text-xs"
+                  x-text="logDirText"></span>
+          </div>
+          <div class="flex justify-between items-start py-1 gap-2">
+            <span class="opacity-70 shrink-0">配置文件</span>
+            <span class="text-right break-all font-mono text-xs"
+                  x-text="configFileText"></span>
+          </div>
+          <p class="text-xs text-warning mt-1" x-show="!sysAvailable" x-cloak>
+            后端未提供 /api/status/sys 接口, 程序版本等信息不可用
+          </p>
+          <div class="card-actions justify-end mt-2">
+            <button class="btn btn-sm btn-soft btn-neutral"
+                    @click="refreshSys()" :disabled="sysLoading">
+                  <span class="loading loading-spinner loading-xs"
+                        x-show="sysLoading" x-cloak></span>
+              刷新
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div
+            class="flex-1 grid grid-cols-1 place-content-start gap-4 p-10"
+            x-show="$store.main.activePanel === 'settings'" x-cloak
+            x-data="editConfigs">
+      <div class="card bg-base-300 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/settings.svg)"></span>
+            常规</h2>
+          <div class="mx-[20%] text-lg">
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">启用</legend>
+              <input type="checkbox" class="checkbox"
+                     x-model="$store.main.configs.enabled" />
+              <span class="label">启用 ESurfing 客户端</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">日志等级</legend>
+              <select class="select"
+                      x-model.number="$store.main.configs.log_lv">
+                <option value="0">0 - 关闭</option>
+                <option value="1">1 - 致命</option>
+                <option value="2">2 - 错误</option>
+                <option value="3">3 - 警告</option>
+                <option value="4">4 - 信息</option>
+                <option value="5">5 - 调试</option>
+                <option value="6">6 - 全部</option>
+              </select>
+              <span class="label">日志的详细程度</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">连接超时</legend>
+              <input type="number" class="input" min="1" step="1"
+                     x-model.number="$store.main.configs.conn_timeout" />
+              <span class="label">连接阶段的超时时长 (单位: 秒)</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">操作超时</legend>
+              <input type="number" class="input" min="1" step="1"
+                     x-model.number="$store.main.configs.op_timeout" />
+              <span class="label">单次请求的总超时时长 (单位: 秒)</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">日志目录</legend>
+              <input type="text" class="input" placeholder="./"
+                     x-model="$store.main.configs.log_dir" />
+              <span class="label">日志会存放在这个目录下的 logs 里; 相对路径按程序所在目录解析,
+                "./" 就是程序所在目录 (也就是日志在 <程序目录>/logs 下;
+                OpenWrt 上固定为 /var/log/esurfing/logs, 这里填了也不生效)</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">Web 服务端口</legend>
+              <input type="number" class="input" min="1" max="65535" step="1"
+                     x-model.number="$store.main.configs.web_port" />
+              <span class="label">本面板监听的端口 (1 - 65535); 改完要重启程序才会生效,
+                之后请用新端口访问本页面</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">允许外部访问</legend>
+              <input type="checkbox" class="checkbox"
+                     x-model="$store.main.configs.web_external_acc" />
+              <span class="label">关闭时只监听 127.0.0.1 (仅本机可访问); 改完要重启程序才会生效</span>
+              <span class="label text-warning">开启后局域网内任何设备都能打开本面板,
+                而接口没有鉴权且会返回明文账号密码, 请谨慎开启</span>
+            </fieldset>
+          </div>
+        </div>
+      </div>
+      <div class="card bg-base-300 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/account.svg)"></span>
+            账号</h2>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra">
+              <thead>
+              <tr class="bg-base-200">
+                <th class="text-center">账号</th>
+                <th class="text-center">密码</th>
+                <th class="text-center">通道</th>
+                <th class="text-center">时间控制</th>
+                <th></th>
+              </tr>
+              </thead>
+              <tbody>
+              <tr>
+                <td class="text-center"
+                    x-text="$store.main.account?.username || '(未填写)'"></td>
+                <td class="text-center"
+                    x-text="$store.main.account?.password ? '******' : '(未填写)'"></td>
+                <td class="text-center"
+                    x-text="$store.main.channelText"></td>
+                <td class="text-center"
+                    :title="($store.main.account?.time_windows || []).map(w => w.start + ' → ' + w.end).join(' ; ')"
+                    x-text="$store.main.timeWindowText"></td>
+                <th class="w-[10%] whitespace-nowrap px-1">
+                  <button class="btn btn-soft btn-neutral"
+                          @click="openModal()">修改</button>
+                </th>
+              </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-xs opacity-60 mt-1">
+            桌面端仅支持一个账号; 账号、密码与官方认证程序相同
+          </p>
+        </div>
+      </div>
+      <div class="flex-1 flex flex-row-reverse gap-4 mt-2">
+        <button class="btn btn-soft btn-error"
+                @click="toggleModal('resetModal', 'open')">复位</button>
+        <button class="btn btn-soft btn-info" @click="$store.settings.saveConfigs()"
+                :disabled="$store.settings.saving">
+              <span class="loading loading-spinner loading-sm"
+                    x-show="$store.settings.saving" x-cloak></span>
+          保存
+        </button>
+        <button class="btn btn-soft btn-info"
+                @click="$store.settings.saveAndApply()"
+                :disabled="$store.settings.applying">
+              <span class="loading loading-spinner loading-sm"
+                    x-show="$store.settings.applying" x-cloak></span>
+          保存并应用
+        </button>
+      </div>
+      <dialog x-ref="setModal" class="modal modal-top">
+        <div class="modal-box max-w-[90%] mx-auto mt-18 rounded-t-lg">
+          <h3 class="text-lg font-bold">编辑账号</h3>
+          <div class="mx-[25%]">
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">账号</legend>
+              <input type="text" class="input" placeholder="请输入账号"
+                     x-model="accounts[0].username" />
+              <p class="label">和官方认证程序的账号相同</p>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">密码</legend>
+              <input type="password" class="input" placeholder="请输入密码"
+                     x-model="accounts[0].password" />
+              <p class="label">和官方认证程序的密码相同</p>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">通道</legend>
+              <select class="select" x-model="accounts[0].channel">
+                <option value="windows">Windows</option>
+                <option value="linux">Linux</option>
+                <option value="android">Android</option>
+                <option value="ios">iOS</option>
+                <option value="macos">MacOS</option>
+              </select>
+              <span class="label">选择账号的认证通道</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">时间控制</legend>
+              <template x-for="(tw, i) in timeWindows" :key="i">
+                <div
+                        class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3 border border-base-300 rounded-lg p-3">
+                  <div>
+                    <span class="label">开始</span>
+                    <div class="flex gap-2">
+                      <select class="select select-sm"
+                              x-model="timeWindows[i].startDay">
+                        <option value="">星期</option>
+                        <option value="mon">周一</option>
+                        <option value="tue">周二</option>
+                        <option value="wed">周三</option>
+                        <option value="thu">周四</option>
+                        <option value="fri">周五</option>
+                        <option value="sat">周六</option>
+                        <option value="sun">周日</option>
+                      </select>
+                      <input type="time" class="input input-sm"
+                             x-model="timeWindows[i].startTime" />
+                    </div>
+                  </div>
+                  <div>
+                    <span class="label">结束</span>
+                    <div class="flex gap-2">
+                      <select class="select select-sm"
+                              x-model="timeWindows[i].endDay">
+                        <option value="">星期</option>
+                        <option value="mon">周一</option>
+                        <option value="tue">周二</option>
+                        <option value="wed">周三</option>
+                        <option value="thu">周四</option>
+                        <option value="fri">周五</option>
+                        <option value="sat">周六</option>
+                        <option value="sun">周日</option>
+                      </select>
+                      <input type="time" class="input input-sm"
+                             x-model="timeWindows[i].endTime" />
+                    </div>
+                  </div>
+                  <div class="md:col-span-2 text-right">
+                    <button class="btn btn-xs btn-error"
+                            @click="removeTimeWindow(i)">删除</button>
+                  </div>
+                </div>
+              </template>
+              <button class="btn btn-sm btn-soft btn-info"
+                      @click="addTimeWindow()">添加时间段</button>
+              <p class="label" x-show="timeWindows.length === 0">未设置时间段 =
+                不限制</p>
+              <p class="label text-error" x-show="error" x-text="error"
+                 x-cloak></p>
+            </fieldset>
+          </div>
+          <div class="modal-action">
+            <button class="btn btn-soft btn-neutral"
+                    @click="toggleModal('setModal', 'close')">关闭</button>
+            <button class="btn btn-soft btn-info"
+                    @click="saveAccounts() && toggleModal('setModal', 'close')">保存</button>
+          </div>
+        </div>
+      </dialog>
+      <dialog x-ref="resetModal" class="modal modal-top">
+        <div class="modal-box max-w-[90%] mx-auto mt-18 rounded-t-lg">
+          <h3 class="text-lg font-bold">重置配置</h3>
+          <div class="text-center text-xl font-bold text-error">
+            确定要重置配置到默认值吗? ∑(°Д°) 此操作不可逆!
+          </div>
+          <div class="modal-action">
+            <button class="btn btn-soft btn-neutral"
+                    @click="toggleModal('resetModal', 'close')">关闭</button>
+            <button class="btn btn-soft btn-info"
+                    @click="toggleModal('resetModal', 'close'); $store.settings.resetConfigs()">确定</button>
+          </div>
+          <div class="text-right text-sm">真的不可逆喔...</div>
+        </div>
+      </dialog>
+    </div>
+    <div class="flex-1 p-10" x-show="$store.main.activePanel === 'logs'"
+         x-cloak x-data="logViewer">
+      <div class="card bg-base-300 shadow-md">
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/logs.svg)"></span>
+            日志查看</h2>
+          <div class="divider my-1"></div>
+          <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+            <div class="lg:col-span-1">
+              <div class="text-sm font-semibold mb-2">日志文件</div>
+              <ul
+                      class="menu menu-sm bg-base-200 rounded-box w-full max-h-64 overflow-y-auto flex-nowrap">
+                <template x-for="file in files" :key="file.name">
+                  <li>
+                    <a :class="{ 'menu-active': file.name === selected }"
+                       @click="select(file.name)"
+                       :title="formatFileTime(file.mtime) + ' · ' + formatBytes(file.size)">
+                      <span class="truncate" x-text="file.name"></span>
+                    </a>
+                  </li>
+                </template>
+              </ul>
+              <p class="text-xs opacity-60 mt-2" x-show="!files.length"
+                 x-text="unavailable ? '后端未提供日志接口' : '暂无日志文件'"></p>
+              <div class="flex flex-col gap-2 mt-3">
+                <label class="label cursor-pointer justify-start gap-2">
+                  <input type="checkbox" class="checkbox checkbox-sm"
+                         x-model="autoscroll" />
+                  <span class="label-text">日志置底</span>
+                </label>
+                <label class="label cursor-pointer justify-start gap-2">
+                  <input type="checkbox" class="checkbox checkbox-sm"
+                         x-model="autoRefresh" />
+                  <span class="label-text">每 5 秒自动刷新</span>
+                </label>
+                <div class="flex gap-2">
+                  <button class="btn btn-sm btn-soft btn-info"
+                          @click="refresh()" :disabled="loading">
+                        <span class="loading loading-spinner loading-xs"
+                              x-show="loading" x-cloak></span>
+                    刷新
+                  </button>
+                  <button class="btn btn-sm btn-soft btn-neutral"
+                          @click="download()" :disabled="!selected">下载</button>
+                </div>
+              </div>
+            </div>
+            <div class="lg:col-span-3">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                    <span class="text-xs opacity-70 font-mono truncate"
+                          x-text="selectedInfoText || '未选择日志文件'"></span>
+                <span class="badge badge-warning badge-sm"
+                      x-show="truncated" x-cloak>仅显示末尾部分</span>
+              </div>
+              <pre
+                      class="p-4 bg-base-200 rounded-lg overflow-auto text-xs leading-5 h-[55vh] whitespace-pre-wrap break-all"
+                      x-ref="logContent"
+                      x-text="content || (unavailable ? '后端未提供日志接口' : '暂无日志, 或客户端未启动')"></pre>
+              <p class="text-xs text-error mt-2" x-show="error"
+                 x-text="error" x-cloak></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="flex-1 p-10" x-show="$store.main.activePanel === 'about'"
+         x-cloak>
+      <div
+              class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <input type="checkbox" checked />
+        <div
+                class="collapse-title font-semibold after:start-5 after:end-auto pe-4 ps-12">关于本程序</div>
+        <div class="collapse-content text-sm z-1">
+          <p>ESurfing 客户端是一个跨平台的电信校园网认证客户端,
+            本页面是它的 Web 控制面板</p>
+          <p class="mt-2">支持 Windows / Linux / Android / macOS / OpenWrt</p>
+          <p class="mt-2">
+            项目地址:
+            <a class="link link-primary"
+               href="https://github.com/BadGhost520/ESurfingClient-CVersion"
+               target="_blank" rel="noopener">GitHub</a>
+          </p>
+          <p class="mt-2">使用提示: 修改配置后点击"保存"; 点"保存并应用"会<b>重启程序</b>
+            (多进程模式下只重启认证进程), 新配置在启动时读取。日志目录、Web 端口与是否允许
+            外部访问同样在重启后生效。</p>
+        </div>
+      </div>
+      <div
+              class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <input type="checkbox" />
+        <div
+                class="collapse-title font-semibold after:start-5 after:end-auto pe-4 ps-12">第三方组件</div>
+        <div class="collapse-content text-sm z-1">
+          <ul class="list-disc pl-5">
+            <li>mongoose (Web 服务器)</li>
+            <li>cJSON (配置文件解析)</li>
+            <li>libcurl (网络请求)</li>
+            <li>Alpine.js (前端框架)</li>
+            <li>Tailwind CSS + daisyUI (界面样式)</li>
+          </ul>
+        </div>
+      </div>
+      <div
+              class="collapse collapse-arrow bg-base-100 border border-base-300">
+        <input type="checkbox" />
+        <div
+                class="collapse-title font-semibold after:start-5 after:end-auto pe-4 ps-12">声明文件</div>
+        <div
+                class="collapse-content text-sm z-1"
+                x-data="{ license: '', error: '' }"
+                x-init="fetch('assets/LICENSE').then(r => r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status))).then(t => license = t).catch(e => error = '读取声明文件失败: ' + e.message)">
+              <pre class="p-4 whitespace-pre-wrap break-all" x-show="license"
+                   x-text="license" x-cloak></pre>
+          <p class="text-error" x-show="error" x-text="error" x-cloak></p>
+        </div>
+      </div>
+    </div>
+    <footer
+            class="footer sm:footer-horizontal bg-base-200 text-base-content p-7">
+      <aside>
+        <svg
+                width="30"
+                height="30"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+                fill-rule="evenodd"
+                clip-rule="evenodd"
+                class="fill-current">
+          <path
+                  d="M22.672 15.226l-2.432.811.841 2.515c.33 1.019-.209 2.127-1.23 2.456-1.15.325-2.148-.321-2.463-1.226l-.84-2.518-5.013 1.677.84 2.517c.391 1.203-.434 2.542-1.831 2.542-.88 0-1.601-.564-1.86-1.314l-.842-2.516-2.431.809c-1.135.328-2.145-.317-2.463-1.229-.329-1.018.211-2.127 1.231-2.456l2.432-.809-1.621-4.823-2.432.808c-1.355.384-2.558-.59-2.558-1.839 0-.817.509-1.582 1.327-1.846l2.433-.809-.842-2.515c-.33-1.02.211-2.129 1.232-2.458 1.02-.329 2.13.209 2.461 1.229l.842 2.515 5.011-1.677-.839-2.517c-.403-1.238.484-2.553 1.843-2.553.819 0 1.585.509 1.85 1.326l.841 2.517 2.431-.81c1.02-.33 2.131.211 2.461 1.229.332 1.018-.21 2.126-1.23 2.456l-2.433.809 1.622 4.823 2.433-.809c1.242-.401 2.557.484 2.557 1.838 0 .819-.51 1.583-1.328 1.847m-8.992-6.428l-5.01 1.675 1.619 4.828 5.011-1.674-1.62-4.829z"></path>
+        </svg>
+        <p>
+          Copyright © 2025-2026
+          <br />
+          All right reserved by BadGhost
+        </p>
+      </aside>
+      <nav>
+        <h6 class="footer-title">项目地址</h6>
+        <div class="grid grid-flow-col gap-4">
+          <a href="https://github.com/BadGhost520/ESurfingClient-CVersion">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/github.svg)"></span>
+          </a>
+        </div>
+      </nav>
+      <nav>
+        <h6 class="footer-title">社交账号</h6>
+        <div class="grid grid-flow-col gap-4">
+          <a href="https://github.com/BadGhost520">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/github.svg)"></span>
+          </a>
+          <a href="https://openlist.xylg.com:20001/@s/O0lmI0UG">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/qq.svg)"></span>
+          </a>
+          <a href="https://openlist.xylg.com:20001/@s/g4f7HScs">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/wechat.svg)"></span>
+          </a>
+          <a href="https://space.bilibili.com/1713047145">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/bilibili.svg)"></span>
+          </a>
+        </div>
+      </nav>
+      <nav>
+        <h6 class="footer-title">赞助</h6>
+        <div class="grid grid-flow-col gap-4">
+          <a href="https://ifdian.net/a/badghost">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/afdian.svg)"></span>
+          </a>
+          <a href="https://openlist.xylg.com:20001/@s/q07J0fLX">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/wechat.svg)"></span>
+          </a>
+        </div>
+      </nav>
+    </footer>
   </div>
-
-  <!-- Config -->
-  <div class="card">
-    <h2>配置</h2>
-    <div class="check-row">
-      <input type="checkbox" id="enabled">
-      <label for="enabled">启用自动认证</label>
-    </div>
-    <div class="form-group">
-      <label for="logLevel">日志等级</label>
-      <select id="logLevel">
-        <option value="2">ERROR</option>
-        <option value="3">WARN</option>
-        <option value="4" selected>INFO</option>
-        <option value="5">DEBUG</option>
-        <option value="6">VERBOSE</option>
-      </select>
-    </div>
-    <div class="form-group">
-      <label for="username">用户名</label>
-      <input type="text" id="username" placeholder="校园网账号">
-    </div>
-    <div class="form-group">
-      <label for="password">密码</label>
-      <input type="password" id="password" placeholder="校园网密码">
-    </div>
-    <div class="form-group">
-      <label for="channel">通道</label>
-      <select id="channel">
-        <option value="android">Android (推荐)</option>
-        <option value="windows">Windows</option>
-        <option value="linux">Linux</option>
-        <option value="ios">iOS</option>
-        <option value="macos">macOS</option>
-      </select>
-    </div>
-    <div class="actions">
-      <button class="btn btn-primary" onclick="saveConfig()">保存</button>
-      <button class="btn btn-danger" onclick="saveAndApply()">保存并重启</button>
-    </div>
-  </div>
-
-  <!-- Log -->
-  <div class="card">
-    <h2>运行日志</h2>
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <button class="btn btn-primary" onclick="refreshLog()">刷新日志</button>
-      <button class="btn btn-primary" onclick="exportLog()">导出日志</button>
-    </div>
-    <div class="log-box" id="logBox">等待日志...</div>
+  <div class="drawer-side shadow-sm">
+    <label for="main-drawer" aria-label="close sidebar"
+           class="drawer-overlay"></label>
+    <ul class="menu bg-base-200 min-h-full w-56 p-4">
+      <li class="mb-4">
+        <a class="btn btn-ghost text-xl" href="/index.html">ESurfing
+          客户端</a>
+      </li>
+      <li><a
+              @click="$store.main.setPanel('dashboard', '仪表板')"
+              :class="{ 'menu-active': $store.main.activePanel === 'dashboard' }">
+        <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/dashboard.svg)"></span>
+        仪表板</a>
+      </li>
+      <li><a
+              @click="$store.main.setPanel('settings', '设置')"
+              :class="{ 'menu-active': $store.main.activePanel === 'settings' }">
+        <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/settings.svg)"></span>
+        设置</a>
+      </li>
+      <li><a
+              @click="$store.main.setPanel('logs', '日志')"
+              :class="{ 'menu-active': $store.main.activePanel === 'logs' }">
+        <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/logs.svg)"></span>
+        日志</a>
+      </li>
+      <li><a
+              @click="$store.main.setPanel('about', '关于')"
+              :class="{ 'menu-active': $store.main.activePanel === 'about' }">
+        <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/about.svg)"></span>
+        关于</a>
+      </li>
+    </ul>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-<div class="toast" id="toast"></div>
-
+<script src="assets/js/toggleTheme.js"></script>
+<script src="assets/js/main.js"></script>
+<script src="assets/js/traffic.js"></script>
+<script src="assets/js/hotspot.js"></script>
 <script>
-const API = 'http://127.0.0.1:8888';
-let latestLogText = '';
-
-function showToast(msg, isError) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.className = 'toast' + (isError ? ' error' : '') + ' show';
-  setTimeout(() => t.className = 'toast', 2500);
-}
-
-async function refreshStatus() {
-  let isAuthed = false;
-  let isConnected = false;
-  let onlineCode = 0;
-
-  try {
-    const authRes = await fetch(API + '/api/status/auth');
-    if (authRes.ok) {
-      const authData = await authRes.json();
-      if (authData.status) isAuthed = true;
-      if (authData.connected) isConnected = true;
-    }
-  } catch {}
-
-  try {
-    const onlineRes = await fetch(API + '/api/status/online');
-    onlineCode = onlineRes.status;
-    if (onlineCode === 204) isConnected = true;
-  } catch {}
-
-  if (!isConnected && latestLogText) {
-    const lines = latestLogText.split('\n').filter(l => l.trim()).slice(-20);
-    for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].includes('已认证登录')) {
-        isAuthed = true;
-        isConnected = true;
-        break;
-      }
-      if (lines[i].includes('已连接至互联网') || lines[i].includes('响应码: 204') || lines[i].includes('心跳包')) {
-        isConnected = true;
-        break;
-      }
-      if (lines[i].includes('需要认证') || lines[i].includes('网络错误')) {
-        break;
-      }
-    }
-  }
-
-  const authEl = document.getElementById('authStatus');
-  if (isAuthed) {
-    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
-  } else if (isConnected) {
-    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（守护中 / 正常在线）</span>';
-  } else if (onlineCode === 302) {
-    authEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
-  } else {
-    authEl.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
-  }
-
-  const onlineEl = document.getElementById('onlineStatus');
-  if (isConnected || onlineCode === 204) {
-    onlineEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span>';
-  } else if (onlineCode === 302) {
-    onlineEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
-  } else {
-    onlineEl.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
-  }
-
-  // 更新运行时间
-  try {
-    const uptimeRes = await fetch(API + '/api/status/uptime');
-    const uptimeData = await uptimeRes.json();
-    const el = document.getElementById('uptime');
-    if (uptimeData.uptime_ms > 0) {
-      const seconds = Math.floor(uptimeData.uptime_ms / 1000);
-      const minutes = Math.floor(seconds / 60);
-      const hours = Math.floor(minutes / 60);
-      const days = Math.floor(hours / 24);
-      let timeStr = '';
-      if (days > 0) timeStr += days + '天 ';
-      if (hours % 24 > 0) timeStr += (hours % 24) + '小时 ';
-      if (minutes % 60 > 0) timeStr += (minutes % 60) + '分钟 ';
-      timeStr += (seconds % 60) + '秒';
-      el.textContent = timeStr.trim();
-    } else {
-      el.textContent = '-';
-    }
-  } catch { document.getElementById('uptime').textContent = '-'; }
-}
-
-async function loadConfig() {
-  try {
-    const res = await fetch(API + '/api/getConfigs');
-    const data = await res.json();
-    document.getElementById('enabled').checked = data.enabled;
-    document.getElementById('logLevel').value = data.log_lv;
-    if (data.accounts && data.accounts.length > 0) {
-      document.getElementById('username').value = data.accounts[0].username;
-      document.getElementById('password').value = data.accounts[0].password;
-      let ch = (data.accounts[0].channel || 'android').toLowerCase();
-      if (ch === 'phone') ch = 'android';
-      if (ch === 'pc') ch = 'linux';
-      document.getElementById('channel').value = ch;
-    }
-  } catch { showToast('加载配置失败', true); }
-}
-
-async function saveConfig() {
-  const cfg = {
-    enabled: document.getElementById('enabled').checked,
-    log_lv: parseInt(document.getElementById('logLevel').value),
-    accounts: [{
-      username: document.getElementById('username').value.trim(),
-      password: document.getElementById('password').value,
-      channel: document.getElementById('channel').value,
-      mark: ''
-    }]
-  };
-  if (!cfg.accounts[0].username) { showToast('请输入用户名', true); return; }
-  if (!cfg.accounts[0].password) { showToast('请输入密码', true); return; }
-
-  try {
-    const res = await fetch(API + '/api/saveConfigs', {
-      method: 'POST',
-      body: JSON.stringify(cfg)
+  // 兜底: 如果 Alpine.js 没能加载 (例如离线环境访问不了 CDN),
+  // 3 秒后取消 x-cloak, 至少让页面内容可见而不是空白
+  setTimeout(function () {
+    if (window.Alpine) return;
+    document.querySelectorAll('[x-cloak]').forEach(function (element) {
+      element.removeAttribute('x-cloak');
     });
-    if (res.status === 204) {
-      showToast('配置已保存');
-    } else {
-      showToast('保存失败', true);
-    }
-  } catch { showToast('保存失败: 网络错误', true); }
-}
-
-async function saveAndApply() {
-  await saveConfig();
-  try {
-    const res = await fetch(API + '/api/applyConfigs', {
-      method: 'POST',
-      body: JSON.stringify({ apply: true })
-    });
-    if (res.status === 204) {
-      showToast('配置已应用，认证线程即将重启');
-    }
-  } catch { showToast('应用失败', true); }
-}
-
-// Force auth reset — breaks the long retry sleep and restarts dialer now
-async function forceAuthReset() {
-  try {
-    const res = await fetch(API + '/api/auth/reset', { method: 'POST' });
-    const data = await res.json();
-    if (data && data.ok) {
-      showToast('已触发强制重新认证');
-    } else {
-      showToast(data && data.reason === 'no dialer' ? '守护进程未在运行' : '触发失败', true);
-    }
-  } catch { showToast('请求失败', true); }
-}
-
-
-// Stop service — clean exit without execv restart (no phone reboot needed)
-async function stopService() {
-  if (!confirm('确定停止守护进程？停止后 Web 后台将不可用，需在 KernelSU/Magisk 模块 Action 中重新启动。')) return;
-  const btn = document.querySelector('button[onclick="stopService()"]');
-  try {
-    const res = await fetch(API + '/api/stop', { method: 'POST' });
-    const data = await res.json();
-    if (data && data.ok) {
-      showToast('服务正在停止...');
-      if (btn) btn.disabled = true;
-      // Wait until API is gone
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 500));
-        try {
-          const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
-          if (!ping.ok) break;
-        } catch { break; }
-      }
-      showToast('服务已停止（无需重启手机）');
-      document.getElementById('authStatus').innerHTML = '<span class="badge badge-fail">已停止</span>';
-      document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">未知</span>';
-      document.getElementById('uptime').textContent = '-';
-    } else {
-      showToast('停止请求失败', true);
-    }
-  } catch {
-    showToast('服务已停止（无需重启手机）');
-    if (btn) btn.disabled = true;
-  }
-}
-
-// Restart service — asks the daemon to execv itself, then polls until it's back
-async function restartService() {
-  const btn = document.querySelector('button[onclick="restartService()"]');
-  try {
-    const res = await fetch(API + '/api/restart', { method: 'POST' });
-    const data = await res.json();
-    if (data && data.ok) {
-      showToast('服务正在重启，请稍候...');
-      if (btn) btn.disabled = true;
-      let back = false;
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-          const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
-          if (ping.ok) { back = true; break; }
-        } catch { /* still restarting */ }
-      }
-      if (back) {
-        showToast('服务已恢复，正在刷新...');
-        setTimeout(() => location.reload(), 1000);
-      } else {
-        showToast('服务尚未恢复，请手动刷新页面', true);
-        if (btn) btn.disabled = false;
-      }
-    } else {
-      showToast('重启请求失败', true);
-    }
-  } catch {
-    showToast('服务正在重启，等待恢复...');
-    if (btn) btn.disabled = true;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      try {
-        const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
-        if (ping.ok) { location.reload(); return; }
-      } catch { /* still restarting */ }
-    }
-    showToast('服务尚未恢复，请手动刷新页面', true);
-    if (btn) btn.disabled = false;
-  }
-}
-
-// Log polling — /api/log returns full rotate history + current run.log
-async function pollLog() {
-  try {
-    const res = await fetch(`${API}/api/log?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) {
-      document.getElementById('logBox').textContent =
-        res.status === 503 ? '(日志尚未就绪)' : `(获取失败 HTTP ${res.status})`;
-      return false;
-    }
-    const text = await res.text();
-    latestLogText = text;
-    const lines = text.split('\n').filter(l => l).slice(-100);
-    document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
-    return true;
-  } catch (e) {
-    document.getElementById('logBox').textContent = '(无法连接日志接口)';
-    return false;
-  }
-}
-
-async function refreshLog() {
-  const ok = await pollLog();
-  showToast(ok ? '日志已刷新' : '刷新日志失败', !ok);
-}
-
-async function exportLog() {
-  try {
-    const res = await fetch(`${API}/api/log?t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) {
-      showToast(res.status === 503 ? '日志尚未就绪' : '获取日志失败', true);
-      return;
-    }
-    const text = await res.text();
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'esurfing-run.log';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    showToast('日志已导出');
-  } catch {
-    showToast('导出失败: 网络错误', true);
-  }
-}
-
-pollLog().then(() => refreshStatus());
-loadConfig();
-setInterval(refreshStatus, 5000);
-setInterval(pollLog, 5000);
+  }, 3000);
 </script>
 </body>
+
 </html>

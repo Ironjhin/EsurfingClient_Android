@@ -1,12 +1,17 @@
 #include "ffi_bridge.h"
-#include "inc/States.h"
-#include "inc/DialerClient.h"
-#include "inc/NetClient.h"
-#include "utils/PlatformUtils.h"
-#include "utils/TimeControl.h"
-#include "utils/Logger.h"
-#include "utils/SimThread.h"
-#include "utils/cJSON.h"
+#include "core/States.h"
+#include "dialer/DialerClient.h"
+#include "dialer/DialerInternal.h"
+#include "net/NetClient.h"
+#include "utils/platform/PlatformUtils.h"
+#include "utils/time/TimeControl.h"
+#include "utils/time/TimeUtils.h"
+#include "utils/log/Logger.h"
+#include "utils/sim/SimThread.h"
+#include "cJSON/cJSON.h"
+#include "cipher/CipherInterface.h"
+#include "config/Config.h"
+#include "config/ConfigInternal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -14,7 +19,6 @@
 
 static char g_data_dir[512];
 static int  g_thread_count = 0;
-extern bool start_web_server(void);
 
 typedef struct { int idx; sim_thread_t* t; } thread_wrap_t;
 static thread_wrap_t* g_threads = NULL;
@@ -27,8 +31,7 @@ void init_native_env(const char* sandbox_path)
     {
         strncpy(g_data_dir, sandbox_path, sizeof(g_data_dir) - 1);
         g_data_dir[sizeof(g_data_dir) - 1] = '\0';
-        set_log_dir(g_data_dir);
-        set_config_dir(g_data_dir);
+        set_logger_dir(g_data_dir);
     }
 }
 
@@ -38,7 +41,7 @@ static int parse_json(const char* json) {
     const cJSON* en = cJSON_GetObjectItem(root, "enabled");
     if (cJSON_IsBool(en)) g_prog_enabled = cJSON_IsTrue(en); else g_prog_enabled = 1;
     const cJSON* lv = cJSON_GetObjectItem(root, "log_lv");
-    if (cJSON_IsNumber(lv)) set_logger_level((LogLevel)lv->valueint);
+    if (cJSON_IsNumber(lv)) set_logger_level((log_level_t)lv->valueint);
     const cJSON* ct = cJSON_GetObjectItem(root, "conn_timeout");
     if (cJSON_IsNumber(ct) && ct->valueint > 0) g_conn_timeout = (long)ct->valueint;
     else g_conn_timeout = DEFAULT_CONN_TIMEOUT;
@@ -83,9 +86,13 @@ static int parse_json(const char* json) {
 int32_t esurfing_client_init(const char* data_dir, const char* config_json) {
     if (!data_dir || !config_json) return -1;
     strncpy(g_data_dir, data_dir, sizeof(g_data_dir) - 1);
-    set_log_dir(g_data_dir);
-    set_config_dir(g_data_dir);
-    g_need_exit = false; g_thread_keep_alive = true; g_start_run_tm = get_cur_tm_ms(); g_start_steady_tm = get_steady_tm_ms(); tl_thread_idx = -1;
+    set_logger_dir(g_data_dir);
+    g_need_exit = false;
+    g_stop_requested = 0;
+    g_thread_keep_alive = true;
+    g_start_run_tm = get_cur_tm_ms();
+    tl_thread_idx = -1;
+    (void)curl_global_init(CURL_GLOBAL_DEFAULT);
     init_logger();
     if (parse_json(config_json) != 0) return -1;
     for (int8_t i = 0; i < g_prog_cnt; i++) { tl_thread_idx = i; refresh_states(); }
@@ -136,18 +143,29 @@ int32_t esurfing_client_start(int32_t idx) {
 }
 
 void esurfing_client_stop(void) {
-    LOG_DEBUG("esurfing_client_stop() called — setting is_need_reset for all threads");
+    LOG_DEBUG("esurfing_client_stop() called");
     g_need_exit = true;
+    g_stop_requested = 1;
     g_thread_keep_alive = false;
     time_control_stop();
     g_time_control_started = false;
     for (int i = 0; i < g_prog_cnt; i++) {
-        g_prog_status[i].runtime_status.is_need_reset = true;
-        g_prog_status[i].runtime_status.is_running = false;
+        if (g_prog_status) {
+            g_prog_status[i].runtime_status.is_need_reauth = true;
+            g_prog_status[i].runtime_status.is_running = false;
+        }
     }
 }
 
-void esurfing_client_clear_log(void) { clear_log_file(); }
+void esurfing_client_clear_log(void) {
+    const char* dir = get_logger_dir();
+    if (dir && dir[0]) {
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/run.log", dir);
+        FILE* f = fopen(path, "w");
+        if (f) fclose(f);
+    }
+}
 
 int32_t esurfing_client_is_stopped(void) {
     for (int i = 0; i < g_prog_cnt; i++) {
@@ -173,22 +191,22 @@ void esurfing_client_destroy(void) {
         for (int i = 0; i < g_prog_cnt; i++) {
             tl_thread_idx = (int8_t)i;
             if (g_prog_status[i].auth_cfg.cipher) destroy_cipher_factory();
-            zsm_blob_free(&g_prog_status[i].auth_cfg.blob);
         }
         tl_thread_idx = -1;
         free(g_prog_status);
         g_prog_status = NULL;
     }
     clean_logger();
+    curl_global_cleanup();
     g_started = 0;
     g_prog_cnt = 0;
 }
 
-/* 强制重新认证: 设置 is_need_reset 标志, dialer_app 会在就地完成 reset 并重拨 */
+/* 强制重新认证: 设置 is_need_reauth 标志, dialer_app 会在就地完成重拨 */
 void esurfing_client_force_auth_reset(void) {
     if (!g_prog_status) return;
     for (int i = 0; i < g_prog_cnt; i++) {
-        g_prog_status[i].runtime_status.is_need_reset = true;
+        g_prog_status[i].runtime_status.is_need_reauth = true;
     }
 }
 
@@ -197,9 +215,8 @@ int32_t esurfing_client_get_auth_state(int32_t idx) {
     int32_t state = 0;
     if (g_prog_status[idx].runtime_status.is_running)       state |= 0x01;
     if (g_prog_status[idx].runtime_status.is_authed)        state |= 0x02;
-    if (g_prog_status[idx].runtime_status.is_connected)     state |= 0x04;
+    if (g_prog_status[idx].runtime_status.is_authed)        state |= 0x04; // is_connected
     if (g_prog_status[idx].runtime_status.is_time_disabled) state |= 0x08;
     if (g_prog_status[idx].runtime_status.is_initialized)   state |= 0x10;
     return state;
 }
-

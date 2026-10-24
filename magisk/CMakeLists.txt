@@ -4,25 +4,27 @@ project("esurfingd" LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+set(PROGRAM_VERSION_MAJOR 2)
+set(PROGRAM_VERSION_MINOR 2)
+set(PROGRAM_VERSION_PATCH 0)
+set(PROGRAM_VERSION_RELEASE 3)
+set(PROGRAM_VERSION "..")
+set(PROGRAM_FULL_VERSION "-r")
+
+add_definitions(-DPROGRAM_VERSION="")
+add_definitions(-DPROGRAM_FULL_VERSION="")
+
 # Source root — relative to this file, pointing to the NDK cpp directory
-set(SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../android/app/src/main/cpp")
+set(SRC_ROOT "/../android/app/src/main/cpp")
 
 # ============================================================
 # 头文件搜索路径
 # ============================================================
 include_directories(
-    ${SRC_ROOT}
-    ${SRC_ROOT}/cipher
-    ${SRC_ROOT}/cipher/algo/ios/lzma
-    ${SRC_ROOT}/utils
-    ${SRC_ROOT}/utils/simssl
-    ${SRC_ROOT}/webserver
-    ${SRC_ROOT}/external
-    ${SRC_ROOT}/inc
-    ${SRC_ROOT}/inc/cipher
-    ${SRC_ROOT}/inc/utils
-    ${SRC_ROOT}/inc/utils/simssl
-    ${SRC_ROOT}/inc/webserver
+    
+    /include
+    /src
+    /third_party
 )
 
 # ============================================================
@@ -76,60 +78,32 @@ set(CURL_DISABLE_TELNET   ON   CACHE BOOL "")
 set(CURL_DISABLE_TFTP     ON   CACHE BOOL "")
 
 FetchContent_MakeAvailable(curl)
-include_directories(${curl_SOURCE_DIR}/include)
+include_directories(/include)
 
 # ============================================================
-# Android NDK log library
+# Android NDK log library & pthreads
 # ============================================================
 find_library(ANDROID_LOG log)
+find_package(Threads REQUIRED)
 
 # ============================================================
 # 源文件
 # ============================================================
-file(GLOB ANDROID_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/android/*.c")
-file(GLOB LINUX_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/linux/*.c")
-file(GLOB IOS_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/ios/*.c")
-file(GLOB WINDOWS_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/windows/*.c")
-file(GLOB LZMA_CIPHER_SOURCES "${SRC_ROOT}/cipher/algo/ios/lzma/*.c")
-
-file(GLOB UTILS_SOURCES
-    "${SRC_ROOT}/utils/*.c"
-    "${SRC_ROOT}/utils/simssl/*.c"
+file(GLOB_RECURSE CORE_SOURCES
+    "/src/*.c"
+    "/third_party/*.c"
 )
-
-file(GLOB WEBSERVER_SOURCES "${SRC_ROOT}/webserver/*.c")
-
-set(MAIN_SOURCES
-    "${SRC_ROOT}/DialerClient.c"
-    "${SRC_ROOT}/NetClient.c"
-    "${SRC_ROOT}/States.c"
-    "${SRC_ROOT}/cipher/CipherFactory.c"
-    "${SRC_ROOT}/cipher/KeyData.c"
-    "${SRC_ROOT}/cipher/CipherUtils.c"
-    "${SRC_ROOT}/main_magisk.c"
-)
-
-set(ALL_SOURCES
-    ${MAIN_SOURCES}
-    ${ANDROID_CIPHER_SOURCES}
-    ${LINUX_CIPHER_SOURCES}
-    ${IOS_CIPHER_SOURCES}
-    ${WINDOWS_CIPHER_SOURCES}
-    ${LZMA_CIPHER_SOURCES}
-    ${UTILS_SOURCES}
-    ${WEBSERVER_SOURCES}
-)
+list(FILTER CORE_SOURCES EXCLUDE REGEX ".*/ffi_bridge\\.c$")
 
 # ============================================================
-# Build static executable
+# Build executable
 # ============================================================
-find_package(Threads REQUIRED)
-add_executable(esurfingd ${ALL_SOURCES})
+add_executable(esurfingd )
 
 target_link_libraries(esurfingd
     libcurl
     Threads::Threads
-    ${ANDROID_LOG}
+    
     m
 )
 
@@ -147,13 +121,12 @@ target_compile_options(esurfingd PRIVATE
 )
 
 target_compile_definitions(esurfingd PRIVATE
-    PROGRAM_FULL_VERSION="v2.1.7-r4"
+    PROGRAM_FULL_VERSION=""
 )
 
 target_include_directories(esurfingd PUBLIC
-    ${SRC_ROOT}
-    ${SRC_ROOT}/external
-    ${SRC_ROOT}/inc
-    ${SRC_ROOT}/inc/utils/simssl
-    ${SRC_ROOT}/cipher/algo/ios/lzma
+    
+    /include
+    /src
+    /third_party
 )
