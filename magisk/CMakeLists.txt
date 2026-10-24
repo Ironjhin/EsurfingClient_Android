@@ -8,23 +8,24 @@ set(PROGRAM_VERSION_MAJOR 2)
 set(PROGRAM_VERSION_MINOR 2)
 set(PROGRAM_VERSION_PATCH 0)
 set(PROGRAM_VERSION_RELEASE 3)
-set(PROGRAM_VERSION "..")
-set(PROGRAM_FULL_VERSION "-r")
 
-add_definitions(-DPROGRAM_VERSION="")
-add_definitions(-DPROGRAM_FULL_VERSION="")
+set(PROGRAM_VERSION "${PROGRAM_VERSION_MAJOR}.${PROGRAM_VERSION_MINOR}.${PROGRAM_VERSION_PATCH}")
+set(PROGRAM_FULL_VERSION "${PROGRAM_VERSION}-r${PROGRAM_VERSION_RELEASE}")
+
+add_definitions(-DPROGRAM_VERSION="${PROGRAM_VERSION}")
+add_definitions(-DPROGRAM_FULL_VERSION="${PROGRAM_FULL_VERSION}")
 
 # Source root — relative to this file, pointing to the NDK cpp directory
-set(SRC_ROOT "/../android/app/src/main/cpp")
+set(SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../android/app/src/main/cpp")
 
 # ============================================================
 # 头文件搜索路径
 # ============================================================
 include_directories(
-    
-    /include
-    /src
-    /third_party
+    ${SRC_ROOT}
+    ${SRC_ROOT}/include
+    ${SRC_ROOT}/src
+    ${SRC_ROOT}/third_party
 )
 
 # ============================================================
@@ -78,7 +79,7 @@ set(CURL_DISABLE_TELNET   ON   CACHE BOOL "")
 set(CURL_DISABLE_TFTP     ON   CACHE BOOL "")
 
 FetchContent_MakeAvailable(curl)
-include_directories(/include)
+include_directories(${curl_SOURCE_DIR}/include)
 
 # ============================================================
 # Android NDK log library & pthreads
@@ -87,23 +88,23 @@ find_library(ANDROID_LOG log)
 find_package(Threads REQUIRED)
 
 # ============================================================
-# 源文件
+# 源文件: 全量纳入源码, 排除 Flutter FFI 桥接文件 ffi_bridge.c
 # ============================================================
 file(GLOB_RECURSE CORE_SOURCES
-    "/src/*.c"
-    "/third_party/*.c"
+    "${SRC_ROOT}/src/*.c"
+    "${SRC_ROOT}/third_party/*.c"
 )
 list(FILTER CORE_SOURCES EXCLUDE REGEX ".*/ffi_bridge\\.c$")
 
 # ============================================================
 # Build executable
 # ============================================================
-add_executable(esurfingd )
+add_executable(esurfingd ${CORE_SOURCES})
 
 target_link_libraries(esurfingd
     libcurl
     Threads::Threads
-    
+    ${ANDROID_LOG}
     m
 )
 
@@ -121,12 +122,12 @@ target_compile_options(esurfingd PRIVATE
 )
 
 target_compile_definitions(esurfingd PRIVATE
-    PROGRAM_FULL_VERSION=""
+    PROGRAM_FULL_VERSION="${PROGRAM_FULL_VERSION}"
 )
 
 target_include_directories(esurfingd PUBLIC
-    
-    /include
-    /src
-    /third_party
+    ${SRC_ROOT}
+    ${SRC_ROOT}/include
+    ${SRC_ROOT}/src
+    ${SRC_ROOT}/third_party
 )
