@@ -9,6 +9,7 @@
 #include "dialer/DialerClient.h"
 
 #include "utils/log/Logger.h"
+#include "utils/sim/SimProcess.h"
 #include "utils/text/TextUtils.h"
 #include "utils/time/TimeUtils.h"
 
@@ -403,5 +404,13 @@ int work_supervisor(void)
     // 监管者是 run.log 收尾改名的那一方 (认证/Web 子进程都会跳过改名)
     clean_logger();
     g_shutdown_done = 1; // 让控制台处理线程尽快返回, 别让窗口卡着不走
+
+#ifndef __OPENWRT__
+    if (g_need_restart)
+    {
+        restart_process();
+    }
+#endif
+
     return 0;
 }

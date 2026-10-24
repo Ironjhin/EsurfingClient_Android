@@ -17,6 +17,13 @@ static void supervisor_signal_handler(const int sig)
     g_supervisor_stop = 1;
 }
 
+static void supervisor_restart_handler(const int sig)
+{
+    (void)sig;
+    g_supervisor_stop = 1;
+    g_need_restart = true;
+}
+
 #else
 
 static BOOL WINAPI supervisor_console_handler(const DWORD ctrl_type)
@@ -58,6 +65,7 @@ void supervisor_install_signals(void)
     signal(SIGINT, supervisor_signal_handler);
     signal(SIGHUP, supervisor_signal_handler);
     signal(SIGQUIT, supervisor_signal_handler);
+    signal(SIGUSR1, supervisor_restart_handler);
     // 回收靠主循环里的 waitpid, 不需要 SIGCHLD 处理函数
     signal(SIGCHLD, SIG_DFL);
 #else

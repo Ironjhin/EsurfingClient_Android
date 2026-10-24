@@ -185,7 +185,7 @@ static bool hotspot_do_action(const char* action, const char* adapter_id, char**
     return success;
 }
 
-#elif defined(__linux__) && !defined(__OPENWRT__)
+#elif defined(__linux__) && !defined(__OPENWRT__) && !defined(__ANDROID__)
 
 /* ------------------------------------------------------------------ Linux (NetworkManager) */
 

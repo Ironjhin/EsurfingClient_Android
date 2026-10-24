@@ -28,14 +28,14 @@ static void reply_json(struct mg_connection* c, cJSON* root)
 {
     if (root == NULL)
     {
-        mg_http_reply(c, 500, "", "");
+        mg_http_reply(c, 500, HEADER_CORS, "");
         return;
     }
 
     char* text = cJSON_Print(root);
     if (text == NULL)
     {
-        mg_http_reply(c, 500, "", "");
+        mg_http_reply(c, 500, HEADER_CORS, "");
     }
     else
     {
@@ -218,7 +218,7 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         if (traffic == NULL)
         {
             // 平台暂不支持, 或者采样还没建立起第一帧
-            mg_http_reply(c, 503, "", "");
+            mg_http_reply(c, 503, HEADER_CORS, "");
         }
         else
         {
@@ -234,7 +234,7 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         char* hotspot = hotspot_status_json();
         if (hotspot == NULL)
         {
-            mg_http_reply(c, 501, "", "");
+            mg_http_reply(c, 501, HEADER_CORS, "");
         }
         else
         {
@@ -250,14 +250,23 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         switch (net_probe_status())
         {
         case STATUS_OK:
-            mg_http_reply(c, 204, "", "");
+            mg_http_reply(c, 204, HEADER_CORS, "");
             break;
         case STATUS_NEED_AUTH:
-            mg_http_reply(c, 302, "", "");
+            mg_http_reply(c, 302, HEADER_CORS, "");
             break;
         default:
-            mg_http_reply(c, 503, "", "");
+            mg_http_reply(c, 503, HEADER_CORS, "");
         }
+        return true;
+    }
+
+    // 获取运行时间 (兼容 KernelSU WebUI)
+    if (mg_match(hm->uri, mg_str("/api/status/uptime"), NULL))
+    {
+        cJSON* info = cJSON_CreateObject();
+        cJSON_AddNumberToObject(info, "uptime_ms", (double)(get_cur_tm_ms() - g_start_run_tm));
+        reply_json(c, info);
         return true;
     }
 
@@ -402,6 +411,23 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         cJSON_AddItemToObject(root, "files", files);
 
         reply_json(c, root);
+        return true;
+    }
+
+    // 获取运行日志全文 (兼容 KernelSU WebUI /api/log)
+    if (mg_match(hm->uri, mg_str("/api/log"), NULL))
+    {
+        char* content = NULL;
+        size_t content_len = 0;
+        bool truncated = false;
+        if (read_log_file("run.log", &content, &content_len, &truncated) == false)
+        {
+            mg_http_reply(c, 200, HEADER_TEXT, "");
+            return true;
+        }
+
+        mg_http_reply(c, 200, truncated ? HEADER_TEXT_TRUNCATED : HEADER_TEXT, "%s", content);
+        free(content);
         return true;
     }
 

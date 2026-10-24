@@ -367,6 +367,20 @@ static void load_control_token_env(void)
     snprintf(g_control_token, sizeof(g_control_token), "%s", env_token);
 }
 
+#ifdef __MAGISK__
+#include <sys/stat.h>
+#define MAGISK_DATA_DIR "/data/adb/esurfing"
+#define MAGISK_PID_FILE "/data/adb/esurfing/esurfingd.pid"
+
+static void magisk_cleanup_pid(void)
+{
+    if (g_prog_role == ROLE_SUPERVISOR || g_prog_role == ROLE_STANDALONE)
+    {
+        remove(MAGISK_PID_FILE);
+    }
+}
+#endif
+
 int main(const int argc, char *argv[])
 {
 #ifdef _WIN32
@@ -374,6 +388,8 @@ int main(const int argc, char *argv[])
 #endif
 
 #ifdef __MAGISK__
+    mkdir(MAGISK_DATA_DIR, 0755);
+    chdir(MAGISK_DATA_DIR);
 #ifndef _WIN32
     /* 切换 GID 为 3005 (AID_NET_ADMIN)，自动命中 Box4Magisk / sing-box / Surfing 的 BOX_LOCAL 首条直连放行规则 (UID 0 + GID 3005 -> RETURN) */
     (void)setgid(3005);
@@ -387,6 +403,7 @@ int main(const int argc, char *argv[])
             fclose(wl);
         }
     }
+    atexit(magisk_cleanup_pid);
 #endif
 
     g_start_run_tm = get_cur_tm_ms(); // 获取开始运行的时间
@@ -414,6 +431,18 @@ int main(const int argc, char *argv[])
     {
         return arg_result;
     }
+
+#ifdef __MAGISK__
+    if (g_prog_role == ROLE_SUPERVISOR || g_prog_role == ROLE_STANDALONE)
+    {
+        FILE* pf = fopen(MAGISK_PID_FILE, "w");
+        if (pf)
+        {
+            fprintf(pf, "%d\n", getpid());
+            fclose(pf);
+        }
+    }
+#endif
 
     // 令牌也可以由监管者通过环境变量下发 (不暴露在命令行里)
     load_control_token_env();
