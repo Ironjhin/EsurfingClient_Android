@@ -3,7 +3,11 @@
 #include "utils/platform/PlatformUtils.h"
 #include "utils/text/TextUtils.h"
 
+#ifdef __MAGISK__
+static const char s_log_sub_dir[] = "";
+#else
 static const char s_log_sub_dir[] = "logs";
+#endif
 
 #ifdef __OPENWRT__
 static const char s_default_base[] = "/var/log/esurfing";
@@ -275,10 +279,18 @@ bool get_log_dir(char* out)
         return false;
     }
 
-    const int len = snprintf(out, LOG_PATH_MAX, "%s%c%s", base, SEP, s_log_sub_dir);
+    int len = 0;
+    if (s_log_sub_dir[0] == '\0')
+    {
+        len = snprintf(out, LOG_PATH_MAX, "%s", base);
+    }
+    else
+    {
+        len = snprintf(out, LOG_PATH_MAX, "%s%c%s", base, SEP, s_log_sub_dir);
+    }
     if (len <= 0 || (size_t)len >= LOG_PATH_MAX)
     {
-        fprintf(stderr, "[ERROR] 日志目录路径太长: %s%c%s\n", base, SEP, s_log_sub_dir);
+        fprintf(stderr, "[ERROR] 日志目录路径太长\n");
         return false;
     }
 

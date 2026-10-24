@@ -9,20 +9,20 @@ set(PROGRAM_VERSION_MINOR 2)
 set(PROGRAM_VERSION_PATCH 0)
 set(PROGRAM_VERSION_RELEASE 3)
 
-set(PROGRAM_VERSION "..")
-set(PROGRAM_FULL_VERSION "-r")
+set(PROGRAM_VERSION "${PROGRAM_VERSION_MAJOR}.${PROGRAM_VERSION_MINOR}.${PROGRAM_VERSION_PATCH}")
+set(PROGRAM_FULL_VERSION "${PROGRAM_VERSION}-r${PROGRAM_VERSION_RELEASE}")
 
-add_definitions(-DPROGRAM_VERSION="")
-add_definitions(-DPROGRAM_FULL_VERSION="")
+add_definitions(-DPROGRAM_VERSION="${PROGRAM_VERSION}")
+add_definitions(-DPROGRAM_FULL_VERSION="${PROGRAM_FULL_VERSION}")
 
 # ============================================================
 #  头文件搜索路径
 # ============================================================
 include_directories(
-    
-    /include
-    /src
-    /third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )
 
 # ============================================================
@@ -76,7 +76,7 @@ set(CURL_DISABLE_TELNET   ON   CACHE BOOL "")
 set(CURL_DISABLE_TFTP     ON   CACHE BOOL "")
 
 FetchContent_MakeAvailable(curl)
-include_directories(/include)
+include_directories(${curl_SOURCE_DIR}/include)
 
 # ============================================================
 #  Android NDK log library
@@ -87,24 +87,24 @@ find_library(ANDROID_LOG log)
 #  源文件：全量纳入核心库，排除含有 main() 的 Main.c
 # ============================================================
 file(GLOB_RECURSE CORE_SOURCES
-    "/src/*.c"
-    "/third_party/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/*.c"
 )
 list(FILTER CORE_SOURCES EXCLUDE REGEX ".*/Main\\.c$")
 
 set(ALL_SOURCES
-    
-    "/ffi_bridge.c"
+    ${CORE_SOURCES}
+    "${CMAKE_CURRENT_SOURCE_DIR}/ffi_bridge.c"
 )
 
 # ============================================================
 #  Build shared library for Android Flutter
 # ============================================================
-add_library(esurfing_client SHARED )
+add_library(esurfing_client SHARED ${ALL_SOURCES})
 
 target_link_libraries(esurfing_client
     libcurl
-    
+    ${ANDROID_LOG}
     m
 )
 
@@ -118,16 +118,11 @@ target_compile_options(esurfing_client PRIVATE
     -Wno-pointer-sign
     -DANDROID
     -D__ANDROID__
-    -D__OPENWRT__=0
-)
-
-target_compile_definitions(esurfing_client PRIVATE
-    PROGRAM_FULL_VERSION=""
 )
 
 target_include_directories(esurfing_client PUBLIC
-    
-    /include
-    /src
-    /third_party
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party
 )

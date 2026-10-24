@@ -10,6 +10,11 @@
 #include <cJSON/cJSON.h>
 #include <mongoose/mongoose.h>
 
+#ifndef _WIN32
+#include <unistd.h>
+#include <signal.h>
+#endif
+
 /**
  * @brief 重新认证 (与"应用配置"一致: 都是重启)
  *
@@ -47,7 +52,7 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
         data = malloc(hm->body.len + 1);
         if (data == NULL)
         {
-            mg_http_reply(c, 500, "", "");
+            mg_http_reply(c, 500, HEADER_CORS, "");
             return true;
         }
         memcpy(data, hm->body.buf, hm->body.len);
@@ -59,16 +64,16 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
     {
         if (data == NULL)
         {
-            mg_http_reply(c, 400, "", "");
+            mg_http_reply(c, 400, HEADER_CORS, "");
             return true;
         }
         if (save_cfg(data))
         {
-            mg_http_reply(c, 204, "", "");
+            mg_http_reply(c, 204, HEADER_CORS, "");
         }
         else
         {
-            mg_http_reply(c, 500, "", "");
+            mg_http_reply(c, 500, HEADER_CORS, "");
         }
         free(data);
         return true;
@@ -79,14 +84,14 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
     {
         if (data == NULL)
         {
-            mg_http_reply(c, 400, "", "");
+            mg_http_reply(c, 400, HEADER_CORS, "");
             return true;
         }
 
         cJSON* operation_json = cJSON_Parse(data);
         if (operation_json == NULL)
         {
-            mg_http_reply(c, 500, "", "");
+            mg_http_reply(c, 500, HEADER_CORS, "");
             free(data);
             return true;
         }
@@ -96,61 +101,48 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
         {
             if (cJSON_IsBool(apply))
             {
-                /**
-                 * 配置不可用时程序正停在"等配置"的状态, 网页开着就是为了让用户
-                 * 把配置改回来 —— 这时"保存并应用"就是让主流程重新读一遍配置的
-                 * 开关: 没有认证线程可下发, 也不需要下发
-                 */
                 if (g_waiting_cfg)
                 {
                     g_need_reload = true;
                     LOG_INFO("收到 Web 应用配置文件请求, 主流程将重新加载配置文件");
-                    mg_http_reply(c, 204, "", "");
+                    mg_http_reply(c, 204, HEADER_CORS, "");
                 }
                 else if (g_prog_status == NULL)
                 {
                     LOG_WARN("收到 Web 应用配置文件请求, 但程序尚未加载完成, 拒绝操作");
-                    mg_http_reply(c, 403, "", "");
+                    mg_http_reply(c, 403, HEADER_CORS, "");
                 }
                 else
                 {
                     bool is_authed = false;
                     const bool reachable = query_is_authed(&is_authed);
 
-                    /**
-                     * 只要认证进程在 (reachable), 就把"重新加载配置"的请求发下去。
-                     *
-                     * 不要求"正在认证": 配置刚加载完时认证线程还没起 (要等网络进入
-                     * "需要认证"的状态), 而这恰恰是用户会去改配置的时候 ——
-                     * 卡在这里的话, 用户在等网络时把程序关掉会收到一个"应用失败",
-                     * 程序却照旧拿着旧配置往下走
-                     */
                     if (reachable == false)
                     {
                         LOG_WARN("收到 Web 应用配置文件请求, 但认证进程不可达");
-                        mg_http_reply(c, 503, "", "");
+                        mg_http_reply(c, 503, HEADER_CORS, "");
                     }
                     else if (request_apply_config() == false)
                     {
                         LOG_WARN("收到 Web 应用配置文件请求, 但下发到认证进程失败");
-                        mg_http_reply(c, 503, "", "");
+                        mg_http_reply(c, 503, HEADER_CORS, "");
                     }
                     else
                     {
                         LOG_INFO("收到 Web 应用配置文件请求 (当前%s), 程序将重新加载配置文件",
                             is_authed ? "已认证" : "未认证");
-                        mg_http_reply(c, 204, "", "");
+                        mg_http_reply(c, 204, HEADER_CORS, "");
                     }
                 }
             }
             else
             {
-                mg_http_reply(c, 500, "", "");
+                mg_http_reply(c, 500, HEADER_CORS, "");
             }
         }
         else
         {
-            mg_http_reply(c, 500, "", "");
+            mg_http_reply(c, 500, HEADER_CORS, "");
         }
 
         free(data);
@@ -158,41 +150,106 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
         return true;
     }
 
-    // 重新认证
-    if (mg_match(hm->uri, mg_str("/api/restartAuth"), NULL))
+    // 重新认证 (同时兼容 /api/restartAuth 与旧版/KernelSU WebUI 的 /api/auth/reset)
+    if (mg_match(hm->uri, mg_str("/api/restartAuth"), NULL) ||
+        mg_match(hm->uri, mg_str("/api/auth/reset"), NULL))
     {
+        cJSON* resp = cJSON_CreateObject();
         if (g_prog_status == NULL || g_cfg_loaded == false)
         {
             LOG_WARN("收到 Web 重新认证请求, 但程序尚未加载配置, 拒绝操作");
-            mg_http_reply(c, 503, "", "");
+            cJSON_AddBoolToObject(resp, "ok", false);
+            cJSON_AddStringToObject(resp, "reason", "not ready");
+            char* body = cJSON_Print(resp);
+            mg_http_reply(c, 503, HEADER_JSON, "%s", body ? body : "{\"ok\":false}");
+            if (body) free(body);
         }
         else
         {
             bool is_authed = false;
             const bool reachable = query_is_authed(&is_authed);
 
-            /**
-             * 不再要求"正在认证": 重新认证已经改成重启, 任何时候都可以做,
-             * 正在等网络 / 正在退避时反而是最需要重启的时候
-             */
             if (reachable == false)
             {
                 LOG_WARN("收到 Web 重新认证请求, 但认证进程不可达");
-                mg_http_reply(c, 503, "", "");
+                cJSON_AddBoolToObject(resp, "ok", false);
+                cJSON_AddStringToObject(resp, "reason", "no dialer");
+                char* body = cJSON_Print(resp);
+                mg_http_reply(c, 503, HEADER_JSON, "%s", body ? body : "{\"ok\":false}");
+                if (body) free(body);
             }
             else if (request_restart_auth() == false)
             {
                 LOG_WARN("收到 Web 重新认证请求, 但下发到认证进程失败");
-                mg_http_reply(c, 503, "", "");
+                cJSON_AddBoolToObject(resp, "ok", false);
+                cJSON_AddStringToObject(resp, "reason", "send failed");
+                char* body = cJSON_Print(resp);
+                mg_http_reply(c, 503, HEADER_JSON, "%s", body ? body : "{\"ok\":false}");
+                if (body) free(body);
             }
             else
             {
-                LOG_INFO("收到 Web 重新认证请求, 程序将重启");
-                mg_http_reply(c, 204, "", "");
+                LOG_INFO("收到 Web 重新认证请求, 认证进程将重启");
+                cJSON_AddBoolToObject(resp, "ok", true);
+                char* body = cJSON_Print(resp);
+                mg_http_reply(c, 200, HEADER_JSON, "%s", body ? body : "{\"ok\":true}");
+                if (body) free(body);
             }
         }
-
+        cJSON_Delete(resp);
         free(data);
+        return true;
+    }
+
+    // 停止服务 (兼容 KernelSU WebUI /api/stop 与 action.sh)
+    if (mg_match(hm->uri, mg_str("/api/stop"), NULL))
+    {
+        LOG_INFO("收到 Web 停止服务请求");
+        cJSON* resp = cJSON_CreateObject();
+        cJSON_AddBoolToObject(resp, "ok", true);
+        char* body = cJSON_Print(resp);
+        mg_http_reply(c, 200, HEADER_JSON, "%s", body ? body : "{\"ok\":true}");
+        if (body) free(body);
+        cJSON_Delete(resp);
+        free(data);
+
+#ifndef _WIN32
+        // 在多进程模式下，向监管者 (父进程) 发送 SIGTERM
+        pid_t ppid = getppid();
+        if (ppid > 1)
+        {
+            kill(ppid, SIGTERM);
+        }
+#endif
+        g_stop_requested = 1;
+        g_need_exit = true;
+        g_thread_keep_alive = false;
+        return true;
+    }
+
+    // 重启服务 (兼容 KernelSU WebUI /api/restart)
+    if (mg_match(hm->uri, mg_str("/api/restart"), NULL))
+    {
+        LOG_INFO("收到 Web 重启服务请求");
+        cJSON* resp = cJSON_CreateObject();
+        cJSON_AddBoolToObject(resp, "ok", true);
+        cJSON_AddStringToObject(resp, "msg", "restarting");
+        char* body = cJSON_Print(resp);
+        mg_http_reply(c, 200, HEADER_JSON, "%s", body ? body : "{\"ok\":true}");
+        if (body) free(body);
+        cJSON_Delete(resp);
+        free(data);
+
+#ifndef _WIN32
+        // 在多进程模式下，向监管者 (父进程) 发送 SIGUSR1
+        pid_t ppid = getppid();
+        if (ppid > 1)
+        {
+            kill(ppid, SIGUSR1);
+        }
+#endif
+        g_need_restart = true;
+        g_stop_requested = 1;
         return true;
     }
 
@@ -211,7 +268,7 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
         if (adapter_len <= 0)
         {
             LOG_WARN("收到热点%s请求, 但没有指定网卡", is_start ? "开启" : "关闭");
-            mg_http_reply(c, 400, "", "");
+            mg_http_reply(c, 400, HEADER_CORS, "");
             return true;
         }
 
@@ -224,7 +281,7 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
         }
         else
         {
-            mg_http_reply(c, status, "", "");
+            mg_http_reply(c, status, HEADER_CORS, "");
         }
         return true;
     }
