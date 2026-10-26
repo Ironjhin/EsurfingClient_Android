@@ -85,9 +85,9 @@
 ---
 
 ## 5. 分支与工程规范
-- **`main` 分支**：Flutter 客户端（Android APK），根目录与 `esurfing_flutter/` 目录源码需保持 1:1 同步。
-- **`magisk` 分支**：Magisk / KernelSU root 模块守护进程源码（`magisk/` 目录）。
-- **CI / CD**：推送至 `main` 自动构建 APK（`Flutter Universal APK Build`），推送至 `magisk` 自动构建模块 zip（`Build Magisk Module`）。
+- **维护重心收敛（铁律）**：全面放弃并停止维护本地 Flutter 原生 APK 版本（受限于系统激进杀后台、Doze 息屏冻结与 VPN 冲突），免 Root 安卓 APK 需求统一在文档与页面中导流至安生同学的开源项目：`https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK`。
+- **专精 Magisk 守护模块**：本项目全力维护 **Magisk / KernelSU / APatch 专属 Root 守护进程模块**（`magisk` 分支与模块目录），利用 `wake_lock`、`AID_NET_ADMIN`（GID 3005）与轻量 WebUI 达成 7×24 小时不掉线与透明代理完美共存。
+- **CI / CD**：主力维护 `build-magisk-module.yml`。
 
 ---
 
