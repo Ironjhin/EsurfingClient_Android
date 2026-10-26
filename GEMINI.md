@@ -197,7 +197,7 @@ om.miui.com 设为 DoH（https://223.5.5.5/dns-query），在刚开 TUN 或网�
 ### 3. 六台核心 VPS 全球拓扑、SSH 凭据与 Sub-Store 接口规范
 - **服务器清单与架构**：
   1. **香港 (`40.81.16.9`)**：`aarch64` (`arm64`)，`ssh -i "C:\Users\LFQ\Downloads\gha_key.pem" azureuser@40.81.16.9`（Azure East Asia 香港，注意用户名为 `azureuser`，内核二进制为 `/usr/local/x-ui/bin/xray-linux-arm64`，面板端口 `2000`，订阅端口 `2096`，Reality 端口 `443`。**现为 Sub-Store 与 Caddy 核心中枢主机**，HTTPS 端口 `3002`，直连延迟 84ms）。
-  2. **香港 GCP (`34.96.219.57`)**：`amd64`，`ssh -i "C:\Users\LFQ\.ssh\id_ed25519" root@34.96.219.57`（Google Cloud 香港 `asia-east2`，2核4G AMD EPYC，直连延迟仅 14~53ms 极速。部署 **原生 BBR + `fq`**、64MB 极限缓冲、Xray `v25.3.6` Reality 443 `gateway.icloud.com`、Cloudflare WireGuard WARP 出站精准分流，面板端口 `2000`，订阅端口 `2096`，面板账号 `admin` / `ironjhin_gcp_2026`。**⚠️ 注意生命周期：2026-10-23 起仅剩 36 天，预计 2026-11-28 前后到期，到期前需删除停机防止扣费**）。
+  2. **香港 GCP (`34.92.115.177`)**：`amd64`，`ssh -i "C:\Users\LFQ\.ssh\id_ed25519" root@34.92.115.177`（Google Cloud 香港 `asia-east2`，2核4G AMD EPYC，直连延迟仅 14~53ms 极速。部署 **原生 BBR + `fq`**、64MB 极限缓冲、Xray `v25.3.6` Reality 443 `gateway.icloud.com`、Cloudflare WireGuard WARP 出站精准分流，面板端口 `2000`，订阅端口 `2096`，面板账号 `admin` / `ironjhin_gcp_2026`。**⚠️ 注意生命周期：2026-10-23 起仅剩 36 天，预计 2026-11-28 前后到期，到期前需删除停机防止扣费**）。
   3. **新加坡 GCP (`34.21.202.113`)**：`amd64`，`ssh -i "C:\Users\LFQ\.ssh\id_ed25519" root@34.21.202.113`（Google Cloud 新加坡 `asia-southeast1`，Debian 12 Bookworm，`e2-micro` 2核1G + 2GB Swap。部署 **原生 BBR + `fq`**、64MB 极限缓冲、3x-ui v2.6.2、Xray `v25.3.6` Reality 443 `gateway.icloud.com`，短 ID `c34b5e9b`，公钥 `CUf2SZuJSWGCAGbVoi5ZPDXolvnbeWxjzw-OpUOv62c`。国内广东电信直连仅 **54ms** 极速！面板端口 `2000`，面板账号 `admin` / `ironjhin_gcp_2026`。**⚠️ 注意生命周期：2026-10-23 起剩余 79 天，预计 2027-01-10 前后到期，已配置 1150GB 自动断流硬上限安全锁**）。
   4. **美国俄勒冈 (`54.214.98.50`)**：`amd64`，`ssh -i "C:\Users\LFQ\Downloads\LightsailDefaultKey-us-west-2.pem" ubuntu@54.214.98.50`（AWS Lightsail 俄勒冈 `us-west-2`，内核统一为 `/usr/local/x-ui/bin/xray-linux-amd64` `v25.3.6`，面板端口 `2000`，订阅端口 `2096`，Reality 端口 `443`。纯 IPv4 WARP 出站秒过 CF）。
   5. **日本东京 (`18.178.182.212`)**：`amd64`，`ssh -i "C:\Users\LFQ\Downloads\LightsailDefaultKey-ap-northeast-1.pem" ubuntu@18.178.182.212`（AWS Lightsail 东京 `ap-northeast-1`，内核统一为 `/usr/local/x-ui/bin/xray-linux-amd64` `v25.3.6`，面板端口 `2000`，订阅端口 `2096`，Reality 端口 `443`，纯 IPv4 WARP 出站。已完全替换原 `13.112.159.221`，延迟 124ms）。
@@ -208,9 +208,9 @@ om.miui.com 设为 DoH（https://223.5.5.5/dns-query），在刚开 TUN 或网�
   - 提交更新时必须确保 `payload.process = @()`（清空脚本覆盖器），防止旧的 `Script Operator` 覆盖 `payload.content`。
 - **Clash Verge Rev 内核热重载与延迟测试**：
   - 从 `C:\Users\LFQ\AppData\Roaming\io.github.clash-verge-rev.clash-verge-rev\clash-verge.yaml` 动态读取 `external-controller-pipe`（如 `\\.\pipe\verge-mihomo-sidecar-release-<hash>`），通过 Named Pipe 调用 `PUT /configs?force=true` 重载配置，以及 `GET /group/%E8%87%AA%E5%8A%A8%E9%80%89%E6%8B%A9/delay?url=http%3A%2F%2Fwww.gstatic.com%2Fgenerate_204&timeout=5000` 验证节点连通性。
-- **GCP 香港中转（`dialer-proxy` 链式代理）与 Xray `sniffing` 避坑铁律**：
-  - **核心机制**：通过在 Mihomo（Clash Verge / 手机 Surfing）节点上配置 `dialer-proxy: "🇭🇰 香港 GCP"`，客户端先与 GCP 建立外层 VLESS-Reality 连接，再在隧道内同日本（东京 Lightsail）和美国（俄勒冈 Lightsail / 加州 Akamai）建立端到端加密的内层连接，日本延迟由 564ms 暴降至 266ms 且不需在 GCP 额外开放多余转发端口。
-  - **致命陷阱（`sniffing` 劫持内层 SNI 导致 `REALITY Authentication: false`）**：若 GCP Xray 入站启用 `sniffing` 且 `routeOnly: false`（默认值），当内层 Reality 发出 SNI `gateway.icloud.com` 时，Xray 会强行将目标地址从真正的目标节点 IP（如 `18.178.182.212`）篡改为 Apple 官方服务器 IP，导致内层握手回落至真苹果服务器引发验签失败。**铁律**：作为中转跳板的 Xray 入站 sniffing 必须配置 `"routeOnly": true`（仅用于分流匹配，禁止重写真实目的 IP）。
+- **GCP 链式代理中转（`dialer-proxy`）与 Xray `sniffing` 避坑铁律**：
+  - **核心机制**：通过在 Mihomo（Clash Verge / 手机 Surfing）节点上配置 `dialer-proxy: "🇭🇰 香港 GCP"`（主跳板，国内直连延迟仅 10ms~21ms），客户端先与香港 GCP 建立外层 VLESS-Reality 连接，再在隧道内同日本（东京 Lightsail `18.178.182.212`）和美国（俄勒冈 Lightsail / 加州 Akamai）建立端到端加密的内层连接，日本实测延迟骤降至 **103ms**，美国直降至 **172ms**，且新加坡 GCP 可作为即时无缝备用跳板。
+  - **致命陷阱（`sniffing` 劫持内层 SNI 导致 `REALITY Authentication: false`）**：若 GCP Xray 入站启用 `sniffing` 且 `routeOnly: false`（默认值），当内层 Reality 发出 SNI `gateway.icloud.com` 时，Xray 会强行将目标地址从真正的目标节点 IP（如 `18.178.182.212`）篡改为 Apple 官方服务器 IP，导致内层握手回落至真苹果服务器引发验签失败。**铁律**：作为中转跳板的 Xray 入站 sniffing 必须配置 `"routeOnly": true`（仅用于分流匹配，禁止重写真实目的 IP）。香港与新加坡 GCP 均已严格锁定该参数。
 
 ### 4. 手机端 `Surfing`（基于 `Mihomo` 内核，已替代旧 `Box4Magisk` / `sing-box`）运维与远程命令规范
 - **核心变更（2026-09-27）**：
@@ -295,3 +295,31 @@ om.miui.com 设为 DoH（https://223.5.5.5/dns-query），在刚开 TUN 或网�
   - 本地 Python 脚本 `C:\Users\LFQ\Desktop\esurfing_flutter\check_vps_traffic.py` 采用 `ThreadPoolExecutor` 并发读取四台 VPS 的 `/etc/x-ui/x-ui.db` 底层计数器，2 秒内完成探测并生成彩色进度条看板。
   - 桌面快捷入口：`C:\Users\LFQ\Desktop\查询节点流量.bat`。
   - 服务端守护进程：Fremont 已部署 `vnstat`，支持 `vnstat -d`、`vnstat -m`、`vnstat -l`。
+
+---
+
+## 8. 独立代码审查智能体（Argon）协议与防假完成铁律
+
+### 1. 痛点根因与防假机制
+- **严禁“自审自圆、口头完成”**：主智能体（实现者）在编写或修复代码后，极易陷入自证偏见与“假装已完成/假装已测试”的幻觉。
+- **强制双角色隔离**：
+  - **实现者（主 Agent）**：负责探索代码库、执行编辑与构建命令，并提供具体变动的真实证据（改动路径、行号、构建日志、测试输出）。主 Agent 绝不充当裁判。
+  - **审查者（Argon 智能体）**：通过 `invoke_subagent` 调用的专属审查角色。Argon 秉持对抗性视角，专门挑刺、挑边界条件、验证安全性，绝不轻信口头保证。
+
+### 2. 代码审查必须调用 Argon 流程
+在进行任何核心代码修改、重大重构或用户要求代码审查时，主智能体必须执行以下标准化闭环：
+1. **先出事实，禁止空谈**：
+   - 提取最新 `git diff`，明确列出改动的具体文件、符号与行范围。
+   - 必须尝试在终端执行真实构建（如 CMake / Clang / GCC 或语法校验命令），获取真实退出码与编译器输出。
+2. **显式调用 `argon` 审查智能体（必须搭载 Gemini 4 Argon 旗舰推理模型）**：
+   - 使用 `invoke_subagent` 调用审查智能体时，**参数必须显式声明 `Model: "pro"`**（即底层调用最新的深度推理旗舰 **Gemini 4 Argon / `gemini-4-argon`**），严禁使用 `flash`、`flash_lite` 或直接 `inherit` 轻量模型走过场。
+   - 充分发挥 Gemini 4 Argon 的深度长思考（Extended Thinking）与百万 Token 上下文能力，进行最严格的对抗性审查与潜在缺陷挖掘。
+   - 将变更背景、`git diff` 内容、构建日志及潜在风险点提交给 Gemini 4 Argon。
+3. **Argon 审查标准（聚焦 C 语言与 Android Root 守护模块）**：
+   - **内存与资源安全**：所有动态分配 (`malloc`, `calloc`) 是否判空？是否存在内存泄漏？文件描述符 (`socket`, `pipe`, `fopen`) 是否在所有异常退出分支均能闭合？
+   - **并发与信号安全**：全局标志变量 (`g_need_stop_now`, `g_need_restart_now`) 是否有原子操作或互斥保护？信号处理回调中是否仅包含异步信号安全函数？
+   - **代理与单调钟合规**：网络心跳与保活是否严格使用单调时钟 `CLOCK_MONOTONIC`；Root 守护模式下是否严格遵守 `GID 3005` 直连豁免。
+   - **真实证据分流**：严格区分 **事实 (Facts)**（有日志/行号证明）、**推论 (Inferences)**（逻辑分析风险）与 **主张 (Proposals)**。
+4. **闭环验收**：
+   - 若 Argon 提出 Blockers 或指出存在未验证项，主智能体必须针对性修正或补充真实测试日志，直到审查无遗漏隐患，方可向用户报告交付。
+
