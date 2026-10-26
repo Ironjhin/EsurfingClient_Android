@@ -1,13 +1,11 @@
-# 天翼校园网认证客户端 (Android & Magisk)
+# 天翼校园网认证客户端 (Magisk / KernelSU 专属守护进程)
 
 > [!NOTE]
 > ☕ **关于本项目**：本项目纯属“氛围编程”的产物，作者是个机械佬、本质上不太懂代码，很多功能和优化也是边摸索边借助 AI 辅助写出来的。若遇到 Bug 或设计不周之处请大家多多包涵！  
-> 💬 **问题反馈与交流**：安卓客户端有任何使用疑问或 Bug 反馈，欢迎提交 Issue 或直接联系开发者邮箱：[2292219067@qq.com](mailto:2292219067@qq.com)。  
-> 开发者主力日常使用 Magisk/KernelSU 模块版本，每次代码提交均会将 **Flutter 原生版** 与 **Magisk 模块版** 同步构建并持续维护更新。
+> 💬 **问题反馈与交流**：有任何使用疑问或 Bug 反馈，欢迎提交 Issue 或直接联系开发者邮箱：[2292219067@qq.com](mailto:2292219067@qq.com)。  
+> 📢 **版本维护说明（重要）**：作者已全面转向并**只维护 Magisk / KernelSU / APatch 专属 Root 守护进程模块**（开机即连、极致省电、永不断流）。若您需要**免 Root 的原生 Android APK 客户端**，强烈推荐直接使用安生同学精心维护的项目：👉 **[anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)**。
 
-专为 Android 移动平台设计的高可用广东天翼校园网认证客户端。上层提供现代化 **Flutter 原生拟态界面**，底层核心由纯 C 语言高并发引擎驱动，具备超低内存占用、智能掉线重连与全天候后台保活能力。
-
-同时提供 **Magisk / KernelSU 专属 Root 守护进程模块**，开机即连、无感常驻、自带 WebUI 控制台。
+专为 Android Root 平台（Magisk / KernelSU / APatch）设计的高可用广东天翼校园网认证守护进程。核心由纯 C 语言高并发引擎驱动，具备超低内存占用（仅 1~2 MB）、开机即连、无感常驻、自带 WebUI 控制台，并与 Surfing / Mihomo 透明代理完美共存。
 
 ---
 
@@ -19,22 +17,23 @@
   - **单调时钟防混乱**：心跳与超时全面采用单调时钟（`CLOCK_MONOTONIC`），杜绝设备息屏休眠、系统时间调整或 NTP 校时引发的会话突变。
   - **配置尽力解析机制**：即使配置未激活或部分参数缺失，也会完整保留已填账号信息，彻底杜绝 Web 端保存时配置被空值覆盖清空。
   - **异常断电与会话持久化**：具备会话现场归档（`.logout`），进程遇异常强杀或断电后，下次开机自动执行补登出，防止网关残留“异地已登录”限制。
-- **📱 灵活的双形态支持**：
-  - **Flutter APK 版 (本分支 `main`)**：免 Root、现代化 Material You / Liquid Glass 拟态界面、支持多账号快速切换、运行时间秒级显示、实时日志分析导出、前台服务防杀保活。
-  - **Magisk / KernelSU 模块版 (`magisk` 分支)**：Root 专属、开机无感静默认证、后台永久驻留、内置 WebUI 管理面板 (`http://127.0.0.1:8888`)、支持 KernelSU WebUI 与 Action 免重启启停。
+- **📱 专注 Root 守护进程模块**：
+  - **Magisk / KernelSU / APatch 专属**：开机无感静默认证、后台永久驻留、内置 WebUI 管理面板 (`http://127.0.0.1:8888`)、支持 KernelSU WebUI 与 Action 免重启启停。
+  - **免 Root APK 跳转**：未 Root 手机用户请直接使用推荐的独立客户端 👉 [anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)。
 - **🛡️ 透明代理完美共存**：
   - 模块守护进程开机自动获取 `AID_NET_ADMIN` (`GID 3005`) 权限，原生命中 `Surfing` / `Mihomo` / `Clash.Meta` / `sing-box` / `Box4Magisk` 的首条直连豁免规则，彻底防止 TPROXY 误劫持与死循环断流。
   - 自动申请内核 `wake_lock`，有效抵御系统深度 Doze 睡眠冻结心跳。
 
 ---
 
-## 🆚 双形态对比与选择
+## 🆚 运行形态对比与推荐
 
-| 维度 | Flutter APK 原生版 (`main`) | Magisk / KernelSU 守护进程版 (`magisk`) |
+| 维度 | Android APK 独立客户端（推荐 anshenglv 版） | Magisk / KernelSU 守护进程版（本项目主维护） |
 | :--- | :--- | :--- |
+| **项目地址** | [anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK) | 本项目仓库（[Releases](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk)） |
 | **运行权限** | 普通用户应用（免 Root） | 系统 Root 守护进程 (`root:3005`) |
-| **内存占用** | 约 40 ~ 70 MB（Flutter 运行时） | **约 1 ~ 2 MB**（纯 C 二进制 `esurfingd`） |
-| **交互界面** | 原生 Flutter App（支持动态取色与拟态） | 内置轻量 WebUI + 桌面专用管理图标 |
+| **内存占用** | 约 30 ~ 60 MB | **约 1 ~ 2 MB**（纯 C 二进制 `esurfingd`） |
+| **交互界面** | 原生 Android App 界面 | 内置轻量 WebUI + 桌面专用管理图标 |
 | **保活能力** | 前台通知服务 + 无障碍服务辅助保活 | **Root 级永驻**，系统杀后台机制完全免疫 |
 | **开机自启** | 依赖系统自启管理与广播唤醒 | **系统开机阶段挂载启动**，亮屏前已联网 |
 | **适用人群** | 未解锁 Bootloader、免 Root 日常使用 | 已 Root 玩家、需要极致省电与无感挂机体验 |
@@ -43,21 +42,19 @@
 
 ## 🚀 下载与安装
 
-云端 CI 流水线对每次代码提交均提供全架构自动化打包编译：
-
-### 1. Flutter APK 版 (免 Root)
-1. 前往仓库的 [Releases 页面](https://github.com/Ironjhin/EsurfingClient_Android/releases)。
-2. 找到带有 `v1.0.xx` 标签的最新 Release。
-3. 下载附件中的 `app-release.apk`，在手机文件管理器中直接点击安装。
-
-### 2. Magisk / KernelSU 模块版 (需 Root)
+### 1. Magisk / KernelSU / APatch 模块版 (需 Root · 本项目主维护)
 1. 前往仓库 [Releases 页面](https://github.com/Ironjhin/EsurfingClient_Android/releases?q=magisk)。
-2. 下载 `esurfing-daemon-arm64-v8a.zip`。
-3. 打开 **Magisk Manager** 或 **KernelSU Manager** $\to$ 「模块」 $\to$ 「从本地安装」选择该 zip 包。
+2. 下载最新版 `esurfing-daemon-arm64-v8a.zip`。
+3. 打开 **Magisk Manager**、**KernelSU Manager** 或 **APatch** $\to$ 「模块」 $\to$ 「从本地安装」选择该 zip 包。
 4. 安装完成重启手机后：
    - 桌面会自动生成 **ESurfing** Web 控制端应用图标。
    - 也可直接在手机浏览器中访问 `http://127.0.0.1:8888/` 进行配置管理。
-   - KernelSU 用户可在管理器模块卡片中直接点击 **WebUI** 按钮或 **Action** 按钮免重启启停服务。
+   - KernelSU / APatch 用户可在管理器模块卡片中直接点击 **WebUI** 按钮或 **Action** 按钮免重启启停服务。
+
+### 2. Android APK 原生版 (免 Root 用户)
+> [!TIP]
+> **免 Root 用户推荐**：本项目已停止维护自编译 APK。如果您没有解锁 Bootloader 或未 Root 设备，请直接前往安生同学的开源仓库下载最新 APK：  
+> 🔗 **[anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)** (功能完善、体验优秀、持续跟进)
 
 ---
 
@@ -102,7 +99,7 @@
 
 ## 🔍 常见运行状态判定
 
-打开 Flutter App 或 WebUI 后，日志面板会输出当前网络状态，可据此判断网关环境：
+打开 WebUI 网页控制台或管理界面后，日志面板会输出当前网络状态，可据此判断网关环境：
 
 - **`已连接至互联网 / Status code: 204`**：
   - 说明网络已连通，或者当前网关已放行本机物理 MAC。若此时不需要再次拨号，系统将转为低频心跳待命状态。
@@ -118,7 +115,7 @@
 本项目的实现高度依赖开源社区的无私贡献：
 
 - **核心协议与算法来源**：[BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion)（遵循 Apache-2.0 协议）
-- **日志显示与思路借鉴**：[anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)
+- **推荐免 Root 安卓客户端**：[anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)（免 Root 用户的首选 Android 客户端，感谢其开源分享与思路借鉴）
 - **底层网络通信库**：[libcurl](https://curl.se/)
 - **嵌入式 Web 服务器**：[Cesanta Mongoose](https://cesanta.com/)
 - **UI 框架与跨语言互操作**：[Flutter Framework](https://flutter.dev/) & [Dart:FFI](https://dart.dev/guides/libraries/c-interop)
