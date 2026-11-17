@@ -1145,6 +1145,66 @@ dialog::backdrop {
   gap: 10px;
 }
 
+.log-header-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.clear-mode-fieldset {
+  border: none;
+  padding: 0;
+  margin: 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.clear-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.clear-mode-option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.clear-mode-option input[type="radio"] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+.clear-mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.86rem;
+}
+
+.clear-mode-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.clear-mode-sub {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
 /* Toast Notification */
 .toast {
   position: fixed;
@@ -1396,6 +1456,22 @@ dialog::backdrop {
             </div>
           </div>
 
+          <div class="form-grid form-grid-2">
+            <div class="form-group">
+              <label for="logMaxFiles">归档日志保留份数 log_max_files</label>
+              <input type="text" id="logMaxFiles" name="logMaxFiles" class="input-control" inputmode="numeric" value="5" aria-describedby="logMaxFilesHint logMaxFilesErr">
+              <span class="field-hint" id="logMaxFilesHint">范围 0–100，默认 5（0 表示仅留当前 run.log）</span>
+              <span class="field-error" id="logMaxFilesErr" role="alert"></span>
+            </div>
+            <div class="form-group">
+              <label for="logMaxDays">归档日志保留天数 log_max_days</label>
+              <input type="text" id="logMaxDays" name="logMaxDays" class="input-control" inputmode="numeric" value="3" aria-describedby="logMaxDaysHint logMaxDaysErr">
+              <span class="field-hint" id="logMaxDaysHint">范围 0–365，默认 3（0 表示不限天数）</span>
+              <span class="field-error" id="logMaxDaysErr" role="alert"></span>
+            </div>
+          </div>
+          <p class="field-hint" style="margin-top:-6px;">每次启动、轮转及退出时自动淘汰超限旧日志，历史归档总体积上限 10 MB。</p>
+
           <div class="form-group">
             <label for="accountMark">路由标记 mark (十六进制，留空自动分配)</label>
             <input type="text" id="accountMark" name="accountMark" class="input-control" placeholder="例如 0x100，默认留空" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="accountMarkErr">
@@ -1453,7 +1529,10 @@ dialog::backdrop {
         </svg>
         运行日志
       </h2>
-      <span class="badge badge-neutral" id="logCountBadge">0 行</span>
+      <div class="log-header-badges">
+        <span class="badge badge-neutral" id="logStorageBadge" title="日志目录总占用">统计中...</span>
+        <span class="badge badge-neutral" id="logCountBadge">0 行</span>
+      </div>
     </div>
 
     <div class="log-toolbar">
@@ -1500,6 +1579,15 @@ dialog::backdrop {
         </svg>
         导出日志
       </button>
+      <button type="button" class="btn btn-danger-outline btn-sm" id="btnClearLog" onclick="openClearLogModal()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          <line x1="10" y1="11" x2="10" y2="17"/>
+          <line x1="14" y1="11" x2="14" y2="17"/>
+        </svg>
+        清理日志
+      </button>
     </div>
 
     <div class="log-terminal">
@@ -1527,6 +1615,45 @@ dialog::backdrop {
     <form method="dialog" class="dialog-actions">
       <button type="submit" value="cancel" class="btn btn-secondary" autofocus>取消</button>
       <button type="submit" value="confirm" class="btn btn-danger" id="confirmOkBtn">确认停止</button>
+    </form>
+  </div>
+</dialog>
+
+<!-- Clear Logs Confirmation Dialog -->
+<dialog id="clearLogDialog" closedby="any" aria-labelledby="clearLogTitle">
+  <div class="dialog-body">
+    <h3 class="dialog-title" id="clearLogTitle">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+      <span>清理运行日志</span>
+    </h3>
+    <p class="dialog-desc" id="clearLogDesc">
+      请选择要清理的日志范围。清理过程中守护进程将继续正常写入，当前 run.log 采用原位截断以保障日志句柄不断裂。
+    </p>
+    <form method="dialog" id="clearLogForm">
+      <fieldset class="clear-mode-fieldset">
+        <legend class="visually-hidden">清理范围</legend>
+        <label class="clear-mode-option">
+          <input type="radio" name="clearLogMode" value="all" checked>
+          <span class="clear-mode-text">
+            <span class="clear-mode-title">清理全部日志（含当前 run.log）</span>
+            <span class="clear-mode-sub">删除全部历史归档并将当前 run.log 原位清空</span>
+          </span>
+        </label>
+        <label class="clear-mode-option">
+          <input type="radio" name="clearLogMode" value="archived">
+          <span class="clear-mode-text">
+            <span class="clear-mode-title">仅清理历史归档</span>
+            <span class="clear-mode-sub">仅删除旧归档 .log 文件，保留当前正在写入的 run.log</span>
+          </span>
+        </label>
+      </fieldset>
+      <div class="dialog-actions">
+        <button type="submit" value="cancel" class="btn btn-secondary" autofocus>取消</button>
+        <button type="submit" value="confirm" class="btn btn-danger" id="clearLogOkBtn">确认清理</button>
+      </div>
     </form>
   </div>
 </dialog>
@@ -1613,16 +1740,19 @@ applyThemeState((() => {
 
 // --- Dialog Modal Helpers ---
 const confirmDialog = document.getElementById('confirmDialog');
+const clearLogDialog = document.getElementById('clearLogDialog');
 
-if (confirmDialog && !('closedBy' in HTMLDialogElement.prototype)) {
+if (!('closedBy' in HTMLDialogElement.prototype)) {
   const outsideDialog = (e, dialog) => {
     const r = dialog.getBoundingClientRect();
     return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
   };
-  let pressedOutside = false;
-  confirmDialog.addEventListener('pointerdown', (e) => { pressedOutside = outsideDialog(e, confirmDialog); });
-  confirmDialog.addEventListener('pointerup', (e) => {
-    if (pressedOutside && outsideDialog(e, confirmDialog)) confirmDialog.close('');
+  document.querySelectorAll('dialog[closedby="any"]').forEach((dialog) => {
+    let pressedOutside = false;
+    dialog.addEventListener('pointerdown', (e) => { pressedOutside = outsideDialog(e, dialog); });
+    dialog.addEventListener('pointerup', (e) => {
+      if (pressedOutside && outsideDialog(e, dialog)) dialog.close('');
+    });
   });
 }
 
@@ -1634,6 +1764,18 @@ if (confirmDialog) {
       const resolve = confirmResolver;
       confirmResolver = null;
       resolve(val === 'confirm');
+    }
+  });
+}
+
+if (clearLogDialog) {
+  clearLogDialog.addEventListener('close', () => {
+    const val = clearLogDialog.returnValue;
+    clearLogDialog.returnValue = '';
+    if (val === 'confirm') {
+      const checked = clearLogDialog.querySelector('input[name="clearLogMode"]:checked');
+      const mode = checked ? checked.value : 'all';
+      executeClearLogs(mode);
     }
   });
 }
@@ -1742,6 +1884,8 @@ document.getElementById('username').addEventListener('input', (e) => setFieldErr
 document.getElementById('password').addEventListener('input', (e) => setFieldError(e.target, 'passwordErr', ''));
 document.getElementById('connTimeout').addEventListener('input', (e) => setFieldError(e.target, 'connTimeoutErr', ''));
 document.getElementById('opTimeout').addEventListener('input', (e) => setFieldError(e.target, 'opTimeoutErr', ''));
+document.getElementById('logMaxFiles').addEventListener('input', (e) => setFieldError(e.target, 'logMaxFilesErr', ''));
+document.getElementById('logMaxDays').addEventListener('input', (e) => setFieldError(e.target, 'logMaxDaysErr', ''));
 document.getElementById('accountMark').addEventListener('input', (e) => setFieldError(e.target, 'accountMarkErr', ''));
 
 // --- Probe Hosts Editor ---
@@ -2113,9 +2257,11 @@ function updatePreservedChips(data) {
   const hasCustomMark = Array.isArray(data.accounts) && data.accounts[0] && data.accounts[0].mark;
   const hasCustomTimeout = (typeof data.conn_timeout === 'number' && data.conn_timeout !== 10) ||
     (typeof data.op_timeout === 'number' && data.op_timeout !== 15);
+  const hasCustomRetention = (typeof data.log_max_files === 'number' && data.log_max_files !== 5) ||
+    (typeof data.log_max_days === 'number' && data.log_max_days !== 3);
   const hasCustomProbe = Array.isArray(data.probe_hosts) && !isDefaultProbeHosts(data.probe_hosts);
   document.getElementById('advancedSummaryBadge').textContent =
-    (hasCustomMark || hasCustomTimeout || hasCustomProbe) ? '已自定义' : '默认';
+    (hasCustomMark || hasCustomTimeout || hasCustomRetention || hasCustomProbe) ? '已自定义' : '默认';
 }
 
 async function loadConfig() {
@@ -2144,6 +2290,12 @@ async function loadConfig() {
       typeof data.conn_timeout === 'number' && data.conn_timeout > 0 ? String(data.conn_timeout) : '10';
     document.getElementById('opTimeout').value =
       typeof data.op_timeout === 'number' && data.op_timeout > 0 ? String(data.op_timeout) : '15';
+    document.getElementById('logMaxFiles').value =
+      typeof data.log_max_files === 'number' && Number.isInteger(data.log_max_files) && data.log_max_files >= 0 && data.log_max_files <= 100
+        ? String(data.log_max_files) : '5';
+    document.getElementById('logMaxDays').value =
+      typeof data.log_max_days === 'number' && Number.isInteger(data.log_max_days) && data.log_max_days >= 0 && data.log_max_days <= 365
+        ? String(data.log_max_days) : '3';
 
     renderProbeHosts(Array.isArray(data.probe_hosts) ? data.probe_hosts : DEFAULT_PROBE_HOSTS);
     updatePreservedChips(data);
@@ -2158,6 +2310,8 @@ async function saveConfig(silentSuccess) {
   const passwordEl = document.getElementById('password');
   const connTimeoutEl = document.getElementById('connTimeout');
   const opTimeoutEl = document.getElementById('opTimeout');
+  const logMaxFilesEl = document.getElementById('logMaxFiles');
+  const logMaxDaysEl = document.getElementById('logMaxDays');
   const markEl = document.getElementById('accountMark');
 
   const username = usernameEl.value.trim();
@@ -2167,6 +2321,8 @@ async function saveConfig(silentSuccess) {
   setFieldError(passwordEl, 'passwordErr', '');
   setFieldError(connTimeoutEl, 'connTimeoutErr', '');
   setFieldError(opTimeoutEl, 'opTimeoutErr', '');
+  setFieldError(logMaxFilesEl, 'logMaxFilesErr', '');
+  setFieldError(logMaxDaysEl, 'logMaxDaysErr', '');
   setFieldError(markEl, 'accountMarkErr', '');
   setFieldError(null, 'probeHostsErr', '');
 
@@ -2183,7 +2339,8 @@ async function saveConfig(silentSuccess) {
     return false;
   }
 
-  const connTimeout = Number(connTimeoutEl.value.trim());
+  const connTimeoutRaw = connTimeoutEl.value.trim();
+  const connTimeout = /^\d+$/.test(connTimeoutRaw) ? Number(connTimeoutRaw) : NaN;
   if (!Number.isInteger(connTimeout) || connTimeout < 1 || connTimeout > 300) {
     document.getElementById('advancedAccordion').open = true;
     setFieldError(connTimeoutEl, 'connTimeoutErr', '请输入 1 - 300 的整数秒');
@@ -2192,12 +2349,33 @@ async function saveConfig(silentSuccess) {
     return false;
   }
 
-  const opTimeout = Number(opTimeoutEl.value.trim());
+  const opTimeoutRaw = opTimeoutEl.value.trim();
+  const opTimeout = /^\d+$/.test(opTimeoutRaw) ? Number(opTimeoutRaw) : NaN;
   if (!Number.isInteger(opTimeout) || opTimeout < 1 || opTimeout > 300) {
     document.getElementById('advancedAccordion').open = true;
     setFieldError(opTimeoutEl, 'opTimeoutErr', '请输入 1 - 300 的整数秒');
     opTimeoutEl.focus();
     showToast('操作超时参数无效', true);
+    return false;
+  }
+
+  const logMaxFilesRaw = logMaxFilesEl.value.trim();
+  const logMaxFiles = /^\d+$/.test(logMaxFilesRaw) ? Number(logMaxFilesRaw) : NaN;
+  if (!Number.isInteger(logMaxFiles) || logMaxFiles < 0 || logMaxFiles > 100) {
+    document.getElementById('advancedAccordion').open = true;
+    setFieldError(logMaxFilesEl, 'logMaxFilesErr', '请输入 0 - 100 的整数');
+    logMaxFilesEl.focus();
+    showToast('归档日志保留份数无效', true);
+    return false;
+  }
+
+  const logMaxDaysRaw = logMaxDaysEl.value.trim();
+  const logMaxDays = /^\d+$/.test(logMaxDaysRaw) ? Number(logMaxDaysRaw) : NaN;
+  if (!Number.isInteger(logMaxDays) || logMaxDays < 0 || logMaxDays > 365) {
+    document.getElementById('advancedAccordion').open = true;
+    setFieldError(logMaxDaysEl, 'logMaxDaysErr', '请输入 0 - 365 的整数');
+    logMaxDaysEl.focus();
+    showToast('归档日志保留天数无效', true);
     return false;
   }
 
@@ -2236,6 +2414,8 @@ async function saveConfig(silentSuccess) {
   if (typeof cfg.web_port !== 'number' || cfg.web_port < 1 || cfg.web_port > 65535) cfg.web_port = 8888;
   cfg.conn_timeout = connTimeout;
   cfg.op_timeout = opTimeout;
+  cfg.log_max_files = logMaxFiles;
+  cfg.log_max_days = logMaxDays;
   cfg.probe_hosts = probeCheck.list;
 
   const prevAccounts = Array.isArray(cfg.accounts) ? cfg.accounts : [];
@@ -2575,9 +2755,92 @@ async function refreshLog() {
   const btn = document.getElementById('btnRefreshLog');
   setButtonLoading(btn, true);
   try {
-    const ok = await pollLog(true);
+    const [ok] = await Promise.all([pollLog(true), refreshLogStorage()]);
     showToast(ok ? '日志已刷新' : '刷新日志失败', !ok);
   } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+let latestLogStats = { files: 0, bytes: 0 };
+
+function formatBytes(bytes) {
+  const size = Number(bytes);
+  if (!Number.isFinite(size) || size < 0) return '0 B';
+  if (size < 1024) return `${Math.round(size)} B`;
+  if (size < 1048576) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1048576).toFixed(2)} MB`;
+}
+
+async function refreshLogStorage() {
+  const badge = document.getElementById('logStorageBadge');
+  if (!badge) return;
+  try {
+    const res = await fetch(`${API}/api/logs?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) {
+      badge.textContent = '统计不可用';
+      return;
+    }
+    const data = await res.json();
+    const files = Array.isArray(data && data.files) ? data.files : [];
+    const totalBytes = files.reduce((sum, f) => sum + (Number(f && f.size) || 0), 0);
+    latestLogStats = { files: files.length, bytes: totalBytes };
+    badge.textContent = `共 ${files.length} 个文件 · ${formatBytes(totalBytes)}`;
+  } catch {
+    badge.textContent = '统计不可用';
+  }
+}
+
+function openClearLogModal() {
+  if (isBusyAction) return;
+  const desc = document.getElementById('clearLogDesc');
+  if (desc) {
+    const statsText = latestLogStats.files > 0
+      ? `当前共有 ${latestLogStats.files} 个日志文件（共 ${formatBytes(latestLogStats.bytes)}）。`
+      : '当前日志目录暂无归档占用。';
+    desc.textContent = `${statsText}请选择要清理的日志范围；守护进程仍可继续写入，当前 run.log 采用原位截断以保障日志连续性。`;
+  }
+  if (!clearLogDialog || typeof clearLogDialog.showModal !== 'function') {
+    if (window.confirm('确认清理所有历史归档并清空当前 run.log 吗？')) {
+      executeClearLogs('all');
+    }
+    return;
+  }
+  clearLogDialog.returnValue = '';
+  clearLogDialog.showModal();
+}
+
+async function executeClearLogs(mode) {
+  if (isBusyAction) return;
+  const btn = document.getElementById('btnClearLog');
+  isBusyAction = true;
+  setButtonLoading(btn, true);
+  try {
+    const res = await fetch(`${API}/api/logs/clear`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode === 'archived' ? 'archived' : 'all' })
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || data.ok === false) {
+      showToast(`清理失败 (HTTP ${res.status})`, true);
+      return;
+    }
+    const deleted = Number(data.deleted_files) || 0;
+    const freed = formatBytes(data.freed_bytes || 0);
+    if (mode !== 'archived') {
+      latestLogText = '';
+    }
+    await Promise.all([pollLog(true), refreshLogStorage()]);
+    if (mode === 'archived') {
+      showToast(`已清理 ${deleted} 个归档，释放 ${freed}`);
+    } else {
+      showToast(deleted > 0 ? `已清理 ${deleted} 个归档并清空当前日志，释放 ${freed}` : `已清空当前日志，释放 ${freed}`);
+    }
+  } catch {
+    showToast('清理失败: 网络错误', true);
+  } finally {
+    isBusyAction = false;
     setButtonLoading(btn, false);
   }
 }
@@ -2648,10 +2911,13 @@ async function exportLog() {
   }
 }
 
-pollLog().then(() => refreshStatus());
+Promise.all([pollLog(), refreshLogStorage()]).then(() => refreshStatus());
 loadConfig();
 setInterval(refreshStatus, 5000);
-setInterval(pollLog, 5000);
+setInterval(() => {
+  pollLog();
+  refreshLogStorage();
+}, 5000);
 </script>
 </body>
 </html>

@@ -111,6 +111,10 @@ typedef struct
 
 #define DEFAULT_WEB_EXTERNAL_ACC false
 
+#define DEFAULT_LOG_MAX_FILES 5
+#define DEFAULT_LOG_MAX_DAYS 3
+#define DEFAULT_LOG_MAX_TOTAL_MB 10
+
 typedef enum
 {
     GET_TICKET = 1,
@@ -185,6 +189,8 @@ typedef struct
     bool web_external_acc;
     long log_lv;
     char log_dir[CFG_LOG_DIR_LEN];
+    long log_max_files;
+    long log_max_days;
     uint16_t web_port;
     long conn_timeout;
     long op_timeout;
@@ -329,6 +335,10 @@ extern bool g_waiting_cfg;
 extern long g_conn_timeout;
 
 extern long g_op_timeout;
+
+extern long g_log_max_files;
+
+extern long g_log_max_days;
 
 /** @brief 刷新状态函数 */
 void refresh_states(void);

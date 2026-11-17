@@ -91,6 +91,8 @@ static const char s_default_cfg[] = "{\n"
                                     "   \"web_external_acc\": false,\n"
                                     "   \"log_lv\": 4,\n"
                                     "   \"log_dir\": \"./\",\n"
+                                    "   \"log_max_files\": 5,\n"
+                                    "   \"log_max_days\": 3,\n"
                                     "   \"conn_timeout\": 10,\n"
                                     "   \"op_timeout\": 15,\n"
                                     "   \"web_port\": 8888,\n"
@@ -241,6 +243,8 @@ static bool save_cfg_from_cfg(const cJSON* cfg_json)
     cJSON_AddBoolToObject(root, "web_external_acc", global->web_external_acc);
     cJSON_AddNumberToObject(root, "log_lv", global->log_lv);
     cJSON_AddStringToObject(root, "log_dir", global->log_dir);
+    cJSON_AddNumberToObject(root, "log_max_files", global->log_max_files);
+    cJSON_AddNumberToObject(root, "log_max_days", global->log_max_days);
     cJSON_AddNumberToObject(root, "conn_timeout", global->conn_timeout);
     cJSON_AddNumberToObject(root, "op_timeout", global->op_timeout);
     cJSON_AddNumberToObject(root, "web_port", global->web_port);
@@ -529,6 +533,8 @@ bool load_cfg(void)
         g_prog_status[0].cfg.web_external_acc = DEFAULT_WEB_EXTERNAL_ACC;
         g_prog_status[0].cfg.log_lv = LOG_LEVEL_INFO;
         snprintf(g_prog_status[0].cfg.log_dir, sizeof(g_prog_status[0].cfg.log_dir), "%s", get_logger_dir_cfg());
+        g_prog_status[0].cfg.log_max_files = DEFAULT_LOG_MAX_FILES;
+        g_prog_status[0].cfg.log_max_days = DEFAULT_LOG_MAX_DAYS;
         g_prog_status[0].cfg.conn_timeout = DEFAULT_CONN_TIMEOUT;
         g_prog_status[0].cfg.op_timeout = DEFAULT_OP_TIMEOUT;
     }
@@ -680,6 +686,26 @@ bool load_cfg(void)
     {
         set_logger_dir(log_dir);
     }
+
+    long log_max_files = cfg_read_num(cfg_json, "log_max_files", DEFAULT_LOG_MAX_FILES);
+    if (log_max_files < 0 || log_max_files > 100)
+    {
+        LOG_WARN("log_max_files 参数超出范围 (%ld, 允许 0..100), 使用默认值 %d",
+            log_max_files, DEFAULT_LOG_MAX_FILES);
+        log_max_files = DEFAULT_LOG_MAX_FILES;
+    }
+    g_log_max_files = log_max_files;
+
+    long log_max_days = cfg_read_num(cfg_json, "log_max_days", DEFAULT_LOG_MAX_DAYS);
+    if (log_max_days < 0 || log_max_days > 365)
+    {
+        LOG_WARN("log_max_days 参数超出范围 (%ld, 允许 0..365), 使用默认值 %d",
+            log_max_days, DEFAULT_LOG_MAX_DAYS);
+        log_max_days = DEFAULT_LOG_MAX_DAYS;
+    }
+    g_log_max_days = log_max_days;
+
+    prune_old_logs();
 
     g_conn_timeout = cfg_read_num(cfg_json, "conn_timeout", DEFAULT_CONN_TIMEOUT);
     g_op_timeout = cfg_read_num(cfg_json, "op_timeout", DEFAULT_OP_TIMEOUT);
@@ -927,6 +953,8 @@ bool load_cfg(void)
         global_cfg->log_lv = log_lv;
         snprintf(global_cfg->log_dir, sizeof(global_cfg->log_dir), "%s",
             log_dir != NULL ? log_dir : get_logger_dir_cfg());
+        global_cfg->log_max_files = g_log_max_files;
+        global_cfg->log_max_days = g_log_max_days;
         global_cfg->web_port = g_web_port;
         global_cfg->conn_timeout = g_conn_timeout;
         global_cfg->op_timeout = g_op_timeout;

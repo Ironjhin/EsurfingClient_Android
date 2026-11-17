@@ -359,6 +359,53 @@ bool handle_api_post(struct mg_connection* c, struct mg_http_message* hm)
         return true;
     }
 
+    // 手动清理日志 (POST /api/logs/clear, 支持 {"mode": "all" | "archived"}, 默认 "all")
+    if (mg_match(hm->uri, mg_str("/api/logs/clear"), NULL))
+    {
+        bool clear_current = true;
+        if (data != NULL)
+        {
+            cJSON* body = cJSON_Parse(data);
+            if (body != NULL)
+            {
+                const cJSON* mode = cJSON_GetObjectItem(body, "mode");
+                if (cJSON_IsString(mode) && mode->valuestring != NULL &&
+                    strcmp(mode->valuestring, "archived") == 0)
+                {
+                    clear_current = false;
+                }
+                cJSON_Delete(body);
+            }
+        }
+        free(data);
+
+        uint32_t deleted_files = 0;
+        uint64_t freed_bytes = 0;
+        const bool ok = clear_logs(clear_current, &deleted_files, &freed_bytes);
+
+        cJSON* resp = cJSON_CreateObject();
+        if (resp == NULL)
+        {
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
+        }
+        cJSON_AddBoolToObject(resp, "ok", ok);
+        cJSON_AddNumberToObject(resp, "deleted_files", (double)deleted_files);
+        cJSON_AddNumberToObject(resp, "freed_bytes", (double)freed_bytes);
+        char* resp_text = cJSON_PrintUnformatted(resp);
+        if (resp_text != NULL)
+        {
+            mg_http_reply(c, ok ? 200 : 500, HEADER_JSON, "%s", resp_text);
+            free(resp_text);
+        }
+        else
+        {
+            mg_http_reply(c, 500, HEADER_CORS, "");
+        }
+        cJSON_Delete(resp);
+        return true;
+    }
+
     free(data);
 
     /**

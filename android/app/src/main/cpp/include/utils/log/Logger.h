@@ -127,6 +127,20 @@ bool init_logger(void);
 void clean_logger(void);
 
 /**
+ * @brief 自动淘汰过期或超限的历史归档日志 (*.log, 排除 run.log)
+ */
+void prune_old_logs(void);
+
+/**
+ * @brief 手动清理日志 (删除全部历史归档, 可选原位截断当前 run.log)
+ * @param clear_current 是否同时原位清空当前 run.log
+ * @param deleted_files 输出删除的归档文件数 (可为 NULL)
+ * @param freed_bytes 输出释放的总字节数 (可为 NULL)
+ * @return 是否成功完成清理
+ */
+bool clear_logs(bool clear_current, uint32_t* deleted_files, uint64_t* freed_bytes);
+
+/**
  * @brief 获取实际使用的日志目录 (未初始化时返回空字符串)
  * @return 日志目录
  */

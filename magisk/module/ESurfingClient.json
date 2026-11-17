@@ -1,6 +1,8 @@
 {
   "enabled": true,
-  "log_lv": 5,
+  "log_lv": 4,
+  "log_max_files": 5,
+  "log_max_days": 3,
   "accounts": [
     {
       "username": "",

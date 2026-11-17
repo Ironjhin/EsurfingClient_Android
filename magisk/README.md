@@ -1,6 +1,6 @@
 # ESurfing Daemon — Magisk / KernelSU / APatch Module
 
-广东天翼校园网认证守护进程的 Root 模块版本（当前版本 **`v1.1.72` / Core `v2.3.1-r5`**）。纯 C 守护进程后台运行，内存占用 ~1–2 MB。
+广东天翼校园网认证守护进程的 Root 模块版本（当前版本 **`v1.1.73` / Core `v2.3.1-r5`**）。纯 C 守护进程后台运行，内存占用 ~1–2 MB。
 
 安装后桌面出现 **ESurfing** 图标，点进去即可进入 Web 管理后台；KernelSU / APatch 管理器中也有「WebUI」按钮直通新版离线控制台。
 
@@ -40,7 +40,9 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
 ```json
 {
   "enabled": true,
-  "log_lv": 5,
+  "log_lv": 4,
+  "log_max_files": 5,
+  "log_max_days": 3,
   "accounts": [
     {
       "username": "你的校园网账号",
@@ -56,7 +58,9 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
 | 字段 | 说明 |
 |------|------|
 | `enabled` | 是否启用自动认证 |
-| `log_lv` | 日志等级：`0=NONE`, `1=FATAL`, `2=ERROR`, `3=WARN`, `4=INFO`, `5=DEBUG`, `6=TRACE` |
+| `log_lv` | 日志等级：`0=NONE`, `1=FATAL`, `2=ERROR`, `3=WARN`, `4=INFO` (默认), `5=DEBUG`, `6=TRACE` |
+| `log_max_files` | 最多保留的历史归档日志份数（默认 `5`，范围 `0..100`，`0` 表示仅保留当前 `run.log`） |
+| `log_max_days` | 历史归档日志保留天数（默认 `3`，范围 `0..365`，`0` 表示不限天数；总归档上限 `10 MB`） |
 | `channel` | 认证通道：模块默认锁定 `android`（`3`，推荐）；另支持 `windows` / `linux` / `ios` / `macos` |
 | `mark` | `SO_MARK` 路由标记（十六进制，多 WAN 环境用，留空自动分配；绑定失败自动放弃防串线） |
 | `time_windows` | 分时段自动认证/下线时间窗列表 |
@@ -72,10 +76,10 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
 | 板块 | 说明 |
 |------|------|
 | 状态总览 | 显示认证状态（含异常/禁用/待配置提示）、网络连通状态与单调运行时长 |
-| 配置表单 | 修改账号密码、通道、日志等级、`mark`、超时参数及 `probe_hosts` 自定义探测目标 |
+| 配置表单 | 修改账号密码、通道、日志等级、归档保留策略 (`log_max_files`/`log_max_days`)、`mark`、超时及 `probe_hosts` |
 | 保存并应用 | 无损合并保存配置并通过 `.apply` 标记平滑重载认证进程 |
 | 服务控制 | 支持「强制重新认证」、基于 `bootId` 防竞态的「重启服务」以及「停止服务」 |
-| 日志终端 | 实时查看、分级着色、筛选、复制与导出 `run.log` |
+| 日志终端 | 实时查看、分级着色、筛选、复制、导出，并支持目录存储统计与模态确认一键清理 (`POST /api/logs/clear`) |
 
 ## 目录结构
 
@@ -86,7 +90,7 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
 ├── esurfingd.pid                  # 主守护进程 PID 文件
 ├── esurfingclient-*.lock          # 单实例文件锁 (main / web / auth-N)
 ├── run.log                        # 运行日志
-├── *.rotate.log                   # 轮转归档（满 1000 行后自动轮转，最多保留 3 个）
+├── *.rotate.log                   # 轮转归档（满 1000 行自动轮转，默认最多保留 5 份 / 3 天 / 总归档上限 10 MB）
 ├── portal/                        # 本地 Portal 静态资源 (http://127.0.0.1:8888/)
 │   ├── index.html
 │   └── assets/
@@ -127,7 +131,7 @@ CI 自动构建在 GitHub Actions 的 `magisk` 分支上运行。
 
 这是基于 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion)（已同步至 **`v2.3.1-r5`**）的 Android Root 守护模块分支，主要增强：
 
-| 方面 | 原版 CVersion (`v2.3.1-r5`) | 本模块 (`v1.1.72`) |
+| 方面 | 原版 CVersion (`v2.3.1-r5`) | 本模块 (`v1.1.73`) |
 |------|--------------|--------|
 | 平台 | Windows / Linux / OpenWrt | Android arm64 Magisk / KernelSU / APatch 模块 |
 | 部署 | 手动编译或命令行部署 | 模块管理器一键刷入 + 桌面 WebView APK + KernelSU WebUI |
@@ -139,6 +143,10 @@ CI 自动构建在 GitHub Actions 的 `magisk` 分支上运行。
 ## 更新日志
 
 完整更新日志见仓库根目录 **[CHANGELOG.md](../CHANGELOG.md)**。
+
+### v1.1.73 (Core v2.3.1-r5)
+- **多维自动日志轮转淘汰与安全清理**：新增 `log_max_files`（默认 `5`，`0..100`）、`log_max_days`（默认 `3`，`0..365`）与 `10 MB` 总归档兜底上限（`lstat` 精准过滤防误删、未同步 NTP 保护）；默认日志等级优化为 `INFO (4)`；新增 `POST /api/logs/clear` 支持原位 `truncate` 安全清空 `run.log`（保持多进程 `O_APPEND` 句柄不断裂）。
+- **双端 WebUI 存储统计与清理**：KernelSU Bento WebUI 与 8888 原生 Portal 均接入日志存储占用实时统计、一键「清理日志」模态确认弹窗及 `log_max_files` / `log_max_days` 高级参数编辑。
 
 ### v1.1.72 (Core v2.3.1-r5)
 - **同步上游 `v2.2.0-r5` → `v2.3.1-r5`**：连续两次 `302` 二次确认防误踢、60 秒内登录满 2 次暂停 35 分钟防风控锁、心跳区分网络/协议失败并按 `1/2/4/8/16/30s` 指数退避、最多 14 路固定 IPv4 `probe_hosts` 自定义并发探测、`main`/`web`/`auth-N` 单实例锁、`SO_MARK` 绑定失败丢弃防串线、`.apply` 热重载解耦、`States` (`cfg_t`) 重构及 `VERBOSE → TRACE` 更名。

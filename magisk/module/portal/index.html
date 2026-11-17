@@ -25,6 +25,15 @@
       -webkit-mask: var(--icon) center / contain no-repeat;
       mask: var(--icon) center / contain no-repeat;
     }
+
+    dialog:modal {
+      overscroll-behavior: contain;
+    }
+
+    dialog::backdrop {
+      overflow: hidden;
+      overscroll-behavior: contain;
+    }
   </style>
 </head>
 
@@ -360,6 +369,18 @@
                 OpenWrt 上固定为 /var/log/esurfing/logs, 这里填了也不生效)</span>
             </fieldset>
             <fieldset class="fieldset">
+              <legend class="fieldset-legend">归档日志保留份数</legend>
+              <input type="number" class="input" min="0" max="100" step="1"
+                     x-model.number="$store.main.configs.log_max_files" />
+              <span class="label">最多保留的历史归档日志份数 (0 - 100，默认 5；0 表示仅保留当前 run.log)</span>
+            </fieldset>
+            <fieldset class="fieldset">
+              <legend class="fieldset-legend">归档日志保留天数</legend>
+              <input type="number" class="input" min="0" max="365" step="1"
+                     x-model.number="$store.main.configs.log_max_days" />
+              <span class="label">历史归档日志最长保留天数 (0 - 365，默认 3；0 表示不限制天数；总归档上限 10 MB)</span>
+            </fieldset>
+            <fieldset class="fieldset">
               <legend class="fieldset-legend">Web 服务端口</legend>
               <input type="number" class="input" min="1" max="65535" step="1"
                      x-model.number="$store.main.configs.web_port" />
@@ -598,7 +619,10 @@
           <div class="divider my-1"></div>
           <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
             <div class="lg:col-span-1">
-              <div class="text-sm font-semibold mb-2">日志文件</div>
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <span class="text-sm font-semibold">日志文件</span>
+                <span class="badge badge-ghost badge-xs" x-text="storageSummaryText"></span>
+              </div>
               <ul
                       class="menu menu-sm bg-base-200 rounded-box w-full max-h-64 overflow-y-auto flex-nowrap">
                 <template x-for="file in files" :key="file.name">
@@ -624,7 +648,7 @@
                          x-model="autoRefresh" />
                   <span class="label-text">每 5 秒自动刷新</span>
                 </label>
-                <div class="flex gap-2">
+                <div class="flex flex-wrap gap-2">
                   <button class="btn btn-sm btn-soft btn-info"
                           @click="refresh()" :disabled="loading">
                         <span class="loading loading-spinner loading-xs"
@@ -633,6 +657,12 @@
                   </button>
                   <button class="btn btn-sm btn-soft btn-neutral"
                           @click="download()" :disabled="!selected">下载</button>
+                  <button class="btn btn-sm btn-soft btn-error"
+                          @click="openClearModal()" :disabled="clearing || !files.length">
+                        <span class="loading loading-spinner loading-xs"
+                              x-show="clearing" x-cloak></span>
+                    清理日志
+                  </button>
                 </div>
               </div>
             </div>
@@ -653,6 +683,20 @@
           </div>
         </div>
       </div>
+      <dialog x-ref="clearLogsModal" class="modal modal-top">
+        <div class="modal-box max-w-[90%] mx-auto mt-18 rounded-t-lg">
+          <h3 class="text-lg font-bold">清理日志</h3>
+          <div class="py-4 text-base">
+            将删除全部历史归档日志并原位清空当前运行日志（当前：<span class="font-mono" x-text="storageSummaryText"></span>）。守护进程仍可继续写入，确定清理吗？
+          </div>
+          <div class="modal-action">
+            <button type="button" class="btn btn-soft btn-neutral" autofocus
+                    @click="$refs.clearLogsModal.close()">取消</button>
+            <button type="button" class="btn btn-soft btn-error"
+                    @click="confirmClear()">确认清理</button>
+          </div>
+        </div>
+      </dialog>
     </div>
     <div class="flex-1 p-10" x-show="$store.main.activePanel === 'about'"
          x-cloak>

@@ -1,3 +1,9 @@
+#ifndef _WIN32
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "LoggerInternal.h"
 
 #include "core/States.h"
@@ -5,7 +11,15 @@
 #include "utils/text/TextUtils.h"
 #include "utils/time/TimeUtils.h"
 
+#include <ctype.h>
 #include <inttypes.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#ifndef _WIN32
+#include <dirent.h>
+#endif
 
 static const char s_rotate_file_name[] = ".rotate.log";
 
@@ -192,7 +206,8 @@ void rotate(void)
         return;
     }
 
-    if (rename(g_logger_cfg.log_file, rotate_file_name) != 0)
+    const bool renamed = (rename(g_logger_cfg.log_file, rotate_file_name) == 0);
+    if (!renamed)
     {
         // 多半是已被其它进程抢先轮转, 属于正常竞争
         fprintf(stderr, "[INFO] 日志轮转未生效 (可能已被其它进程轮转): %s\n", g_logger_cfg.log_file);
@@ -202,4 +217,386 @@ void rotate(void)
     {
         fprintf(stderr, "[ERROR] 轮转后无法重新打开日志文件 %s\n", g_logger_cfg.log_file);
     }
+
+    if (renamed)
+    {
+        prune_old_logs();
+    }
+}
+
+#define LOG_ARCHIVE_NAME_MAX 256
+#define LOG_NTP_MIN_VALID_SEC 1700000000ULL
+
+typedef struct
+{
+    char name[LOG_ARCHIVE_NAME_MAX];
+    uint64_t size;
+    uint64_t mtime;
+} archive_log_entry_t;
+
+/**
+ * @brief 严格校验文件名是否为可清理的历史归档日志 (绝对排除 run.log 与非 .log 文件)
+ */
+static bool is_archived_log_name(const char* name)
+{
+    if (name == NULL) return false;
+
+    const size_t len = strlen(name);
+    if (len <= 4 || len >= LOG_ARCHIVE_NAME_MAX) return false;
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) return false;
+
+    for (size_t i = 0; i < len; i++)
+    {
+        const unsigned char c = (unsigned char)name[i];
+        if (isalnum(c) == 0 && c != '.' && c != '_' && c != '-') return false;
+    }
+
+    if (str_ieq(name + len - 4, ".log") == false) return false;
+
+#ifdef _WIN32
+    if (str_ieq(name, g_log_file_name)) return false;
+#else
+    if (strcmp(name, g_log_file_name) == 0) return false;
+#endif
+    return true;
+}
+
+static int cmp_archive_desc(const void* a, const void* b)
+{
+    const archive_log_entry_t* left = (const archive_log_entry_t*)a;
+    const archive_log_entry_t* right = (const archive_log_entry_t*)b;
+    if (left->mtime != right->mtime)
+    {
+        return (left->mtime > right->mtime) ? -1 : 1;
+    }
+    const int cmp = strcmp(left->name, right->name);
+    return (cmp > 0) ? -1 : (cmp < 0 ? 1 : 0);
+}
+
+static bool append_archive_entry(archive_log_entry_t** items, size_t* count, size_t* cap,
+    const char* name, const uint64_t size, const uint64_t mtime)
+{
+    if (*count >= *cap)
+    {
+        const size_t new_cap = (*cap == 0) ? 16 : (*cap * 2);
+        archive_log_entry_t* grown = realloc(*items, new_cap * sizeof(archive_log_entry_t));
+        if (grown == NULL) return false;
+        *items = grown;
+        *cap = new_cap;
+    }
+
+    archive_log_entry_t* dst = &(*items)[*count];
+    snprintf(dst->name, sizeof(dst->name), "%s", name);
+    dst->size = size;
+    dst->mtime = mtime;
+    (*count)++;
+    return true;
+}
+
+/**
+ * @brief 收集日志目录下的所有合法历史归档普通文件 (严禁跟随软链接/目录)
+ */
+static bool collect_archived_logs(const char* dir, archive_log_entry_t** out_items, size_t* out_count)
+{
+    *out_items = NULL;
+    *out_count = 0;
+
+    archive_log_entry_t* items = NULL;
+    size_t count = 0;
+    size_t cap = 0;
+
+#ifdef _WIN32
+    char pattern[LOG_PATH_MAX];
+    const int pattern_len = snprintf(pattern, sizeof(pattern), "%s%c*", dir, SEP);
+    if (pattern_len <= 0 || (size_t)pattern_len >= sizeof(pattern)) return false;
+
+    WIN32_FIND_DATAA find_data;
+    HANDLE handle = FindFirstFileA(pattern, &find_data);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        return GetLastError() == ERROR_FILE_NOT_FOUND;
+    }
+
+    bool ok = true;
+    do
+    {
+        if ((find_data.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+        {
+            continue;
+        }
+        if (is_archived_log_name(find_data.cFileName) == false) continue;
+
+        char path[LOG_PATH_MAX];
+        const int path_len = snprintf(path, sizeof(path), "%s%c%s", dir, SEP, find_data.cFileName);
+        if (path_len <= 0 || (size_t)path_len >= sizeof(path)) continue;
+
+        const uint64_t size = ((uint64_t)find_data.nFileSizeHigh << 32) | (uint64_t)find_data.nFileSizeLow;
+        const uint64_t ft = ((uint64_t)find_data.ftLastWriteTime.dwHighDateTime << 32) |
+            (uint64_t)find_data.ftLastWriteTime.dwLowDateTime;
+        const uint64_t mtime = (ft >= 116444736000000000ULL) ? ((ft - 116444736000000000ULL) / 10000000ULL) : 0;
+
+        if (append_archive_entry(&items, &count, &cap, find_data.cFileName, size, mtime) == false)
+        {
+            ok = false;
+            break;
+        }
+    } while (FindNextFileA(handle, &find_data) != 0);
+
+    FindClose(handle);
+    if (ok == false)
+    {
+        free(items);
+        return false;
+    }
+#else
+    DIR* dir_handle = opendir(dir);
+    if (dir_handle == NULL) return false;
+
+    bool ok = true;
+    struct dirent* entry;
+    while ((entry = readdir(dir_handle)) != NULL)
+    {
+        if (is_archived_log_name(entry->d_name) == false) continue;
+
+        char path[LOG_PATH_MAX];
+        const int path_len = snprintf(path, sizeof(path), "%s%c%s", dir, SEP, entry->d_name);
+        if (path_len <= 0 || (size_t)path_len >= sizeof(path)) continue;
+
+        struct stat st;
+        if (lstat(path, &st) != 0 || !S_ISREG(st.st_mode)) continue;
+
+        const uint64_t size = (st.st_size > 0) ? (uint64_t)st.st_size : 0;
+        const uint64_t mtime = (st.st_mtime > 0) ? (uint64_t)st.st_mtime : 0;
+
+        if (append_archive_entry(&items, &count, &cap, entry->d_name, size, mtime) == false)
+        {
+            ok = false;
+            break;
+        }
+    }
+
+    closedir(dir_handle);
+    if (ok == false)
+    {
+        free(items);
+        return false;
+    }
+#endif
+
+    *out_items = items;
+    *out_count = count;
+    return true;
+}
+
+void prune_old_logs(void)
+{
+    if (g_query_mode || g_list_only) return;
+
+    const char* dir = get_logger_dir();
+    if (dir == NULL || dir[0] == '\0') return;
+
+    archive_log_entry_t* items = NULL;
+    size_t count = 0;
+    if (collect_archived_logs(dir, &items, &count) == false || count == 0)
+    {
+        free(items);
+        return;
+    }
+
+    const time_t raw_now = time(NULL);
+    const uint64_t now_sec = (raw_now > 0) ? (uint64_t)raw_now : 0;
+    const bool check_days = (g_log_max_days > 0 && now_sec >= LOG_NTP_MIN_VALID_SEC);
+    const uint64_t max_age_sec = check_days ? ((uint64_t)g_log_max_days * 86400ULL) : 0;
+
+    size_t remain = 0;
+    for (size_t i = 0; i < count; i++)
+    {
+        if (check_days && items[i].mtime > 0 && now_sec > items[i].mtime &&
+            (now_sec - items[i].mtime) > max_age_sec)
+        {
+            char path[LOG_PATH_MAX];
+            const int n = snprintf(path, sizeof(path), "%s%c%s", dir, SEP, items[i].name);
+            if (n > 0 && (size_t)n < sizeof(path))
+            {
+                remove(path);
+            }
+            continue;
+        }
+        if (remain != i) items[remain] = items[i];
+        remain++;
+    }
+
+    if (remain > 1)
+    {
+        qsort(items, remain, sizeof(archive_log_entry_t), cmp_archive_desc);
+    }
+
+    const long max_files = (g_log_max_files >= 0) ? g_log_max_files : DEFAULT_LOG_MAX_FILES;
+    const uint64_t max_total_bytes = (uint64_t)DEFAULT_LOG_MAX_TOTAL_MB * 1024ULL * 1024ULL;
+    size_t kept_files = 0;
+    uint64_t kept_bytes = 0;
+    bool budget_exhausted = false;
+
+    for (size_t i = 0; i < remain; i++)
+    {
+        bool should_delete = false;
+        if (budget_exhausted || (long)kept_files >= max_files)
+        {
+            should_delete = true;
+        }
+        else if (items[i].size > max_total_bytes || kept_bytes + items[i].size > max_total_bytes)
+        {
+            should_delete = true;
+            budget_exhausted = true;
+        }
+        else
+        {
+            kept_files++;
+            kept_bytes += items[i].size;
+        }
+
+        if (should_delete)
+        {
+            char path[LOG_PATH_MAX];
+            const int n = snprintf(path, sizeof(path), "%s%c%s", dir, SEP, items[i].name);
+            if (n > 0 && (size_t)n < sizeof(path))
+            {
+                remove(path);
+            }
+        }
+    }
+
+    free(items);
+}
+
+bool clear_logs(const bool clear_current, uint32_t* deleted_files, uint64_t* freed_bytes)
+{
+    if (deleted_files != NULL) *deleted_files = 0;
+    if (freed_bytes != NULL) *freed_bytes = 0;
+
+    const char* dir = get_logger_dir();
+    if (dir == NULL || dir[0] == '\0') return false;
+
+    archive_log_entry_t* items = NULL;
+    size_t count = 0;
+    if (collect_archived_logs(dir, &items, &count) == false)
+    {
+        return false;
+    }
+
+    uint32_t removed_cnt = 0;
+    uint64_t total_freed = 0;
+    bool ok = true;
+
+    for (size_t i = 0; i < count; i++)
+    {
+        char path[LOG_PATH_MAX];
+        const int n = snprintf(path, sizeof(path), "%s%c%s", dir, SEP, items[i].name);
+        if (n <= 0 || (size_t)n >= sizeof(path)) continue;
+
+        if (remove(path) == 0)
+        {
+            removed_cnt++;
+            total_freed += items[i].size;
+        }
+        else
+        {
+#ifdef _WIN32
+            if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) ok = false;
+#else
+            struct stat st;
+            if (lstat(path, &st) == 0) ok = false;
+#endif
+        }
+    }
+    free(items);
+
+    if (clear_current)
+    {
+        char run_log_path[LOG_PATH_MAX];
+        logger_lock();
+        if (g_logger_cfg.log_file[0] != '\0')
+        {
+            snprintf(run_log_path, sizeof(run_log_path), "%s", g_logger_cfg.log_file);
+        }
+        else
+        {
+            snprintf(run_log_path, sizeof(run_log_path), "%s%c%s", dir, SEP, g_log_file_name);
+        }
+
+#ifdef _WIN32
+        HANDLE h = CreateFileA(run_log_path, GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h != INVALID_HANDLE_VALUE)
+        {
+            LARGE_INTEGER sz;
+            if (GetFileSizeEx(h, &sz) && sz.QuadPart > 0)
+            {
+                total_freed += (uint64_t)sz.QuadPart;
+            }
+            LARGE_INTEGER zero = {0};
+            if (SetFilePointerEx(h, zero, NULL, FILE_BEGIN) && SetEndOfFile(h))
+            {
+                g_logger_cfg.cur_lines = 0;
+                g_logger_cfg.lines_since_check = 0;
+            }
+            else
+            {
+                ok = false;
+            }
+            CloseHandle(h);
+        }
+        else if (GetLastError() == ERROR_FILE_NOT_FOUND)
+        {
+            g_logger_cfg.cur_lines = 0;
+            g_logger_cfg.lines_since_check = 0;
+        }
+        else
+        {
+            ok = false;
+        }
+#else
+        struct stat st;
+        if (lstat(run_log_path, &st) == 0)
+        {
+            if (S_ISREG(st.st_mode))
+            {
+                if (st.st_size > 0)
+                {
+                    total_freed += (uint64_t)st.st_size;
+                }
+                if (truncate(run_log_path, 0) == 0)
+                {
+                    g_logger_cfg.cur_lines = 0;
+                    g_logger_cfg.lines_since_check = 0;
+                }
+                else
+                {
+                    ok = false;
+                }
+            }
+            else
+            {
+                ok = false;
+            }
+        }
+        else if (errno == ENOENT)
+        {
+            g_logger_cfg.cur_lines = 0;
+            g_logger_cfg.lines_since_check = 0;
+        }
+        else
+        {
+            ok = false;
+        }
+#endif
+        logger_unlock();
+    }
+
+    if (deleted_files != NULL) *deleted_files = removed_cnt;
+    if (freed_bytes != NULL) *freed_bytes = total_freed;
+
+    LOG_INFO("已手动清理日志 (删除归档 %" PRIu32 " 个, 释放 %" PRIu64 " 字节)", removed_cnt, total_freed);
+    return ok;
 }

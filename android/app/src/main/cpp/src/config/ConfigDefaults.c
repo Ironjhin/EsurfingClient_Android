@@ -35,6 +35,8 @@ static const cfg_def_t s_cfg_defaults[] = {
     {"web_external_acc", CFG_DEF_BOOL, DEFAULT_WEB_EXTERNAL_ACC, 0, NULL, NULL},
     {"log_lv",           CFG_DEF_NUM, false, LOG_LEVEL_INFO, NULL, NULL},
     {"log_dir",          CFG_DEF_STR, false, 0, DEFAULT_LOG_DIR, NULL},
+    {"log_max_files",    CFG_DEF_NUM, false, DEFAULT_LOG_MAX_FILES, NULL, NULL},
+    {"log_max_days",     CFG_DEF_NUM, false, DEFAULT_LOG_MAX_DAYS, NULL, NULL},
     {"conn_timeout",     CFG_DEF_NUM, false, DEFAULT_CONN_TIMEOUT, NULL, "秒"},
     {"op_timeout",       CFG_DEF_NUM, false, DEFAULT_OP_TIMEOUT, NULL, "秒"},
     {"web_port",         CFG_DEF_NUM, false, DEFAULT_WEB_PORT, NULL, NULL},

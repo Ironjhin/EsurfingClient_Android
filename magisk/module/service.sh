@@ -13,6 +13,9 @@ sleep 15
 mkdir -p "$DATA_DIR/portal" "$DATA_DIR/webroot"
 chmod 755 "$DATA_DIR" "$DATA_DIR/portal" "$DATA_DIR/webroot" 2>/dev/null || true
 
+# Clean up any leftover temporary config files from unexpected power loss
+rm -f "$DATA_DIR"/ESurfingClient.json.*.tmp 2>/dev/null || true
+
 # Copy daemon binary atomically (avoids ETXTBSY if previous binary inode is busy)
 if cp -f "$MODDIR/esurfingd" "$DATA_DIR/esurfingd.new" 2>/dev/null; then
   chmod 755 "$DATA_DIR/esurfingd.new"

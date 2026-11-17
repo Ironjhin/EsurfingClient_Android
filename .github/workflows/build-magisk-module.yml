@@ -220,7 +220,8 @@ jobs:
             '- **配置热重载与内核重构**：保存与应用基于 `.apply` 解耦、状态收拢至 `States` (`cfg_t`)、日志等级 `VERBOSE` 更名为 `TRACE`' \
             '' \
             '#### 2. Magisk / KernelSU 模块升级与全量 Bug 修复' \
-            '- **KernelSU WebUI 全面现代化重构**：全新响应式 Bento 卡片、深浅双主题自适应与切换、实时状态呼吸灯、密码显隐、自定义弹窗、`probe_hosts` 折叠面板及防 XSS 着色日志终端（100% 离线零外链，未认证状态秒开）' \
+            '- **多维日志轮转淘汰与原位安全清理 (`v1.1.73`)**：新增 `log_max_files`（默认 `5`，`0..100`）、`log_max_days`（默认 `3`，`0..365`）与 `10 MB` 总归档兜底上限（`lstat` 精准过滤、未同步 NTP 防护），默认日志等级优化为 `INFO (4)`；新增 `POST /api/logs/clear` 支持原位 `truncate` 安全清空 `run.log`（保持多进程 `O_APPEND` 句柄不断裂）' \
+            '- **KernelSU WebUI & Portal 双端升级**：全新响应式 Bento WebUI 新增实时日志存储统计徽章、原生 `<dialog>` 模态清理确认弹窗与 `log_max_files`/`log_max_days` 高级配置（100% 离线零外链）；8888 原生 Portal 同步补齐归档策略字段校验与「清理日志」入口' \
             '- **Android / 校园网防坑适配**：默认锁定 `android` (通道 `3`) 规避高校 Windows 通道登录超时；单实例锁路径适配至 `/data/adb/esurfing/`；保持 `GID 3005` (`AID_NET_ADMIN`) 透明代理直连豁免' \
             '- **守护稳定性与安全修复**：修复查询/重复启动误删 `esurfingd.pid` 与停止后 `wake_lock` 未释放问题；全链路切换 `CLOCK_MONOTONIC` 单调时钟；修复 `SIGUSR1` 信号安全、`WebLogFiles` 内存安全、禁用配置热重载死锁、`/api/restart` 端口冲突与 `bootId` 检测；修复 `build.sh`/`service.sh`/`action.sh`/`uninstall.sh` 及 WebView APK 明文 HTTP 加载 (`usesCleartextTraffic="true"`)' \
             '' \

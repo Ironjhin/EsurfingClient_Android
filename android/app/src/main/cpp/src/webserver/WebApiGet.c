@@ -362,6 +362,8 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
          * (看实际用的是哪个目录请走 /api/status/sys 的 log_dir)
          */
         cJSON_AddStringToObject(configs, "log_dir", get_logger_dir_cfg());
+        cJSON_AddNumberToObject(configs, "log_max_files", (double)g_log_max_files);
+        cJSON_AddNumberToObject(configs, "log_max_days", (double)g_log_max_days);
         cJSON_AddNumberToObject(configs, "conn_timeout", (double)g_conn_timeout);
         cJSON_AddNumberToObject(configs, "op_timeout", (double)g_op_timeout);
         cJSON_AddNumberToObject(configs, "web_port", g_web_port);

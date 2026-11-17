@@ -119,3 +119,7 @@ bool g_waiting_cfg = false;
 long g_conn_timeout = DEFAULT_CONN_TIMEOUT;
 
 long g_op_timeout = DEFAULT_OP_TIMEOUT;
+
+long g_log_max_files = DEFAULT_LOG_MAX_FILES;
+
+long g_log_max_days = DEFAULT_LOG_MAX_DAYS;

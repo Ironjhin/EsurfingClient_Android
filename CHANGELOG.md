@@ -5,6 +5,30 @@
 
 ---
 
+## v1.1.73 (Core v2.3.1-r5)
+
+### 一、多维自动日志轮转淘汰与原位截断安全清理 (`Logger.c` / `LoggerDir.c` / `Config.c` / `WebApiPost.c`)
+
+- **多维自动日志淘汰引擎 (`log_max_files` / `log_max_days` / 10 MB 兜底)**：
+  - 新增配置项 `log_max_files`（最多保留历史归档日志份数，默认 `5`，合法范围 `0..100`，`0` 表示不留历史归档仅保留当前 `run.log`）与 `log_max_days`（历史归档日志保留天数，默认 `3`，合法范围 `0..365`，`0` 表示不限制天数），并设置历史归档总体积 `10 MB` 兜底上限。
+  - 在守护进程启动、日志满 1000 行触发轮转及正常退出阶段自动扫描并淘汰超限旧 `.log` 归档；严格使用 `lstat` (`S_ISREG`) 仅匹配常规 `.log` 文件且显式排除 `run.log`、配置文件（`ESurfingClient.json`）、`.pid` / `.lock` 与目录/软链接，绝不误删业务配置与静态资源。
+  - **NTP 1970 墙钟防护**：Android 设备开机未联网完成 NTP 校时前若系统时间为 1970 年附近（`now < 1700000000`），自动跳过 `log_max_days` 按天淘汰策略，防止误删有效日志。
+- **默认日志等级优化**：
+  - 将默认日志等级由 `DEBUG (5)` 优化调整为 `INFO (4)`，大幅降低日常挂机 `run.log` 写入量与磁盘磨损。
+- **原位截断安全清空日志接口 (`POST /api/logs/clear`)**：
+  - 新增 `POST /api/logs/clear`，支持请求体 `{"mode": "all"}`（删除全部历史归档并原位清空当前 `run.log`）与 `{"mode": "archived"}`（仅清理历史归档并保留当前 `run.log`），返回 HTTP `200` JSON `{"ok": true, "deleted_files": N, "freed_bytes": B}`。
+  - 清空当前 `run.log` 时严格采用原位 `truncate` / `ftruncate` 并在 `logger_lock()` 互斥保护下重置 `cur_lines = 0`，**严禁 `unlink` / `remove`** 导致多进程持有的 `O_APPEND` 文件句柄悬空丢日志。
+
+### 二、双端 WebUI 存储统计与一键清理升级
+
+- **KernelSU Bento WebUI (`magisk/module/webroot/index.html`)**：
+  - 运行日志卡片接入 `GET /api/logs` 实时展示目录存储占用徽章（如 `共 6 个文件 · 2.45 MB`），新增「清理日志」按钮与原生 `<dialog>` 模态确认框（支持选择「清理全部日志（含当前 run.log）」或「仅清理历史归档」），清理成功后 Toast 提示释放空间并同步刷新日志终端与占用统计。
+  - 「高级参数与探测目标」折叠面板新增 `log_max_files`（`0–100`）与 `log_max_days`（`0–365`）可视化编辑、整数校验及 `cachedConfig` 无损合并保存。
+- **8888 原生 Portal (`magisk/portal/` 与 `magisk/module/portal/`)**：
+  - `CONFIG_FIELDS` 与「高级选项」同步补齐 `log_max_files` 与 `log_max_days` 读写与范围校验，防止在 8888 端口保存配置时覆盖丢失该字段；日志页新增存储占用统计与「清理日志」模态确认按钮。
+
+---
+
 ## v1.1.72 (Core v2.3.1-r5)
 
 ### 一、同步上游核心 `v2.2.0-r5` → `v2.3.1-r5`

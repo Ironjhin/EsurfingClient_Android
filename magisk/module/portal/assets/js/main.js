@@ -82,6 +82,10 @@ const DEFAULT_WEB_PORT = 8888;
 
 const DEFAULT_LOG_DIR = './';
 
+const DEFAULT_LOG_MAX_FILES = 5;
+
+const DEFAULT_LOG_MAX_DAYS = 3;
+
 const MAX_LOG_DIR_LEN = 255;
 
 const STATUS_INTERVAL = 5000;
@@ -131,6 +135,18 @@ const CONFIG_FIELDS = [
     {
         key: 'log_dir', def: DEFAULT_LOG_DIR, norm: normalizeLogDir, out: normalizeLogDir,
         check: value => (normalizeLogDir(value).length > MAX_LOG_DIR_LEN ? `日志目录过长 (最多 ${MAX_LOG_DIR_LEN} 个字符)` : null)
+    },
+    {
+        key: 'log_max_files', def: DEFAULT_LOG_MAX_FILES,
+        norm: v => normalizeIntRange(v, DEFAULT_LOG_MAX_FILES, 0, 100),
+        out: v => normalizeIntRange(v, DEFAULT_LOG_MAX_FILES, 0, 100),
+        check: value => (isValidIntRange(value, 0, 100) ? null : `归档日志保留份数应为 0 - 100 的整数 (当前: ${value})`)
+    },
+    {
+        key: 'log_max_days', def: DEFAULT_LOG_MAX_DAYS,
+        norm: v => normalizeIntRange(v, DEFAULT_LOG_MAX_DAYS, 0, 365),
+        out: v => normalizeIntRange(v, DEFAULT_LOG_MAX_DAYS, 0, 365),
+        check: value => (isValidIntRange(value, 0, 365) ? null : `归档日志保留天数应为 0 - 365 的整数 (当前: ${value})`)
     },
     {
         key: 'conn_timeout', def: DEFAULT_CONN_TIMEOUT,
@@ -264,6 +280,18 @@ function normalizeLogDir(value) {
 function isValidWebPort(value) {
     const port = Number(value);
     return Number.isInteger(port) && port >= 1 && port <= 65535;
+}
+
+/** 整数范围校验 (严格拒绝空串/布尔/小数) */
+function isValidIntRange(raw, min, max) {
+    if (raw === '' || raw === null || raw === undefined || typeof raw === 'boolean') return false;
+    const val = Number(raw);
+    return Number.isInteger(val) && val >= min && val <= max;
+}
+
+/** 整数范围归一化 (保留合法的 0 值) */
+function normalizeIntRange(raw, fallback, min, max) {
+    return isValidIntRange(raw, min, max) ? Number(raw) : fallback;
 }
 
 /** 空的时间窗口编辑项 */
@@ -416,6 +444,18 @@ const api = {
         const { status, text, headers } = await request('GET', '/api/logs?file=' + encodeURIComponent(name), { allow: [200, 404] });
         if (status === 404) throw new ApiError('日志文件不存在或已被轮转', 404);
         return { text, truncated: headers.get('X-Log-Truncated') === '1' };
+    },
+
+    async clearLogs(mode = 'all') {
+        const { status, data } = await request('POST', '/api/logs/clear', {
+            json: { mode },
+            allow: [200, 400, 404, 500]
+        });
+        if (status === 404) throw new ApiError('后端未提供清理日志接口 (404)', 404);
+        if (status >= 400 || (data && data.ok === false)) {
+            throw new ApiError((data && data.error) || `清理日志失败 (HTTP ${status})`, status);
+        }
+        return data;
     }
 };
 
@@ -985,6 +1025,7 @@ document.addEventListener('alpine:init', () => {
         unavailable: false,
         truncated: false,
         loading: false,
+        clearing: false,
         error: '',
         timer: null,
         resizeObserver: null,
@@ -1023,6 +1064,15 @@ document.addEventListener('alpine:init', () => {
             if (!file) return '';
             return `${file.name} · ${formatBytes(file.size)} · ${formatFileTime(file.mtime)}` +
                 (file.current ? ' · 正在写入' : '');
+        },
+
+        get totalSizeBytes() {
+            return this.files.reduce((sum, file) => sum + (Number(file.size) || 0), 0);
+        },
+
+        get storageSummaryText() {
+            if (!this.files.length) return '0 个文件 · 0 B';
+            return `共 ${this.files.length} 个文件 · ${formatBytes(this.totalSizeBytes)}`;
         },
 
         async loadFiles() {
@@ -1089,6 +1139,38 @@ document.addEventListener('alpine:init', () => {
         async refresh() {
             await this.loadFiles();
             if (this.selected) await this.loadContent();
+        },
+
+        openClearModal() {
+            if (this.clearing) return;
+            const modal = this.$refs.clearLogsModal;
+            if (modal && typeof modal.showModal === 'function') {
+                modal.showModal();
+            } else if (window.confirm('确定清理全部历史归档并清空当前运行日志吗？')) {
+                this.confirmClear();
+            }
+        },
+
+        async confirmClear() {
+            const modal = this.$refs.clearLogsModal;
+            if (modal && modal.open) modal.close();
+            if (this.clearing) return;
+            this.clearing = true;
+            const notify = Alpine.store('notify');
+            try {
+                const res = await api.clearLogs('all');
+                const deleted = Number(res && res.deleted_files) || 0;
+                const freed = formatBytes((res && res.freed_bytes) || 0);
+                this.content = '';
+                await this.refresh();
+                notify.success(deleted > 0
+                    ? `已清理 ${deleted} 个归档并清空当前日志，释放 ${freed}`
+                    : `已清空当前日志，释放 ${freed}`);
+            } catch (error) {
+                notify.error('清理日志失败: ' + describeError(error, { 404: '后端未提供清理日志接口' }));
+            } finally {
+                this.clearing = false;
+            }
         },
 
         scrollToBottomIfNeeded() {

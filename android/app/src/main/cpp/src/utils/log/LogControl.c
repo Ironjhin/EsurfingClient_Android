@@ -96,9 +96,14 @@ void clean_logger(void)
     get_fmt_time(cur_tm, FILE_FORMAT);
     char new_file_name[LOG_PATH_MAX];
     snprintf(new_file_name, sizeof(new_file_name), "%s%c%s.log", safe_str(g_logger_cfg.log_dir), SEP, safe_str(cur_tm));
-    rename(g_logger_cfg.log_file, new_file_name);
+    const bool renamed = (rename(g_logger_cfg.log_file, new_file_name) == 0);
 
     logger_unlock();
+
+    if (renamed)
+    {
+        prune_old_logs();
+    }
 }
 
 void set_logger_console(const bool enabled)
