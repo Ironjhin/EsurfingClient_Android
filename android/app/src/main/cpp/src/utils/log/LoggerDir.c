@@ -290,7 +290,7 @@ bool get_log_dir(char* out)
     }
     if (len <= 0 || (size_t)len >= LOG_PATH_MAX)
     {
-        fprintf(stderr, "[ERROR] 日志目录路径太长\n");
+        fprintf(stderr, "[ERROR] 日志目录路径太长: %s%c%s\n", base, SEP, s_log_sub_dir);
         return false;
     }
 
@@ -316,7 +316,7 @@ bool set_logger_dir(const char* dir)
     if (strcmp(dir, g_cfg_log_dir) == 0) return true;
 
     /**
-     * 配置里的 log_dir 是【基目录】, 日志放在它下面的 logs 里
+     * 配置里的 log_dir 是【基目录】, 日志放在它下面的 logs 里 (Magisk 模式下直接落在基目录)
      */
     char new_base[LOG_PATH_MAX];
     char new_dir[LOG_PATH_MAX];
@@ -326,7 +326,9 @@ bool set_logger_dir(const char* dir)
         LOG_WARN("log_dir (%s) 不可用, 使用默认日志目录 (%s)", safe_str(dir), DEFAULT_LOG_DIR);
         return false;
     }
-    const int dir_len = snprintf(new_dir, sizeof(new_dir), "%s%c%s", new_base, SEP, s_log_sub_dir);
+    const int dir_len = (s_log_sub_dir[0] == '\0')
+        ? snprintf(new_dir, sizeof(new_dir), "%s", new_base)
+        : snprintf(new_dir, sizeof(new_dir), "%s%c%s", new_base, SEP, s_log_sub_dir);
     if (dir_len <= 0 || (size_t)dir_len >= sizeof(new_dir))
     {
         LOG_WARN("log_dir (%s) 过长, 使用默认日志目录 (%s)", safe_str(dir), DEFAULT_LOG_DIR);

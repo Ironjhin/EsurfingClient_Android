@@ -7,6 +7,7 @@
 #include "utils/log/Logger.h"
 #include "utils/platform/PlatformUtils.h"
 #include "utils/sim/SimThread.h"
+#include "utils/time/TimeUtils.h"
 
 #include "webserver/HotspotControl.h"
 
@@ -139,6 +140,7 @@ static void traffic_sample(void)
     char default_id[ADAPTER_ID_LEN] = {0};
     const uint8_t count = get_adapters_stats(frames, NET_TRAFFIC_MAX, default_id, sizeof(default_id));
     const uint64_t now = traffic_now_ms();
+    const uint64_t steady_now = get_steady_tm_ms();
 
     traffic_row_t rows[NET_TRAFFIC_MAX];
     traffic_prev_t prev[NET_TRAFFIC_MAX];
@@ -159,7 +161,7 @@ static void traffic_sample(void)
         for (uint8_t j = 0; j < s_prev_count; j++)
         {
             if (strcmp(s_prev[j].id, frames[i].id) != 0) continue;
-            const uint64_t elapsed = (s_prev_at_ms != 0 && now > s_prev_at_ms) ? (now - s_prev_at_ms) : 0;
+            const uint64_t elapsed = (s_prev_at_ms != 0 && steady_now > s_prev_at_ms) ? (steady_now - s_prev_at_ms) : 0;
             if (elapsed > 0 && frames[i].rx_bytes >= s_prev[j].rx_bytes && frames[i].tx_bytes >= s_prev[j].tx_bytes)
             {
                 rows[i].has_rate = true;
@@ -177,7 +179,7 @@ static void traffic_sample(void)
     s_timestamp_ms = now;
     memcpy(s_prev, prev, sizeof(traffic_prev_t) * count);
     s_prev_count = count;
-    s_prev_at_ms = now;
+    s_prev_at_ms = steady_now;
     traffic_unlock();
 }
 

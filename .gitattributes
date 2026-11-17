@@ -1,0 +1,7 @@
+# Enforce LF line endings for Shell scripts, Magisk module metadata, Web HTML, and build configs
+*.sh text eol=lf
+*.html text eol=lf
+module.prop text eol=lf
+ESurfingClient.json text eol=lf
+*.yml text eol=lf
+CMakeLists.txt text eol=lf

@@ -12,13 +12,13 @@
 ## 🌟 核心特性
 
 - **⚡ 纯 C 驱动，极速低耗**：底层认证、心跳保活与加解密引擎基于纯 C 语言与 libcurl 静态构建，无庞大运行时依赖，模块守护进程仅占 **1~2 MB 内存**。
-- **🔄 同步上游最新协议引擎 (v2.1.7-r4)**：
-  - **全渠道加解密支持**：原生支持 Android、Linux (PC)、Windows、macOS 与 iOS 动态 ZSM（TEA + LZMA）密钥解包。
-  - **单调时钟防混乱**：心跳与超时全面采用单调时钟（`CLOCK_MONOTONIC`），杜绝设备息屏休眠、系统时间调整或 NTP 校时引发的会话突变。
-  - **配置尽力解析机制**：即使配置未激活或部分参数缺失，也会完整保留已填账号信息，彻底杜绝 Web 端保存时配置被空值覆盖清空。
-  - **异常断电与会话持久化**：具备会话现场归档（`.logout`），进程遇异常强杀或断电后，下次开机自动执行补登出，防止网关残留“异地已登录”限制。
+- **🔄 同步上游最新协议引擎 (v2.3.1-r5 / 模块 v1.1.72)**：
+  - **认证防风控与心跳韧性**：连续两次 `302` 二次确认防网关抖动误踢、60 秒内登录频控锁 35 分钟（尾档退避 35 分钟避开整点锁）；心跳区分网络不通 (`HB_NET_FAIL`) 与服务端拒绝 (`HB_PROTO_FAIL`) 并采用 `1/2/4/8/16/30s` 指数退避重试。
+  - **自定义联网探测 (`probe_hosts`)**：支持最多 14 路固定 IPv4 并发探测，缺失自动补全写回配置文件，Portal 与 KernelSU WebUI 均支持可视化编辑。
+  - **单调时钟防混乱与状态收拢**：子进程退避、心跳间隔、运行时间与网速采样全面采用单调时钟（`CLOCK_MONOTONIC`），彻底免疫息屏休眠、NTP 校时跳变；配置保存与应用基于 `.apply` 标记解耦热重载。
+  - **多进程单实例锁与异常断电持久化**：新增 `main` / `web` / `auth-N` 文件锁防双开互踢；具备会话现场归档（`.logout`），异常强杀或断电后下次启动自动补登出。
 - **📱 专注 Root 守护进程模块**：
-  - **Magisk / KernelSU / APatch 专属**：开机无感静默认证、后台永久驻留、内置 WebUI 管理面板 (`http://127.0.0.1:8888`)、支持 KernelSU WebUI 与 Action 免重启启停。
+  - **Magisk / KernelSU / APatch 专属**：开机无感静默认证、后台永久驻留、内置新版响应式 Bento 风格 KernelSU WebUI（100% 离线零外链、深浅双主题、现代着色日志终端）与桌面管理端 (`http://127.0.0.1:8888`)。
   - **免 Root APK 跳转**：未 Root 手机用户请直接使用推荐的独立客户端 👉 [anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)。
 - **🛡️ 透明代理完美共存**：
   - 模块守护进程开机自动获取 `AID_NET_ADMIN` (`GID 3005`) 权限，原生命中 `Surfing` / `Mihomo` / `Clash.Meta` / `sing-box` / `Box4Magisk` 的首条直连豁免规则，彻底防止 TPROXY 误劫持与死循环断流。
@@ -58,19 +58,30 @@
 
 ---
 
-## 🛠️ 底层引擎演进与核心修复 (v2.1.7-r4)
+## 🛠️ 底层引擎演进与核心修复 (v2.3.1-r5)
 
 本项目底层 C 引擎持续跟进上游 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的最新更新，并在移动端环境下做了深度优化与排坑：
 
 | # | 问题 / 功能 | 诱因与现象 | 修复与改进实现 |
 |---|---|---|---|
-| **1** | **Windows 通道 ZSM 动态解密** | 上游 Windows 通道改用动态 TEA+LZMA 模块下发密钥 | 集成 `win_zsm` 模块动态解密解包算法，修正 `apply_channel_ua` 的 UA 传递 |
-| **2** | **配置尽力解析防清空** | 配置文件在 `enabled: false` 时提前退出，导致内存账号为空，用户在 Web 端点保存直接冲掉原账号密码 | `load_cfg` 改为尽力解析模式：先填充内存再判定可用性，WebUI 无论何时都能读取磁盘真实现场 |
-| **3** | **单调时钟防 Doze 混乱** | 息屏深度睡眠或连接 Wi-Fi 后 NTP 校时跳变，造成墙钟减法出现负数或超大数字，误触发心跳超时或一天重拨 | 全面改用 `get_steady_tm_ms()`（单调钟）测算心跳与会话寿命，彻底免疫系统时间调整 |
-| **4** | **会话持久化与补登出** | 客户端被异常结束、断电重启后，网关依然记录该 MAC 在线，重连时返回异地登录错误 | 认证成功后自动将凭据持久化至 `.logout` 文件，下次启动时若探测到历史残留，优先补发 `term` 登出注销 |
-| **5** | **息屏断流与 GID 豁免** | 息屏后系统冻结网络、或透明代理将网关探测与心跳流量误当成入站包劫持导致握手卡死 | 模块版自动申请 `wake_lock`，并赋予 `setgid(3005)`，无缝穿透 sing-box/Mihomo 透明代理直连出站 |
-| **6** | **DNS 探针死锁与防污染** | 校园网在未认证时会劫持或污染 DNS，导致探测域名解析超时阻塞认证 | 采用多探针降级机制，支持公网 IP 直连与备用探针，探测超时智能判定网络连通状态 |
-| **7** | **WebUI 状态与热重载** | Web 线程做耗时网络请求会锁死事件循环，且保存配置需要重启整个进程 | 状态接口读取内存缓存标志（非阻塞），应用配置支持平滑重载认证线程 |
+| **1** | **防风控与心跳指数退避** | 网关抖动单次 302 误踢触发重登、频繁登录易撞服务端 30 分钟锁定窗口 | 连续两次 `302` 确认才重认证；60 秒登录满 2 次暂停 35 分钟；心跳区分网络/协议失败并按 `1/2/4/8/16/30s` 退避 |
+| **2** | **自定义探测 (`probe_hosts`)** | 部分校园网环境默认探测域名/IP 不可达或需人工指定直连探针 | 支持最多 14 路固定 IPv4 并发探测，缺失自动补全写回配置文件，支持双端 Web 可视化编辑 |
+| **3** | **通道锁定与多进程单实例锁** | Android 端使用 Windows 通道易登录 POST 超时；无 `/tmp` 导致单实例锁失效 | 默认锁定 `android` (通道 `3`)；锁路径适配 `/data/adb/esurfing/esurfingclient-*.lock`；绑定 `SO_MARK` 失败直接放弃防串线 |
+| **4** | **PID / WakeLock 生命周期修复** | 查询模式或重复启动误删运行中 PID 文件；停止服务后 `wake_lock` 未释放无法深度休眠 | 仅主守护进程抢锁成功后写 PID 与持锁，正常退出及 `action.sh`/`uninstall.sh` 严格校验进程归属并释放 `wake_unlock` |
+| **5** | **全链路单调时钟与信号安全** | NTP 校时跳变导致退避/uptime/网速计算错乱；`SIGUSR1` 非原子标志属 UB | 全面采用 `CLOCK_MONOTONIC` (`get_steady_tm_ms()`)；异步信号标志统一为 `volatile sig_atomic_t` |
+| **6** | **Web 后端死锁与内存加固** | `WebLogFiles` 脏缓冲与内存泄漏；禁用配置后 `/api/applyConfigs` 回 `503` 死锁；`/api/restart` 端口冲突 | 栈缓冲重写 `logFn`；放通禁用后热重载；按 `bootId` 区分新旧实例；修复 `mark` 丢失并补齐线程包装体释放 |
+| **7** | **KernelSU WebUI 与 APK 修复** | 旧版前端缺高级配置/主题/终端过滤；桌面 WebView APK 在 Android 9+ 禁明文 HTTP | 重构 100% 离线零外链 Bento WebUI；补齐 `usesCleartextTraffic="true"` 与返回键导航；修复 `build.sh`/`service.sh` 权限与漏拷 |
+
+---
+
+## 📝 更新日志
+
+完整版本变更请查看 **[CHANGELOG.md](CHANGELOG.md)**。
+
+### v1.1.72 (Core v2.3.1-r5)
+- **同步上游 `v2.2.0-r5` → `v2.3.1-r5`**：连续两次 `302` 确认与 60s 登录频控防锁定、心跳区分网络/协议失败指数退避、最多 14 路 `probe_hosts` 自定义并发探测、`main`/`web`/`auth-N` 单实例锁、`SO_MARK` 失败丢弃、`.apply` 热重载解耦、`States` (`cfg_t`) 重构与 `VERBOSE → TRACE` 更名。
+- **KernelSU WebUI 全面重构**：离线零外链 Bento 卡片设计、深浅双主题切换、呼吸灯、密码显隐、自定义弹窗、`probe_hosts` 折叠面板及防 XSS 着色日志终端。
+- **模块稳定性与脚本修复**：锁定 `android` 默认通道、修复 PID 误删与 `wake_lock` 泄漏、全链路切换单调时钟、修复 `WebLogFiles` / `/api/applyConfigs` / `/api/restart` / `GET /api/getConfigs` 多项后端缺陷，修复 `build.sh` / `service.sh` / `action.sh` / `uninstall.sh` 与 WebView APK 明文加载问题，新增 `.gitattributes` 锁定 LF 换行符。
 
 ---
 
@@ -91,7 +102,7 @@
      - `com.cndatacom.campus.cdccportalgd`（官方客户端）
 3. **校园网认证服务器与内网放行**：
    - 将以下校园网网段加入直连路由与 DNS 直连白名单：
-     - 探测地址：`connect.rom.miui.com`、`1.1.1.1/32`、`220.181.104.183/32`
+     - 探测地址：`connectivitycheck.platform.hicloud.com`、`connect.rom.miui.com`、`183.61.185.93/32`、`125.88.255.53/32`、`202.69.4.32/32`、`220.181.104.183/32`、`1.1.1.1/32`
      - 认证与心跳服务器：`14.146.227.141/32`、`14.146.227.142/32`、`121.8.177.212/32`、`100.0.0.0/8`
      - 域名后缀：`+.cndatacom.com`、`+.cdcc.cn`、`+.189.cn`、`+.gd189.cn`、`+.edu.cn`
 

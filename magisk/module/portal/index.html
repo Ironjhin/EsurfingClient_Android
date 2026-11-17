@@ -325,6 +325,21 @@
               <span class="label">日志的详细程度</span>
             </fieldset>
             <fieldset class="fieldset">
+              <legend class="fieldset-legend">高级选项</legend>
+              <input type="checkbox" class="checkbox"
+                     x-model="showAdvanced" />
+              <span class="label">显示超时、日志目录、Web 端口、外部访问与探测目标等高级设置</span>
+            </fieldset>
+          </div>
+        </div>
+      </div>
+      <div class="card bg-base-300 shadow-md" x-show="showAdvanced" x-cloak>
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/advanced.svg)"></span>
+            高级选项</h2>
+          <div class="mx-[20%] text-lg">
+            <fieldset class="fieldset">
               <legend class="fieldset-legend">连接超时</legend>
               <input type="number" class="input" min="1" step="1"
                      x-model.number="$store.main.configs.conn_timeout" />
@@ -360,6 +375,54 @@
                 而接口没有鉴权且会返回明文账号密码, 请谨慎开启</span>
             </fieldset>
           </div>
+        </div>
+      </div>
+      <div class="card bg-base-300 shadow-md" x-show="showAdvanced" x-cloak>
+        <div class="card-body">
+          <h2 class="card-title">
+            <span class="icon h-6 w-6" aria-hidden="true" style="--icon: url(assets/svg/probe.svg)"></span>
+            联网探测目标</h2>
+          <div class="overflow-x-auto">
+            <table class="table table-zebra">
+              <thead>
+              <tr class="bg-base-200">
+                <th class="text-center">域名</th>
+                <th class="text-center">固定 IP (逗号分隔)</th>
+                <th></th>
+              </tr>
+              </thead>
+              <tbody>
+              <template x-for="(probe, index) in $store.main.configs.probe_hosts" :key="index">
+                <tr>
+                  <td>
+                    <input type="text" class="input w-full"
+                           x-model="probe.host"
+                           placeholder="connectivitycheck.platform.hicloud.com" />
+                  </td>
+                  <td>
+                    <input type="text" class="input w-full"
+                           x-model="probe.ipsText"
+                           placeholder="183.61.185.93, 125.88.255.53" />
+                  </td>
+                  <td class="text-center">
+                    <button class="btn btn-error btn-sm"
+                            @click="$store.main.configs.probe_hosts.splice(index, 1)">删除</button>
+                  </td>
+                </tr>
+              </template>
+              </tbody>
+            </table>
+          </div>
+          <div class="mt-3">
+            <button class="btn btn-primary btn-sm"
+                    :disabled="probeIpTotal() >= 14"
+                    @click="$store.main.configs.probe_hosts.push({ host: '', ipsText: '' })">添加探测目标</button>
+          </div>
+          <span class="label">联网检测用的地址 (域名 + 固定 IP, 不查 DNS); 填了会替代内置默认,
+            保存后重启生效</span>
+          <span class="label">每个域名最多 4 个 IP; 最多 14 路 (认证服务器已占 2 路), 当前
+            <span x-text="probeIpTotal()">0</span> 路</span>
+          <span class="label text-warning">全部删掉保存会回退到内置默认 (hicloud / miui 各两个 IP)</span>
         </div>
       </div>
       <div class="card bg-base-300 shadow-md">
@@ -608,9 +671,6 @@
                href="https://github.com/BadGhost520/ESurfingClient-CVersion"
                target="_blank" rel="noopener">GitHub</a>
           </p>
-          <p class="mt-2">使用提示: 修改配置后点击"保存"; 点"保存并应用"会<b>重启程序</b>
-            (多进程模式下只重启认证进程), 新配置在启动时读取。日志目录、Web 端口与是否允许
-            外部访问同样在重启后生效。</p>
         </div>
       </div>
       <div

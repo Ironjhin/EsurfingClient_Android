@@ -1,6 +1,16 @@
+#ifndef _WIN32
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "WebInternal.h"
 
 #include <mongoose/mongoose.h>
+
+#ifndef _WIN32
+#include <strings.h>
+#endif
 
 #include "utils/platform/PlatformUtils.h"
 #include "utils/text/TextUtils.h"
@@ -73,7 +83,7 @@ static const char* web_root_dir(void)
     return dir;
 }
 
-void fn(struct mg_connection *c, const int ev, void *ev_data)
+void fn(struct mg_connection* c, const int ev, void* ev_data)
 {
     if (ev != MG_EV_HTTP_MSG) return;
 

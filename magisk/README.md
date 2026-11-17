@@ -1,12 +1,14 @@
-# ESurfing Daemon — Magisk Module
+# ESurfing Daemon — Magisk / KernelSU / APatch Module
 
-广东天翼校园网认证守护进程的 Magisk 模块版本。去掉 Flutter UI，纯 C 守护进程后台运行，内存占用 ~1-2MB。
+广东天翼校园网认证守护进程的 Root 模块版本（当前版本 **`v1.1.72` / Core `v2.3.1-r5`**）。纯 C 守护进程后台运行，内存占用 ~1–2 MB。
 
-安装后桌面出现 **ESurfing** 图标，点进去就是管理页面。Magisk Manager 里也有「打开」按钮直通 Web UI。
+安装后桌面出现 **ESurfing** 图标，点进去即可进入 Web 管理后台；KernelSU / APatch 管理器中也有「WebUI」按钮直通新版离线控制台。
+
+> **免 Root 安卓设备用户**：本项目仅专注维护 Magisk / KernelSU / APatch 模块版；免 Root 原生 Android APK 请前往安生同学开源项目下载：👉 **[anshenglv/ESurfingClient-CVersion-Android-APK](https://github.com/anshenglv/ESurfingClient-CVersion-Android-APK)**
 
 ## 系统要求
 
-- 已 Root 的 Android 设备，装有 **Magisk 24.0+**
+- 已 Root 的 Android 设备，装有 **Magisk 24.0+**、**KernelSU** 或 **APatch**
 - 架构：**arm64-v8a**（仅此一档）
 
 ## 安装
@@ -33,7 +35,7 @@
 su -c "vi /data/adb/esurfing/ESurfingClient.json"
 ```
 
-配置格式：
+配置格式（模块默认 `ESurfingClient.json` 示例，完整参数可在 WebUI 保存后自动补全）：
 
 ```json
 {
@@ -43,8 +45,9 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
     {
       "username": "你的校园网账号",
       "password": "你的校园网密码",
-      "channel": "phone",
-      "mark": ""
+      "channel": "android",
+      "mark": "",
+      "time_windows": []
     }
   ]
 }
@@ -53,36 +56,45 @@ su -c "vi /data/adb/esurfing/ESurfingClient.json"
 | 字段 | 说明 |
 |------|------|
 | `enabled` | 是否启用自动认证 |
-| `log_lv` | 日志等级：2=ERROR, 3=WARN, 4=INFO, 5=DEBUG, 6=VERBOSE |
-| `channel` | `phone` 手机端 UA / `pc` 电脑端 UA |
-| `mark` | SO_MARK 路由标记（十六进制，多 WAN 环境用，留空自动分配） |
+| `log_lv` | 日志等级：`0=NONE`, `1=FATAL`, `2=ERROR`, `3=WARN`, `4=INFO`, `5=DEBUG`, `6=TRACE` |
+| `channel` | 认证通道：模块默认锁定 `android`（`3`，推荐）；另支持 `windows` / `linux` / `ios` / `macos` |
+| `mark` | `SO_MARK` 路由标记（十六进制，多 WAN 环境用，留空自动分配；绑定失败自动放弃防串线） |
+| `time_windows` | 分时段自动认证/下线时间窗列表 |
+| `probe_hosts` | 自定义联网探测目标数组（支持最多 14 路固定 IPv4 并发探测，缺失时自动补全） |
 
 ## Web 管理
 
-模块自带的 WebView APK 打开 `http://127.0.0.1:8888/`：
+模块支持两种管理入口（均连接本地守护进程 `http://127.0.0.1:8888`）：
 
-| 页面 | 说明 |
+1. **KernelSU / APatch WebUI**（`webroot/index.html`）：全新响应式 Bento 卡片布局，100% 离线零外链（校园网未认证 `302` 状态秒开），支持深浅双主题切换、密码显隐、自定义弹窗、`probe_hosts` 折叠配置与着色过滤日志终端。
+2. **桌面 WebView APK / 浏览器 Portal**（`http://127.0.0.1:8888/`）：桌面 **ESurfing** 应用（已启用 `usesCleartextTraffic="true"` 支持 Android 9+ 明文加载与返回键后退）或手机浏览器直接访问。
+
+| 板块 | 说明 |
 |------|------|
-| 状态面板 | 显示认证状态和网络状态 |
-| 配置表单 | 修改账号密码、日志等级、通道 |
-| 保存并重启 | 保存配置后重启认证线程 |
-| 日志查看 | 查看实时运行日志 |
+| 状态总览 | 显示认证状态（含异常/禁用/待配置提示）、网络连通状态与单调运行时长 |
+| 配置表单 | 修改账号密码、通道、日志等级、`mark`、超时参数及 `probe_hosts` 自定义探测目标 |
+| 保存并应用 | 无损合并保存配置并通过 `.apply` 标记平滑重载认证进程 |
+| 服务控制 | 支持「强制重新认证」、基于 `bootId` 防竞态的「重启服务」以及「停止服务」 |
+| 日志终端 | 实时查看、分级着色、筛选、复制与导出 `run.log` |
 
 ## 目录结构
 
-```
+```text
 /data/adb/esurfing/
-├── esurfingd               # 守护进程可执行文件
-├── ESurfingClient.json     # 配置文件
-├── esurfingd.pid           # PID 文件
-├── run.log                 # 运行日志
-├── *.rotate.log            # 轮转归档（满 1000 行后自动轮转，最多保留 3 个）
-└── portal/
-    ├── index.html          # Web 前端
-    └── run.log -> ../run.log
+├── esurfingd                      # 守护进程可执行文件 (GID 3005 透明代理豁免)
+├── ESurfingClient.json            # 配置文件
+├── esurfingd.pid                  # 主守护进程 PID 文件
+├── esurfingclient-*.lock          # 单实例文件锁 (main / web / auth-N)
+├── run.log                        # 运行日志
+├── *.rotate.log                   # 轮转归档（满 1000 行后自动轮转，最多保留 3 个）
+├── portal/                        # 本地 Portal 静态资源 (http://127.0.0.1:8888/)
+│   ├── index.html
+│   └── assets/
+└── webroot/
+    └── index.html                 # KernelSU / APatch 离线 WebUI
 ```
 
-/system/app/ESurfingUI/ 内安装有 WebView 壳 APK，提供内嵌管理界面。
+`/system/app/ESurfingUI/` 内安装有 WebView 壳 APK，提供桌面内嵌管理界面。
 
 ## 日志
 
@@ -113,20 +125,25 @@ CI 自动构建在 GitHub Actions 的 `magisk` 分支上运行。
 
 ## 与原版 CVersion 的差异
 
-这是基于 [BadGhost/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion) 的深度改造分支，主要改进：
+这是基于 [BadGhost520/ESurfingClient-CVersion](https://github.com/BadGhost520/ESurfingClient-CVersion)（已同步至 **`v2.3.1-r5`**）的 Android Root 守护模块分支，主要增强：
 
-| 方面 | 原版 CVersion | 本模块 |
+| 方面 | 原版 CVersion (`v2.3.1-r5`) | 本模块 (`v1.1.72`) |
 |------|--------------|--------|
-| 平台 | Windows/Linux x64 | Android arm64 Magisk 模块 |
-| 部署 | 手动编译或下载可执行文件 | Magisk Manager 一键安装 |
-| 管理 | 控制台命令行 | Web 管理后台 + 桌面 APK |
-| 守护 | 需 systemd 或任务计划 | 开机自动启动，root 级守护 |
-| 日志 | 终端输出 | 文件日志 + Web 页面实时查看 |
-| DNS | 未处理校园网 DNS 不可达 | 域名重写 + 公网 IP 直连 |
-| 探测 | 单一 204 探测 | 双探针 + 超时降级（连通判定） |
-| 算法 | CVersion v2.0.6-r1 新 Android 算法 | 已同步 9 个新 Android 算法，停用 9 个旧 Android 算法，保留 6 个有效的 PC/Linux 算法 |
-| 线程 | 退出需手动重启 | 自动守护重启 |
-| 闪退恢复 | 无 | `service.sh` 启动后常驻 |
+| 平台 | Windows / Linux / OpenWrt | Android arm64 Magisk / KernelSU / APatch 模块 |
+| 部署 | 手动编译或命令行部署 | 模块管理器一键刷入 + 桌面 WebView APK + KernelSU WebUI |
+| 通道默认值 | 默认通道 `1` (`windows`) | Android 专属锁定默认通道 `3` (`android`)，规避高校 Windows 通道登录超时 |
+| 单实例锁 | POSIX 锁路径位于 `/tmp` | 适配至 `/data/adb/esurfing/esurfingclient-*.lock` |
+| 透明代理与保活 | 常规进程权限 | 自动切换 `GID 3005` (`AID_NET_ADMIN`) 免劫持 + 内核 `wake_lock`（停服/卸载自动释放） |
+| 控制面板 | Portal (`http://127.0.0.1:8888`) | 同步新版 Portal + 全面重构的离线零外链 KernelSU Bento WebUI |
+
+## 更新日志
+
+完整更新日志见仓库根目录 **[CHANGELOG.md](../CHANGELOG.md)**。
+
+### v1.1.72 (Core v2.3.1-r5)
+- **同步上游 `v2.2.0-r5` → `v2.3.1-r5`**：连续两次 `302` 二次确认防误踢、60 秒内登录满 2 次暂停 35 分钟防风控锁、心跳区分网络/协议失败并按 `1/2/4/8/16/30s` 指数退避、最多 14 路固定 IPv4 `probe_hosts` 自定义并发探测、`main`/`web`/`auth-N` 单实例锁、`SO_MARK` 绑定失败丢弃防串线、`.apply` 热重载解耦、`States` (`cfg_t`) 重构及 `VERBOSE → TRACE` 更名。
+- **KernelSU WebUI 全面重构**：响应式 Bento 卡片、深浅双主题自适应与切换、实时状态呼吸灯、密码显隐、自定义弹窗、`probe_hosts` 折叠面板及防 XSS 着色日志终端，100% 离线零外链。
+- **模块稳定性与脚本修复**：修复 `Main.c` PID 误删与 `wake_lock` 泄漏、全链路切换 `CLOCK_MONOTONIC` 单调钟、修复 `SIGUSR1` 信号安全与 `WebLogFiles` 内存安全、修复禁用配置热重载死锁、`/api/restart` 端口冲突与 `GET /api/getConfigs` 首账号 `mark` 丢失；修复 `build.sh` / `service.sh` / `action.sh` / `uninstall.sh` 权限与日志双写问题，补齐 WebView APK `usesCleartextTraffic="true"`。
 
 ## 免重启启停（KernelSU / Magisk）
 
@@ -137,7 +154,7 @@ CI 自动构建在 GitHub Actions 的 `magisk` 分支上运行。
 | 守护进程在跑 | 停止 `esurfingd`，并写入 `/data/adb/esurfing/disable`（下次开机也不再自动启动） |
 | 守护进程已停 | 删除 `disable` 标记并立即后台启动守护进程 |
 
-也可用 Web 后台的「⏹ 停止服务」干净退出；同样会写 `disable` 标记。重新启动请再点一次模块 Action，或：
+也可用 Web 后台的「⏹ 停止服务」（`POST /api/stop`）通知守护进程优雅登出退出——注意 Web 端停止**不会**写入 `disable` 标记（下次开机仍自动启动，当前会话也可直接点一次模块 Action 重新拉起）；只有通过模块 Action 停止才会写入 `/data/adb/esurfing/disable` 阻止开机自启。重新启动请点一次模块 Action，或：
 
 ```bash
 su -c "rm -f /data/adb/esurfing/disable && /data/adb/esurfing/esurfingd &"

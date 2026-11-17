@@ -77,6 +77,9 @@ static void PrintUsage(void)
     printf("  -a, --account <序号>  指定本进程负责的配置序号 (从 1 开始, auth 角色必填)\n");
     printf("  --list-accounts      列出配置文件中所有可用账号的序号后退出 (供 init 脚本使用)\n");
     printf("  --print-log-dir      打印实际使用的日志目录后退出 (日志目录由配置里的 log_dir 决定)\n");
+#ifdef __OPENWRT__
+    printf("  --config-dir <目录>  配置目录 (init 脚本从 UCI 的 option dir 读取; 默认 %s)\n", "/etc/esurfingclient");
+#endif
 #ifndef __OPENWRT__
     printf("  --control-port <端口> 控制通道端口 (默认 %d; 被占用时自动往后顺延)\n", CONTROL_DEFAULT_PORT);
     printf("  --control-token <令牌> 控制通道令牌 (不填则不校验; 守护进程会自动生成并下发)\n");
@@ -291,6 +294,22 @@ static int parse_args(const int argc, char* argv[])
             continue;
         }
 
+#ifdef __OPENWRT__
+
+        if (strcmp(arg, "--config-dir") == 0)
+        {
+            if (i + 1 >= argc)
+            {
+                fprintf(stderr, "[ERROR] %s 缺少配置目录\n", arg);
+                PrintUsage();
+                return 1;
+            }
+            set_config_dir(argv[++i]);
+            continue;
+        }
+
+#endif
+
 #ifndef __OPENWRT__
 
         if (strcmp(arg, "--control-port") == 0)
@@ -368,16 +387,65 @@ static void load_control_token_env(void)
 }
 
 #ifdef __MAGISK__
+#include <fcntl.h>
 #include <sys/stat.h>
+
 #define MAGISK_DATA_DIR "/data/adb/esurfing"
 #define MAGISK_PID_FILE "/data/adb/esurfing/esurfingd.pid"
+#define MAGISK_WAKELOCK_NAME "esurfing_daemon"
 
-static void magisk_cleanup_pid(void)
+static pid_t s_magisk_owner_pid = 0;
+
+static void magisk_write_sysfs(const char* path, const char* val)
 {
-    if (g_prog_role == ROLE_SUPERVISOR || g_prog_role == ROLE_STANDALONE)
+    const int fd = open(path, O_WRONLY | O_CLOEXEC);
+    if (fd >= 0)
     {
-        remove(MAGISK_PID_FILE);
+        const ssize_t r = write(fd, val, strlen(val));
+        (void)r;
+        close(fd);
     }
+}
+
+static void magisk_daemon_cleanup(void)
+{
+    /* 严格校验 PID, 防止 fork 子进程异常调 exit 时误删主守护进程的 PID 文件或释放唤醒锁 */
+    if (s_magisk_owner_pid == 0 || getpid() != s_magisk_owner_pid)
+    {
+        return;
+    }
+
+    remove(MAGISK_PID_FILE);
+
+    if (!g_need_restart)
+    {
+        magisk_write_sysfs("/sys/power/wake_unlock", MAGISK_WAKELOCK_NAME);
+    }
+}
+
+void magisk_daemon_acquire_resources(void)
+{
+    if (g_prog_role != ROLE_SUPERVISOR && g_prog_role != ROLE_STANDALONE)
+    {
+        return;
+    }
+    if (s_magisk_owner_pid != 0)
+    {
+        return;
+    }
+    s_magisk_owner_pid = getpid();
+
+    /* 申请内核 WakeLock, 防止手机息屏进入 Doze 深度休眠后冻结心跳定时器 */
+    magisk_write_sysfs("/sys/power/wake_lock", MAGISK_WAKELOCK_NAME);
+
+    FILE* pf = fopen(MAGISK_PID_FILE, "w");
+    if (pf != NULL)
+    {
+        fprintf(pf, "%d\n", (int)s_magisk_owner_pid);
+        fclose(pf);
+    }
+
+    atexit(magisk_daemon_cleanup);
 }
 #endif
 
@@ -389,24 +457,23 @@ int main(const int argc, char *argv[])
 
 #ifdef __MAGISK__
     mkdir(MAGISK_DATA_DIR, 0755);
-    chdir(MAGISK_DATA_DIR);
-#ifndef _WIN32
-    /* 切换 GID 为 3005 (AID_NET_ADMIN)，自动命中 Box4Magisk / sing-box / Surfing 的 BOX_LOCAL 首条直连放行规则 (UID 0 + GID 3005 -> RETURN) */
-    (void)setgid(3005);
-#endif
-    /* 申请内核 WakeLock，防止手机息屏进入 Doze 深度休眠后冻结心跳定时器 */
+    if (chdir(MAGISK_DATA_DIR) != 0)
     {
-        FILE* wl = fopen("/sys/power/wake_lock", "w");
-        if (wl)
-        {
-            fprintf(wl, "esurfing_daemon");
-            fclose(wl);
-        }
+        /* ignore */
     }
-    atexit(magisk_cleanup_pid);
+#ifndef _WIN32
+    /* 切换 GID 为 3005 (AID_NET_ADMIN), 自动命中 Box4Magisk / sing-box / Surfing 的 BOX_LOCAL 首条直连放行规则 (UID 0 + GID 3005 -> RETURN) */
+    (void)setgid(3005);
+    /* 后台守护模式下 stdout 非终端, 关闭控制台日志以防重定向时双写污染 run.log */
+    if (!isatty(STDOUT_FILENO))
+    {
+        g_console_enabled = false;
+    }
+#endif
 #endif
 
     g_start_run_tm = get_cur_tm_ms(); // 获取开始运行的时间
+    g_start_steady_tm = get_steady_tm_ms(); // 获取单调时钟起点 (供计算精确运行时长)
 
     /**
      * libcurl 的硬性要求: 多线程程序里全局初始化必须在创建任何线程之前做一次。
@@ -431,18 +498,6 @@ int main(const int argc, char *argv[])
     {
         return arg_result;
     }
-
-#ifdef __MAGISK__
-    if (g_prog_role == ROLE_SUPERVISOR || g_prog_role == ROLE_STANDALONE)
-    {
-        FILE* pf = fopen(MAGISK_PID_FILE, "w");
-        if (pf)
-        {
-            fprintf(pf, "%d\n", getpid());
-            fclose(pf);
-        }
-    }
-#endif
 
     // 令牌也可以由监管者通过环境变量下发 (不暴露在命令行里)
     load_control_token_env();

@@ -18,7 +18,6 @@
 #include <errno.h>
 
 static char g_data_dir[512];
-static int  g_thread_count = 0;
 
 typedef struct { int idx; sim_thread_t* t; } thread_wrap_t;
 static thread_wrap_t* g_threads = NULL;
@@ -39,9 +38,10 @@ static int parse_json(const char* json) {
     cJSON* root = cJSON_Parse(json);
     if (!root) return -1;
     const cJSON* en = cJSON_GetObjectItem(root, "enabled");
-    if (cJSON_IsBool(en)) g_prog_enabled = cJSON_IsTrue(en); else g_prog_enabled = 1;
+    if (cJSON_IsBool(en)) g_prog_enabled = cJSON_IsTrue(en); else g_prog_enabled = true;
     const cJSON* lv = cJSON_GetObjectItem(root, "log_lv");
-    if (cJSON_IsNumber(lv)) set_logger_level((log_level_t)lv->valueint);
+    const long log_lv = cJSON_IsNumber(lv) ? (long)lv->valueint : (long)LOG_LEVEL_INFO;
+    set_logger_level((log_level_t)log_lv);
     const cJSON* ct = cJSON_GetObjectItem(root, "conn_timeout");
     if (cJSON_IsNumber(ct) && ct->valueint > 0) g_conn_timeout = (long)ct->valueint;
     else g_conn_timeout = DEFAULT_CONN_TIMEOUT;
@@ -51,7 +51,11 @@ static int parse_json(const char* json) {
     const cJSON* acts = cJSON_GetObjectItem(root, "accounts");
     if (!acts || !cJSON_IsArray(acts) || cJSON_GetArraySize(acts) == 0) { cJSON_Delete(root); return -1; }
     int cnt = cJSON_GetArraySize(acts);
-    g_prog_status = (prog_status_t*)calloc(cnt, sizeof(prog_status_t));
+    if (g_prog_status != NULL) {
+        free(g_prog_status);
+        g_prog_status = NULL;
+    }
+    g_prog_status = (prog_status_t*)calloc((size_t)cnt, sizeof(prog_status_t));
     if (!g_prog_status) { cJSON_Delete(root); return -1; }
     int vc = 0;
     for (int i = 0; i < cnt; i++) {
@@ -62,35 +66,56 @@ static int parse_json(const char* json) {
         const cJSON* c = cJSON_GetObjectItem(a, "channel");
         const cJSON* m = cJSON_GetObjectItem(a, "mark");
         const cJSON* tw = cJSON_GetObjectItem(a, "time_windows");
-        if (!u || !u->valuestring || u->valuestring[0]==0) continue;
-        if (!p || !p->valuestring || p->valuestring[0]==0) continue;
-        snprintf(g_prog_status[vc].login_cfg.usr, USR_LEN, "%s", u->valuestring);
-        snprintf(g_prog_status[vc].login_cfg.pwd, PWD_LEN, "%s", p->valuestring);
-        g_prog_status[vc].login_cfg.chn = parse_channel_json(c, (uint8_t)(i + 1));
-        apply_channel_ua(&g_prog_status[vc].login_cfg, (uint8_t)(i + 1));
-        apply_time_windows(tw, &g_prog_status[vc].login_cfg);
-        if (m && m->valuestring && m->valuestring[0]) {
-            g_prog_status[vc].login_cfg.mark = (uint32_t)strtoul(m->valuestring, NULL, 16);
-            g_prog_status[vc].login_cfg.use_cus_mark = 1;
+        if (!cJSON_IsString(u) || !u->valuestring || u->valuestring[0] == '\0') continue;
+        if (!cJSON_IsString(p) || !p->valuestring || p->valuestring[0] == '\0') continue;
+        snprintf(g_prog_status[vc].cfg.usr, USR_LEN, "%s", u->valuestring);
+        snprintf(g_prog_status[vc].cfg.pwd, PWD_LEN, "%s", p->valuestring);
+        g_prog_status[vc].cfg.chn = parse_channel_json(c, (uint8_t)(i + 1));
+        apply_channel_ua(&g_prog_status[vc].cfg, (uint8_t)(i + 1));
+        apply_time_windows(tw, &g_prog_status[vc].cfg);
+        if (cJSON_IsString(m) && m->valuestring && m->valuestring[0] != '\0') {
+            g_prog_status[vc].cfg.mark = (uint32_t)strtoul(m->valuestring, NULL, 16);
+            g_prog_status[vc].cfg.use_cus_mark = true;
         } else {
-            g_prog_status[vc].login_cfg.mark = 0x100 + vc * 0x100;
+            g_prog_status[vc].cfg.mark = 0x100u + (uint32_t)vc * 0x100u;
         }
-        g_prog_status[vc].login_cfg.idx = i + 1;
+        g_prog_status[vc].cfg.idx = (uint8_t)(i + 1);
         vc++;
     }
-    g_prog_cnt = vc;
+    if (vc <= 0) {
+        free(g_prog_status);
+        g_prog_status = NULL;
+        g_prog_cnt = 0;
+        cJSON_Delete(root);
+        return -1;
+    }
+    g_prog_cnt = (int8_t)vc;
+
+    /* 同步全局配置与默认/自定义探测目标, 确保 CheckNetwork.c 的 s_known_hosts 就绪 */
+    g_prog_status[0].cfg.enabled = g_prog_enabled;
+    g_prog_status[0].cfg.web_external_acc = g_web_external_acc;
+    g_prog_status[0].cfg.log_lv = log_lv;
+    snprintf(g_prog_status[0].cfg.log_dir, sizeof(g_prog_status[0].cfg.log_dir), "%s", get_logger_dir_cfg());
+    g_prog_status[0].cfg.web_port = g_web_port;
+    g_prog_status[0].cfg.conn_timeout = g_conn_timeout;
+    g_prog_status[0].cfg.op_timeout = g_op_timeout;
+    probe_targets_defaults();
+    (void)probe_targets_parse(cJSON_GetObjectItem(root, "probe_hosts"));
+
     cJSON_Delete(root);
-    return (vc > 0) ? 0 : -1;
+    return 0;
 }
 
 int32_t esurfing_client_init(const char* data_dir, const char* config_json) {
     if (!data_dir || !config_json) return -1;
     strncpy(g_data_dir, data_dir, sizeof(g_data_dir) - 1);
+    g_data_dir[sizeof(g_data_dir) - 1] = '\0';
     set_logger_dir(g_data_dir);
     g_need_exit = false;
     g_stop_requested = 0;
     g_thread_keep_alive = true;
     g_start_run_tm = get_cur_tm_ms();
+    g_start_steady_tm = get_steady_tm_ms();
     tl_thread_idx = -1;
     (void)curl_global_init(CURL_GLOBAL_DEFAULT);
     init_logger();
@@ -109,7 +134,7 @@ static bool _is_thread_alive(int idx)
 int32_t esurfing_client_start(int32_t idx) {
     if (!g_prog_status || idx < 0 || idx >= g_prog_cnt) return -1;
     if (!g_threads) {
-        g_threads = (thread_wrap_t*)calloc(g_prog_cnt, sizeof(thread_wrap_t));
+        g_threads = (thread_wrap_t*)calloc((size_t)g_prog_cnt, sizeof(thread_wrap_t));
         if (!g_threads) return -1;
     }
     if (!g_time_control_started) {
@@ -117,12 +142,12 @@ int32_t esurfing_client_start(int32_t idx) {
         g_time_control_started = true;
     }
     if (g_prog_status[idx].runtime_status.is_time_disabled) {
-        LOG_INFO("配置 %" PRIu8 " 当前不在允许时段，暂不启动认证线程", g_prog_status[idx].login_cfg.idx);
+        LOG_INFO("配置 %" PRIu8 " 当前不在允许时段，暂不启动认证线程", g_prog_status[idx].cfg.idx);
         return 0;
     }
     if (g_threads[idx].t) {
         if (_is_thread_alive(idx)) {
-            LOG_VERBOSE("esurfing_client_start(%d): thread already running, skipping", idx);
+            LOG_TRACE("esurfing_client_start(%d): thread already running, skipping", idx);
             return 0;
         }
         LOG_WARN("esurfing_client_start(%d): stale thread handle detected, cleaning up", idx);

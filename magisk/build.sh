@@ -4,7 +4,7 @@
 # Prerequisites:
 #   - Android NDK r27+ installed (set ANDROID_NDK_HOME, or download automatically)
 #   - CMake 3.18+
-#   - Basic build tools (make, git, etc.)
+#   - Basic build tools (make, git, zip, unzip, etc.)
 #
 # Usage:
 #   ./build.sh                    # Build for arm64-v8a (default)
@@ -61,13 +61,13 @@ if [ -z "${ANDROID_NDK_HOME:-}" ]; then
   if [ ! -d "$NDK_DIR" ]; then
     echo "ANDROID_NDK_HOME not set, downloading NDK $NDK_VERSION..."
     mkdir -p "$SCRIPT_DIR/.ndk"
-    pushd "$SCRIPT_DIR/.ndk"
+    pushd "$SCRIPT_DIR/.ndk" > /dev/null
     NDK_ZIP="android-ndk-${NDK_VERSION}-linux.zip"
     if [ ! -f "$NDK_ZIP" ]; then
       curl -L -o "$NDK_ZIP" "https://dl.google.com/android/repository/${NDK_ZIP}"
     fi
     unzip -q "$NDK_ZIP"
-    popd
+    popd > /dev/null
   fi
   export ANDROID_NDK_HOME="$NDK_DIR"
   echo "Using NDK at: $ANDROID_NDK_HOME"
@@ -95,7 +95,7 @@ if [ "$MODULE_ONLY" -eq 0 ]; then
     -DCMAKE_BUILD_TYPE=MinSizeRel
 
   echo "Building..."
-  cmake --build "$BUILD_DIR" --target esurfingd -j$(nproc)
+  cmake --build "$BUILD_DIR" --target esurfingd -j"$(nproc)"
 
   BINARY="$BUILD_DIR/esurfingd"
   if [ ! -f "$BINARY" ]; then
@@ -104,7 +104,10 @@ if [ "$MODULE_ONLY" -eq 0 ]; then
   fi
 
   echo "Stripping symbols..."
-  "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" "$BINARY"
+  STRIP_BIN="$(ls "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-strip 2>/dev/null | head -n 1 || true)"
+  if [ -n "$STRIP_BIN" ] && [ -x "$STRIP_BIN" ]; then
+    "$STRIP_BIN" "$BINARY"
+  fi
 
   file "$BINARY"
   echo "Binary size: $(stat -c%s "$BINARY" 2>/dev/null || stat -f%z "$BINARY" 2>/dev/null) bytes"
@@ -117,7 +120,7 @@ echo "Packaging Magisk module..."
 # 在 CI 环境中，保留 module.prop 中的版本号
 # 在本地构建时，使用日期生成版本号
 if [ -z "${CI:-}" ]; then
-  LOCAL_VERSION="v1.0.$(date +%Y%m%d)"
+  LOCAL_VERSION="v1.1.$(date +%Y%m%d) (v2.3.1-r5)"
   LOCAL_VERSION_CODE="$(date +%Y%m%d)"
   sed -i "s/^version=.*/version=$LOCAL_VERSION/" "$MODULE_DIR/module.prop"
   sed -i "s/^versionCode=.*/versionCode=$LOCAL_VERSION_CODE/" "$MODULE_DIR/module.prop"
@@ -127,13 +130,11 @@ else
 fi
 
 mkdir -p "$OUTPUT_DIR"
-mkdir -p "$MODULE_DIR/portal"
-mkdir -p "$MODULE_DIR/system/app/ESurfingUI"
 
 # Copy binary
 BINARY_SRC="${BUILD_DIR}/esurfingd"
 if [ -f "$BINARY_SRC" ]; then
-  cp "$BINARY_SRC" "$MODULE_DIR/esurfingd"
+  cp -f "$BINARY_SRC" "$MODULE_DIR/esurfingd"
 elif [ "$MODULE_ONLY" -eq 0 ]; then
   echo "ERROR: binary not found at $BINARY_SRC"
   exit 1
@@ -141,16 +142,34 @@ else
   echo "WARNING: no binary found at $BINARY_SRC, skipping binary copy"
 fi
 
-# Copy portal files
-cp "$SCRIPT_DIR/portal/index.html" "$MODULE_DIR/portal/"
+# Sync full portal static assets (index.html + assets/js/* + assets/svg/*)
+if [ ! -f "$SCRIPT_DIR/portal/index.html" ] || [ ! -d "$SCRIPT_DIR/portal/assets" ]; then
+  echo "ERROR: portal static assets missing at $SCRIPT_DIR/portal/" >&2
+  exit 1
+fi
+rm -rf "$MODULE_DIR/portal"
+mkdir -p "$MODULE_DIR/portal"
+cp -r "$SCRIPT_DIR/portal/." "$MODULE_DIR/portal/"
 
-# Copy WebView APK if built
-if [ -f "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" ]; then
-  cp "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" "$MODULE_DIR/system/app/ESurfingUI/"
-  echo "WebView APK included"
+# Verify KernelSU WebUI exists
+if [ ! -f "$MODULE_DIR/webroot/index.html" ]; then
+  echo "ERROR: KernelSU WebUI missing at $MODULE_DIR/webroot/index.html" >&2
+  exit 1
 fi
 
-# Set permissions
+# Copy WebView APK if built (avoid leaving empty system/ overlay dir otherwise)
+if [ -f "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" ]; then
+  mkdir -p "$MODULE_DIR/system/app/ESurfingUI"
+  cp -f "$SCRIPT_DIR/app/build/outputs/apk/debug/app-debug.apk" "$MODULE_DIR/system/app/ESurfingUI/"
+  echo "WebView APK included"
+else
+  rm -rf "$MODULE_DIR/system"
+fi
+
+# Set permissions (755 for dirs and executables, 644 for static files)
+find "$MODULE_DIR/portal" "$MODULE_DIR/webroot" -type d -exec chmod 755 {} + 2>/dev/null || true
+find "$MODULE_DIR/portal" "$MODULE_DIR/webroot" -type f -exec chmod 644 {} + 2>/dev/null || true
+chmod 644 "$MODULE_DIR/module.prop" "$MODULE_DIR/ESurfingClient.json" 2>/dev/null || true
 chmod 755 "$MODULE_DIR/service.sh" "$MODULE_DIR/uninstall.sh" "$MODULE_DIR/customize.sh" "$MODULE_DIR/action.sh" 2>/dev/null || true
 chmod 755 "$MODULE_DIR/esurfingd" 2>/dev/null || true
 
@@ -169,7 +188,7 @@ echo "Module: $MODULE_ZIP"
 echo ""
 echo "Install:"
 echo "  1. Push to device: adb push $MODULE_ZIP /sdcard/"
-echo "  2. Open Magisk Manager → Modules → Install from storage"
+echo "  2. Open Magisk / KernelSU Manager -> Modules -> Install from storage"
 echo "  3. Reboot"
 echo ""
 echo "Configure:"

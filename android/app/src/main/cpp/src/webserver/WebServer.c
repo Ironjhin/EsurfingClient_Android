@@ -48,7 +48,7 @@ static int web_server(void* arg)
         LOG_WARN("Web 服务已允许外部访问 (%s), 而接口没有鉴权且会返回明文账号密码, 请确认这确实是你想要的", listen_addr);
     }
 
-    g_is_webserver_running = 1;
+    g_is_webserver_running = true;
     LOG_DEBUG("Web 服务器已启动: %s", listen_addr);
 
     // 这条是给用户看的: 告诉他去哪打开后台 (带上 http:// 方便直接复制)
@@ -86,8 +86,11 @@ bool start_web_server_remote(void)
 
 void stop_web_server(void)
 {
-    g_is_webserver_running = 0;
+    g_is_webserver_running = false;
+    if (web_thread == NULL) return;
     int result_code = 0;
     sim_thread_join(web_thread, &result_code);
+    sim_thread_destroy(web_thread);
+    web_thread = NULL;
     LOG_DEBUG("Web 服务器线程退出, 退出码: %d", result_code);
 }

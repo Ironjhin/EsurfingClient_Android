@@ -1,6 +1,16 @@
+#ifndef _WIN32
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "WebInternal.h"
 
 #include <mongoose/mongoose.h>
+
+#ifndef _WIN32
+#include <dirent.h>
+#endif
 
 #include "utils/platform/PlatformUtils.h"
 #include "utils/text/TextUtils.h"
@@ -153,77 +163,106 @@ int cmp_log_files(const void* a, const void* b)
     return -str_case_cmp(left->name, right->name);
 }
 
-void logFn(const char ch, void *param)
+/**
+ * @brief 解析并输出单行 Mongoose 日志 (格式: "%-6llx %d %s:%d:%s ...")
+ *
+ * 使用栈缓冲与严格边界检查, 避免零碎 malloc 泄漏、空格对齐偏移误判与越界读取。
+ */
+static void flush_web_log_line(const char* line, const size_t len)
+{
+    if (len == 0) return;
+
+    const char* end = line + len;
+    const char* p = line;
+
+    // 跳过时间戳字段及后续填充空格 (mg_log_prefix 使用 "%-6llx " 会有多个空格)
+    while (p < end && *p != ' ') p++;
+    while (p < end && *p == ' ') p++;
+
+    // 等级字符 ('1'=ERROR, '2'=INFO, 其余=DEBUG/VERBOSE) 后紧跟单个空格
+    if (p + 2 > end || p[1] != ' ')
+    {
+        LOG_DEBUG("未知的 Web 日志: %s", line);
+        return;
+    }
+
+    const char level_ch = p[0];
+    const char* file_start = p + 2;
+    const char* file_end = memchr(file_start, ':', (size_t)(end - file_start));
+    if (file_end == NULL || file_end == file_start)
+    {
+        LOG_DEBUG("未知的 Web 日志: %s", line);
+        return;
+    }
+
+    const char* line_start = file_end + 1;
+    if (line_start >= end)
+    {
+        LOG_DEBUG("未知的 Web 日志: %s", line);
+        return;
+    }
+
+    const char* line_end = memchr(line_start, ':', (size_t)(end - line_start));
+    if (line_end == NULL || line_end == line_start)
+    {
+        LOG_DEBUG("未知的 Web 日志: %s", line);
+        return;
+    }
+
+    char file_buf[128];
+    size_t file_len = (size_t)(file_end - file_start);
+    if (file_len >= sizeof(file_buf)) file_len = sizeof(file_buf) - 1;
+    memcpy(file_buf, file_start, file_len);
+    file_buf[file_len] = '\0';
+
+    char line_num_buf[24];
+    size_t line_num_len = (size_t)(line_end - line_start);
+    if (line_num_len >= sizeof(line_num_buf)) line_num_len = sizeof(line_num_buf) - 1;
+    memcpy(line_num_buf, line_start, line_num_len);
+    line_num_buf[line_num_len] = '\0';
+
+    const uint32_t file_line = (uint32_t)str2uint64(line_num_buf);
+    const char* msg = line_end + 1;
+
+    switch (level_ch)
+    {
+    case '1':
+        LOG_WEB_ERROR(file_buf, file_line, "%s", msg);
+        break;
+    case '2':
+        LOG_WEB_INFO(file_buf, file_line, "%s", msg);
+        break;
+    default:
+        LOG_WEB_TRACE(file_buf, file_line, "%s", msg);
+        break;
+    }
+}
+
+void logFn(const char ch, void* param)
 {
     (void)param;
     static char buffer[512];
     static size_t pos = 0;
-    if (ch == '\n' || pos >= sizeof(buffer) - 1)
+
+    if (ch == '\r')
     {
+        return;
+    }
+
+    if (ch == '\n')
+    {
+        buffer[pos] = '\0';
         if (pos > 0)
         {
-            const char* web_log_level = strchr(buffer, ' ');
-            if (!web_log_level)
-            {
-                LOG_DEBUG("未知的 Web 日志: %s", buffer);
-                return;
-            }
-            const char* file_start = web_log_level + 3;
-            const char* file_end = strchr(file_start, ':');
-            if (!file_end)
-            {
-                LOG_DEBUG("未知的 Web 日志: %s", buffer);
-                return;
-            }
-            const size_t file_length = file_end - file_start;
-            char* file = malloc(file_length + 1);
-            if (!file)
-            {
-                LOG_ERROR("分配内存失败");
-                return;
-            }
-            memcpy(file, file_start, file_length);
-            file[file_length] = '\0';
-            const char* file_line_start = file_end + 1;
-            const char* file_line_end = strchr(file_line_start, ':');
-            if (!file_line_end)
-            {
-                LOG_DEBUG("未知的 Web 日志: %s", buffer);
-                return;
-            }
-            const size_t file_line_length = file_line_end - file_line_start;
-            char* file_line_str = malloc(file_line_length + 1);
-            if (!file_line_str)
-            {
-                LOG_ERROR("分配内存失败");
-                return;
-            }
-            memcpy(file_line_str, file_line_start, file_line_length);
-            file_line_str[file_line_length] = '\0';
-            const uint64_t file_line = str2uint64(file_line_str);
-            const char* msg = file_line_end + 1;
-            switch(web_log_level[1])
-            {
-            case '1':
-                LOG_WEB_ERROR(file, file_line, "%s", msg);
-                break;
-            case '2':
-                LOG_WEB_INFO(file, file_line, "%s", msg);
-                break;
-            default:
-                LOG_WEB_VERBOSE(file, file_line, "%s", msg);
-            }
-            free(file);
-            free(file_line_str);
+            flush_web_log_line(buffer, pos);
         }
         pos = 0;
+        return;
     }
-    else if (ch != '\r')
+
+    // 单行超过缓冲长度时截断多余字符, 直到遇到 '\n' 再统一落盘并归零 pos
+    if (pos < sizeof(buffer) - 1)
     {
-        // 防御: 单行超过缓冲长度时截断, 不能让 pos 越过 buffer (原来没有边界检查)
-        if (pos < sizeof(buffer) - 1)
-        {
-            buffer[pos++] = ch;
-        }
+        buffer[pos++] = ch;
     }
 }

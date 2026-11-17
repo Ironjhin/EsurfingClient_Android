@@ -57,6 +57,7 @@ void restart_process(void)
 
     execv(exec_path, argv);
     perror("execv");
+    g_need_restart = 0;
     exit(1);
 
 #endif

@@ -172,6 +172,7 @@ bool child_spawn(child_t* child)
         signal(SIGINT, SIG_DFL);
         signal(SIGHUP, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
+        signal(SIGUSR1, SIG_DFL);
         signal(SIGCHLD, SIG_DFL);
 
 #if defined(__linux__)
@@ -187,7 +188,7 @@ bool child_spawn(child_t* child)
 
     child->handle = pid;
     child->running = true;
-    child->start_time = get_cur_tm_ms();
+    child->start_time = get_steady_tm_ms();
     return true;
 }
 
@@ -239,7 +240,7 @@ bool child_spawn(child_t* child)
     CloseHandle(pi.hThread);
     child->handle = pi.hProcess;
     child->running = true;
-    child->start_time = get_cur_tm_ms();
+    child->start_time = get_steady_tm_ms();
     return true;
 }
 
@@ -255,7 +256,7 @@ void child_schedule_restart(child_t* child, const int exit_code)
     char name[32];
     child_name(child, name, sizeof(name));
 
-    const uint64_t now = get_cur_tm_ms();
+    const uint64_t now = get_steady_tm_ms();
 
     // 活得够久说明不是启动就崩, 退避与计数清零
     if (now - child->start_time >= SUPERVISOR_HEALTHY_MS)

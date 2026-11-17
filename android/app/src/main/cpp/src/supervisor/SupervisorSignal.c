@@ -21,7 +21,7 @@ static void supervisor_restart_handler(const int sig)
 {
     (void)sig;
     g_supervisor_stop = 1;
-    g_need_restart = true;
+    g_need_restart = 1;
 }
 
 #else

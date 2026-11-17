@@ -17,10 +17,16 @@
 #include "utils/log/Logger.h"
 #include "utils/sim/SimThread.h"
 
+#include <stdio.h>
+
 #ifdef _WIN32
+#include <windows.h>
 extern bool get_service_mode(void);
 #else
+#include <fcntl.h>
 #include <stdlib.h>
+#include <sys/file.h>
+#include <unistd.h>
 #endif
 
 #ifndef __OPENWRT__
@@ -43,10 +49,13 @@ typedef enum
 /**
  * 认证失败后的退避间隔 (分钟)
  *
- * 网络/服务端临时故障按这张表走, 用完之后固定用最后一档 (30 分钟), 一直重试;
- * 需要人工处理的错误不走这张表, 直接等到重启或退出
+ * 网络/服务端临时故障按这张表走, 用完之后固定用最后一档, 一直重试;
+ * 需要人工处理的错误不走这张表, 直接等到重启或退出。
+ *
+ * 最后一档特意取 35 而不是 30: 服务端对反复登录的惩罚是锁 30 分钟,
+ * 卡着 30 分钟整点重试很可能还在锁定窗口里, 多等 5 分钟才稳。
  */
-static const uint64_t table[] = {1, 3, 5, 10, 20, 30};
+static const uint64_t table[] = {1, 3, 5, 10, 20, 35};
 
 /**
  * @brief 各角色入口的公共起步动作
@@ -126,6 +135,13 @@ static RunStatus run(void)
     static uint8_t retry_timeout = 1;
     static uint8_t retry_auth = 1;
 
+    /** 连续 302 的确认计数: 要连续两次才认定需要重新认证 */
+    static _Thread_local uint8_t s_need_auth_hits = 0;
+
+    /** 最近两次登录的时间 (单调钟), 用来限流; 60 秒内满 2 次就停手等 35 分钟 */
+    static _Thread_local uint64_t s_login_ms[2] = {0, 0};
+    static _Thread_local uint8_t s_login_slot = 0;
+
     // 时间控制/重置请求优先于一切网络操作:
     // 到点下线后不应再发送心跳包，也不应继续认证或重试
     if (g_prog_status[tl_thread_idx].runtime_status.is_time_disabled)
@@ -147,6 +163,7 @@ static RunStatus run(void)
     case STATUS_OK: // 正常联网
         retry_timeout = 1;
         retry_auth = 1;
+        s_need_auth_hits = 0; // 中间有一次正常联网, 之前的 302 就不算"连续"了
         /**
          * 检测是否初始化会话和认证登录
          * 如果已经初始化会话和认证登录, 则进入, 否则按已连接互联网处理
@@ -164,20 +181,64 @@ static RunStatus run(void)
                  */
                 if (get_steady_tm_ms() - g_prog_status[tl_thread_idx].auth_cfg.tick >= g_prog_status[tl_thread_idx].auth_cfg.keep_retry * 1000)
                 {
+                    /**
+                     * 心跳失败按递增间隔重试: 1 / 2 / 4 / 8 / 16 / 30 秒, 总窗口约 61 秒
+                     *
+                     * 失败原因分开处理:
+                     * - 网络类 (连不上/超时): 重认证没意义 —— 窗口用完后不退出进程,
+                     *   只把 tick 推到下个周期, 等网络恢复再试
+                     * - 协议类 (服务端有响应但内容不对): 错误码是 FATAL/SLOW (密码错/被踢/
+                     *   欠费) 时立即重新认证; 其余同样退避重试
+                     *
+                     * sleep_ms(..., true) 在退避期间仍可被重启/退出/重认证请求立刻打断。
+                     */
+                    static const uint32_t heartbeat_backoff_ms[] = {1000, 2000, 4000, 8000, 16000, 30000};
+                    const uint8_t heartbeat_retry_max =
+                        sizeof(heartbeat_backoff_ms) / sizeof(heartbeat_backoff_ms[0]);
+
                     uint8_t retry_heartbeat = 1;
-                    while (heartbeat() == false)
+                    hb_result_t hb = heartbeat();
+                    while (hb != HB_OK)
                     {
-                        if (retry_heartbeat > 5)
+                        if (hb == HB_PROTO_FAIL)
                         {
-                            LOG_ERROR("超过最多重试次数");
+                            const auth_error_kind_t kind =
+                                (auth_error_kind_t)g_prog_status[tl_thread_idx].runtime_status.last_error_kind;
+
+                            if (kind == AUTH_ERROR_FATAL || kind == AUTH_ERROR_SLOW)
+                            {
+                                LOG_WARN("心跳被服务端拒绝 (分类 %d), 立即重新认证", (int)kind);
+                                g_prog_status[tl_thread_idx].runtime_status.is_need_reauth = true;
+                                return RUN_SUCCESS;
+                            }
+                        }
+
+                        if (retry_heartbeat > heartbeat_retry_max)
+                        {
+                            if (hb == HB_NET_FAIL)
+                            {
+                                // 网络一直不通: 退登也没用, 下个心跳周期再试
+                                LOG_ERROR("心跳包连续 %" PRIu8 " 次网络失败, 下个周期再试", heartbeat_retry_max);
+                                g_prog_status[tl_thread_idx].auth_cfg.tick = get_steady_tm_ms();
+                                return RUN_SUCCESS;
+                            }
+
+                            LOG_ERROR("心跳包连续 %" PRIu8 " 次失败, 放弃本轮", heartbeat_retry_max);
                             return RUN_FAILED;
                         }
-                        LOG_WARN("配置 %" PRIu8 " 心跳包发送失败, 下标 %" PRIu8 ", 重试: 第 %" PRIu8 " 次, 最多 5 次",
-                            g_prog_status[tl_thread_idx].login_cfg.idx,
+
+                        const uint32_t wait_ms = heartbeat_backoff_ms[retry_heartbeat - 1];
+                        LOG_WARN("配置 %" PRIu8 " 心跳包发送失败 (%s), 下标 %" PRIu8 ", 第 %" PRIu8 "/%" PRIu8 " 次, %" PRIu32 " 秒后重试",
+                            g_prog_status[tl_thread_idx].cfg.idx,
+                            hb == HB_NET_FAIL ? "网络不通" : "服务端拒绝",
                             tl_thread_idx,
-                            retry_heartbeat);
+                            retry_heartbeat,
+                            heartbeat_retry_max,
+                            wait_ms / 1000);
+
                         retry_heartbeat++;
-                        sleep_ms(1000, true);
+                        sleep_ms(wait_ms, true);
+                        hb = heartbeat();
                     }
                     LOG_DEBUG("下一次发送心跳包: %" PRIu64 " 秒后",
                         g_prog_status[tl_thread_idx].auth_cfg.keep_retry);
@@ -190,6 +251,49 @@ static RunStatus run(void)
         return RUN_SUCCESS;
     case STATUS_NEED_AUTH: // 需要认证
         retry_timeout = 1;
+
+        /**
+         * 连续两次 302 才认定需要重新认证
+         *
+         * 单次 302 可能只是网关抖动、探测超时被误判。一次误判就会把好会话登出
+         * 再重认证 —— 而重认证就是一次登录, 频繁登录会被服务端锁 30 分钟。
+         */
+        if (s_need_auth_hits < 2)
+        {
+            s_need_auth_hits++;
+            LOG_DEBUG("检测到 302, 第 %" PRIu8 "/2 次确认", s_need_auth_hits);
+            sleep_ms(1000, true);
+            return RUN_SUCCESS;
+        }
+        s_need_auth_hits = 0;
+
+        /**
+         * 登录频率保护
+         *
+         * 60 秒内已经登录过 2 次, 却再次被要求认证 —— 说明认证虽然"成功"但立刻
+         * 又不生效, 基本可判定配置有问题(或账号已被限制)。继续试下去服务端会锁
+         * 30 分钟, 所以暂停自动认证, 等 35 分钟(服务端锁 30 分钟, 不能卡点)。
+         */
+        {
+            const uint64_t now_ms = get_steady_tm_ms();
+            uint8_t recent = 0;
+            for (uint8_t i = 0; i < 2; i++)
+            {
+                if (s_login_ms[i] != 0 && now_ms - s_login_ms[i] < 60000) recent++;
+            }
+
+            if (recent >= 2)
+            {
+                LOG_ERROR("配置 %" PRIu8 " 在 60 秒内已登录 %" PRIu8 " 次仍被要求认证, 判定为配置错误或账号被限制, 暂停自动认证",
+                    g_prog_status[tl_thread_idx].cfg.idx, recent);
+
+                s_login_ms[0] = 0;
+                s_login_ms[1] = 0;
+                (void)wait_auth_retry(35); // 服务端锁定 30 分钟, 多等 5 分钟避开卡点
+                return RUN_SUCCESS;
+            }
+        }
+
         if (g_prog_status[tl_thread_idx].runtime_status.is_initialized) // 进入认证流程的时候如果会话已经初始化, 重置认证配置参数
         {
             reset();
@@ -207,7 +311,7 @@ static RunStatus run(void)
             if (status->last_error_msg[0] != '\0')
             {
                 LOG_ERROR("配置 %" PRIu8 " 认证失败: %s (Error-Code: %s, Sub-Error: %s, 分类: %s)",
-                    g_prog_status[tl_thread_idx].login_cfg.idx,
+                    g_prog_status[tl_thread_idx].cfg.idx,
                     status->last_error_msg,
                     status->last_error_code[0] != '\0' ? status->last_error_code : "-",
                     status->last_sub_error[0] != '\0' ? status->last_sub_error : "-",
@@ -216,7 +320,7 @@ static RunStatus run(void)
             else
             {
                 LOG_ERROR("配置 %" PRIu8 " 认证失败: 没拿到服务端错误码, 按网络问题处理",
-                    g_prog_status[tl_thread_idx].login_cfg.idx);
+                    g_prog_status[tl_thread_idx].cfg.idx);
             }
 
             uint64_t wait_minutes = 0;
@@ -237,7 +341,7 @@ static RunStatus run(void)
                                         : (retry_auth <= table_len ? retry_auth : table_len);
                 wait_minutes = table[step - 1];
                 LOG_WARN("配置 %" PRIu8 " 将在 %" PRIu64 " 分钟后重试 (第 %" PRIu8 " 次失败, 不设上限, 重启或退出可立即打断)",
-                    g_prog_status[tl_thread_idx].login_cfg.idx, wait_minutes, retry_auth);
+                    g_prog_status[tl_thread_idx].cfg.idx, wait_minutes, retry_auth);
                 if (retry_auth < UINT8_MAX) retry_auth++;
             }
 
@@ -248,6 +352,10 @@ static RunStatus run(void)
             return RUN_SUCCESS;
         }
         retry_auth = 1; // 认证成功: 下次失败重新从最短间隔开始
+
+        // 记下这次登录时间, 供上面的频率保护判断 (两个槽轮转, 只看最近两次)
+        s_login_slot ^= 1;
+        s_login_ms[s_login_slot] = get_steady_tm_ms();
         return RUN_SUCCESS;
     case STATUS_ERROR: // 网络错误
         retry_auth = 1;
@@ -278,7 +386,7 @@ int dialer_app(void* arg)
     LOG_DEBUG("认证线程 %" PRId8 " 创建成功, ID: %" PRIu64 ", 使用配置: %" PRIu8,
         tl_thread_idx,
         g_prog_status[tl_thread_idx].thread_id,
-        g_prog_status[tl_thread_idx].login_cfg.idx);
+        g_prog_status[tl_thread_idx].cfg.idx);
 
     refresh_states(); // 刷新数据 (algo_id, host_name, client_id, mac_addr)
     if (get_last_location() == false) g_prog_status[tl_thread_idx].runtime_status.is_running = false;  // 获取 last_location, 用于获取认证配置
@@ -432,7 +540,7 @@ static int work_web(void)
         if (hold_for_cfg() == false) shut(0);
     }
 
-    LOG_DEBUG("以 Web 进程运行, 展示配置 %" PRIu8, g_prog_status[0].login_cfg.idx);
+    LOG_DEBUG("以 Web 进程运行, 展示配置 %" PRIu8, g_prog_status[0].cfg.idx);
 
     // Web 服务在独立线程里跑, 主线程只等退出
     while (g_need_exit == false && g_stop_requested == 0)
@@ -462,8 +570,96 @@ static int work_web(void)
 
 #endif
 
+/**
+ * @brief 抢"单实例锁"
+ *
+ * 同类型实例只能有一个:
+ * - 认证进程按账号 (auth-N) —— 两个同账号进程同时认证会互相把对方踢下线, 只能手动杀进程
+ * - supervisor / standalone 用 main
+ * - Web 子进程用 web
+ *
+ * POSIX 用锁文件 + flock (Android Magisk 下位于 /data/adb/esurfing/), Windows 用命名互斥;
+ * fd / 句柄都故意不关, 交给进程退出时释放。Windows 重启时旧进程还没退干净, 所以重试等最多 3 秒。
+ *
+ * @param key 锁的 key
+ * @return 是否抢到 (false 表示已有同类型实例)
+ */
+static bool single_instance_acquire(const char* key)
+{
+#ifdef _WIN32
+    char narrow[128];
+    snprintf(narrow, sizeof(narrow), "Local\\ESurfingClient-%s", key);
+
+    wchar_t name[128];
+    if (MultiByteToWideChar(CP_UTF8, 0, narrow, -1, name, 128) <= 0) return true;
+
+    for (int i = 0; i < 15; i++)
+    {
+        HANDLE mutex = CreateMutexW(NULL, FALSE, name);
+        if (mutex == NULL) return true; // 建不出来就别拦着程序
+        if (GetLastError() != ERROR_ALREADY_EXISTS) return true; // 抢到 (句柄故意不关)
+
+        CloseHandle(mutex);
+        Sleep(200);
+    }
+    return false;
+#else
+    char path[128];
+#ifdef __MAGISK__
+    snprintf(path, sizeof(path), "/data/adb/esurfing/esurfingclient-%s.lock", key);
+#else
+    snprintf(path, sizeof(path), "/tmp/esurfingclient-%s.lock", key);
+#endif
+
+    /**
+     * O_CLOEXEC 必须带: supervisor 拉起的 auth 子进程是 exec 出来的, 继承 fd 会把
+     * main 锁一起带过去 —— supervisor 退出后子进程还持有它, 下次启动就抢不到了
+     */
+    static int lock_fd = -1;
+    lock_fd = open(path, O_CREAT | O_RDWR | O_CLOEXEC, 0644);
+    if (lock_fd < 0) return true; // 打不开锁文件就别拦着程序
+
+    if (flock(lock_fd, LOCK_EX | LOCK_NB) != 0)
+    {
+        close(lock_fd);
+        lock_fd = -1;
+        return false;
+    }
+    return true;
+#endif
+}
+
 void work(void)
 {
+    /**
+     * 单实例检查放在最前面: 同一账号的两个进程会互相踢下线且无法自愈,
+     * 重复启动必须先拦住。日志系统这时还没起来, 所以只写 stderr。
+     */
+    char lock_key[32];
+    if (g_prog_role == ROLE_AUTH)
+    {
+        snprintf(lock_key, sizeof(lock_key), "auth-%" PRIu8, g_prog_account);
+    }
+    else if (g_prog_role == ROLE_WEB)
+    {
+        snprintf(lock_key, sizeof(lock_key), "web");
+    }
+    else
+    {
+        snprintf(lock_key, sizeof(lock_key), "main");
+    }
+
+    if (single_instance_acquire(lock_key) == false)
+    {
+        fprintf(stderr, "[ERROR] 已有同类型的实例在运行 (%s), 本次退出\n", lock_key);
+        exit(1);
+    }
+
+#ifdef __MAGISK__
+    /* 仅在成功抢到单实例锁之后, 主守护进程才写 PID 文件、拿 WakeLock 并注册退出清理 */
+    magisk_daemon_acquire_resources();
+#endif
+
     /**
      * 各角色走各自的流程
      */
@@ -575,7 +771,7 @@ void work(void)
     {
         if (g_prog_status[i].runtime_status.is_time_disabled)
         {
-            LOG_INFO("配置 %" PRIu8 " 当前不在允许时段，暂不启动认证线程", g_prog_status[i].login_cfg.idx);
+            LOG_INFO("配置 %" PRIu8 " 当前不在允许时段，暂不启动认证线程", g_prog_status[i].cfg.idx);
             continue;
         }
         g_prog_status[i].thread = sim_thread_create_retry(dialer_app, (void*)(intptr_t)i, 5);
@@ -625,7 +821,7 @@ void work(void)
                             LOG_ERROR("超过重试次数, 强制退出线程");
                             sim_thread_destroy(g_prog_status[j].thread);
                         }
-                        LOG_DEBUG("等待配置 %" PRIu8 " 登出, 下标 %" PRIu8 ", 等待次数: %" PRIu8 ", 最多 5 次", g_prog_status[j].login_cfg.idx, j, retry_wte);
+                        LOG_DEBUG("等待配置 %" PRIu8 " 登出, 下标 %" PRIu8 ", 等待次数: %" PRIu8 ", 最多 5 次", g_prog_status[j].cfg.idx, j, retry_wte);
                         retry_wte++;
                         sleep_ms(2000, true);
                     }

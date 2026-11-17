@@ -1,3 +1,9 @@
+#ifndef _WIN32
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "webserver/HotspotControl.h"
 
 #include <stdio.h>
@@ -6,6 +12,7 @@
 
 #include "utils/log/Logger.h"
 #include "utils/text/TextUtils.h"
+#include "utils/time/TimeUtils.h"
 #include "utils/platform/PlatformUtils.h"
 #include "utils/runtime/ChildRun.h"
 #include "utils/sim/SimThread.h"
@@ -57,8 +64,6 @@ static bool hotspot_do_action(const char* action, const char* adapter_id, char**
 
 /** 内嵌脚本的调用方式: 变量前缀 + 脚本正文 -> UTF-16LE -> Base64 -> -EncodedCommand */
 #define HOTSPOT_SCRIPT_MAX 8192
-/** 1601-01-01 到 1970-01-01 的 100 纳秒数 (FILETIME 转 Unix 时间用) */
-#define HOTSPOT_EPOCH_DIFF 116444736000000000ULL
 
 #include "HotspotScript.inc"
 
@@ -599,14 +604,35 @@ static bool hotspot_do_action(const char* action, const char* adapter_id, char**
 
 #ifdef _WIN32
 typedef CRITICAL_SECTION hotspot_lock_t;
+static INIT_ONCE s_locks_once = INIT_ONCE_STATIC_INIT;
+static hotspot_lock_t s_run_lock;   // 串行化"跑一次外部命令"
+static hotspot_lock_t s_cache_lock; // 保护缓存与消息
+
+static BOOL CALLBACK hotspot_lock_init_cb(PINIT_ONCE once, PVOID param, PVOID* ctx)
+{
+    (void)once;
+    (void)param;
+    (void)ctx;
+    InitializeCriticalSection(&s_run_lock);
+    InitializeCriticalSection(&s_cache_lock);
+    return TRUE;
+}
+
+static void hotspot_lock_init(void)
+{
+    InitOnceExecuteOnce(&s_locks_once, hotspot_lock_init_cb, NULL, NULL);
+}
 #else
 #include <pthread.h>
 typedef pthread_mutex_t hotspot_lock_t;
+static hotspot_lock_t s_run_lock = PTHREAD_MUTEX_INITIALIZER;   // 串行化"跑一次外部命令"
+static hotspot_lock_t s_cache_lock = PTHREAD_MUTEX_INITIALIZER; // 保护缓存与消息
+
+static void hotspot_lock_init(void)
+{
+}
 #endif
 
-static hotspot_lock_t s_run_lock;   // 串行化"跑一次外部命令"
-static hotspot_lock_t s_cache_lock; // 保护缓存与消息
-static bool s_locks_ready;
 static bool s_available_checked;
 static bool s_available;
 
@@ -618,20 +644,9 @@ static sim_thread_t* s_refresh_thread;
 static uint64_t s_last_request_ms;
 static uint64_t s_last_query_ms;
 
-static void hotspot_lock_init(void)
-{
-#ifdef _WIN32
-    InitializeCriticalSection(&s_run_lock);
-    InitializeCriticalSection(&s_cache_lock);
-#else
-    pthread_mutex_init(&s_run_lock, NULL);
-    pthread_mutex_init(&s_cache_lock, NULL);
-#endif
-    s_locks_ready = true;
-}
-
 static void hotspot_run_lock(void)
 {
+    hotspot_lock_init();
 #ifdef _WIN32
     EnterCriticalSection(&s_run_lock);
 #else
@@ -650,6 +665,7 @@ static void hotspot_run_unlock(void)
 
 static void hotspot_cache_lock(void)
 {
+    hotspot_lock_init();
 #ifdef _WIN32
     EnterCriticalSection(&s_cache_lock);
 #else
@@ -668,18 +684,7 @@ static void hotspot_cache_unlock(void)
 
 static uint64_t hotspot_now_ms(void)
 {
-#ifdef _WIN32
-    FILETIME file_time;
-    GetSystemTimeAsFileTime(&file_time);
-    ULARGE_INTEGER value;
-    value.LowPart = file_time.dwLowDateTime;
-    value.HighPart = file_time.dwHighDateTime;
-    return (uint64_t)((value.QuadPart - HOTSPOT_EPOCH_DIFF) / 10000ULL);
-#else
-    struct timespec now;
-    if (clock_gettime(CLOCK_REALTIME, &now) != 0) return 0;
-    return (uint64_t)now.tv_sec * 1000ULL + (uint64_t)now.tv_nsec / 1000000ULL;
-#endif
+    return get_steady_tm_ms();
 }
 
 static void hotspot_sleep_ms(const int ms)
@@ -708,7 +713,10 @@ static char* hotspot_strdup(const char* text)
  */
 static void hotspot_refresh_state(void)
 {
+    hotspot_cache_lock();
     s_last_query_ms = hotspot_now_ms();
+    hotspot_cache_unlock();
+
     hotspot_run_lock();
     char* fresh = hotspot_query_status();
     hotspot_run_unlock();
@@ -769,9 +777,15 @@ static int hotspot_refresh_thread(void* arg)
         hotspot_sleep_ms(200);
         if (s_refreshing == false) return 0;
         if (s_busy) continue; // 正在切换, 状态由工作线程收尾时刷新
+
+        hotspot_cache_lock();
+        const uint64_t last_req = s_last_request_ms;
+        const uint64_t last_query = s_last_query_ms;
+        hotspot_cache_unlock();
+
         const uint64_t now = hotspot_now_ms();
-        if (now - s_last_request_ms > HOTSPOT_REQUEST_WINDOW_MS) continue; // 没人看网页就不查
-        if (now - s_last_query_ms < HOTSPOT_REFRESH_MS) continue;          // 5 秒内不重复查
+        if (last_req == 0 || (now >= last_req && now - last_req > HOTSPOT_REQUEST_WINDOW_MS)) continue; // 没人看网页就不查
+        if (last_query != 0 && now >= last_query && now - last_query < HOTSPOT_REFRESH_MS) continue;    // 5 秒内不重复查
         hotspot_refresh_state();
     }
     return 0;
@@ -790,7 +804,7 @@ void hotspot_control_start(void)
     if (s_refreshing) return;
     if (hotspot_control_available() == false) return;
 
-    if (s_locks_ready == false) hotspot_lock_init();
+    hotspot_lock_init();
     s_refreshing = true;
     s_refresh_thread = sim_thread_create(hotspot_refresh_thread, NULL);
     if (s_refresh_thread == NULL)
@@ -808,6 +822,7 @@ void hotspot_control_stop(void)
     s_refreshing = false;
     int code = 0;
     sim_thread_join(s_refresh_thread, &code);
+    sim_thread_destroy(s_refresh_thread);
     s_refresh_thread = NULL;
 
     hotspot_cache_lock();
@@ -820,12 +835,11 @@ char* hotspot_status_json(void)
 {
     if (hotspot_control_available() == false) return NULL;
 
-    s_last_request_ms = hotspot_now_ms();
-
     char* cached = NULL;
     char message[512];
     message[0] = '\0';
     hotspot_cache_lock();
+    s_last_request_ms = hotspot_now_ms();
     if (s_status_cache != NULL) cached = hotspot_strdup(s_status_cache);
     if (s_last_message[0] != '\0') snprintf(message, sizeof(message), "%s", s_last_message);
     hotspot_cache_unlock();
@@ -901,6 +915,7 @@ int hotspot_request(const char* action, const char* adapter_id, char** out_json)
         return 500;
     }
     sim_thread_detach(worker); // 跑完自己收尾, 关闭程序时不等它
+    sim_thread_destroy(worker);
 
     LOG_INFO("收到热点%s请求 (网卡 %s), 已交给后台执行", strcmp(action, "start") == 0 ? "开启" : "关闭", adapter_id);
     *out_json = hotspot_strdup("{\"ok\":true,\"message\":\"正在切换热点，请稍候。\"}");

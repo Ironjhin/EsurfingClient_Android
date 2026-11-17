@@ -8,7 +8,7 @@ const CHANNEL_TEXT = {
 
 const CHANNEL_VALUES = ['windows', 'linux', 'android', 'ios', 'macos'];
 
-/** 归一化通道取值 */
+/** 归一化通道取值 (缺省用 Android 通道, 与默认配置文件里的 channel: 3 一致) */
 function normalizeChannel(raw) {
     if (raw === null || raw === undefined) return 'android';
 
@@ -74,9 +74,9 @@ const TOAST_CLASS = {
 
 const MAX_TIME_WINDOWS = 16;
 
-const DEFAULT_CONN_TIMEOUT = 7;
+const DEFAULT_CONN_TIMEOUT = 10;
 
-const DEFAULT_OP_TIMEOUT = 10;
+const DEFAULT_OP_TIMEOUT = 15;
 
 const DEFAULT_WEB_PORT = 8888;
 
@@ -90,6 +90,40 @@ const LOG_INTERVAL = 5000;
 
 /** 默认配置 (与后端 s_default_cfg 保持一致) */
 /** 配置字段表: 默认值 / 读取时归一化 / 保存时转换 (新增字段只改这里) */
+/** 探测目标: 域名 + 固定 IP (与后端内置默认一致) */
+const DEFAULT_PROBE_HOSTS = [
+    { host: 'connectivitycheck.platform.hicloud.com', ips: ['183.61.185.93', '125.88.255.53'] },
+    { host: 'connect.rom.miui.com', ips: ['202.69.4.32', '220.181.104.183'] }
+];
+
+/** IPv4 字面量校验 (和后端 probe_is_ipv4 一个要求: a.b.c.d 四段 0~255) */
+function isValidIPv4(value) {
+    const text = String(value == null ? '' : value).trim();
+    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(text)) return false;
+    return text.split('.').every(part => Number(part) <= 255);
+}
+
+/** 前端用 ipsText (逗号分隔) 编辑, 提交时再拆回 ips 数组 */
+function normalizeProbeHosts(raw) {
+    const list = Array.isArray(raw) ? raw : DEFAULT_PROBE_HOSTS;
+    return list
+        .filter(item => item && typeof item === 'object' && typeof item.host === 'string')
+        .map(item => ({
+            host: item.host.trim(),
+            ipsText: Array.isArray(item.ips) ? item.ips.filter(isValidIPv4).join(', ') : ''
+        }));
+}
+
+/** 提交给后端: 拆 ipsText, 丢掉空条目/非法 IP */
+function probeHostsOut(list) {
+    return (Array.isArray(list) ? list : [])
+        .map(item => ({
+            host: String(item.host || '').trim(),
+            ips: String(item.ipsText || '').split(',').map(part => part.trim()).filter(isValidIPv4)
+        }))
+        .filter(item => item.host.length > 0 && item.ips.length > 0);
+}
+
 const CONFIG_FIELDS = [
     { key: 'enabled', def: false, norm: v => !!v, out: v => !!v },
     { key: 'web_external_acc', def: false, norm: v => !!v, out: v => !!v },
@@ -113,6 +147,22 @@ const CONFIG_FIELDS = [
         norm: v => (isValidWebPort(v) ? Number(v) : DEFAULT_WEB_PORT),
         out: v => Number(v),
         check: value => (isValidWebPort(value) ? null : `Web 服务端口应为 1 - 65535 的整数 (当前: ${value})`)
+    },
+    {
+        key: 'probe_hosts', def: normalizeProbeHosts(DEFAULT_PROBE_HOSTS),
+        norm: normalizeProbeHosts,
+        out: probeHostsOut,
+        check: value => {
+            const list = probeHostsOut(value);
+            if (list.length === 0) return '探测目标至少要有一条 (域名 + 合法 IPv4), 留空会回退内置默认';
+
+            const too_many = list.find(item => item.ips.length > 4);
+            if (too_many) return `${too_many.host} 配了 ${too_many.ips.length} 个 IP, 每个域名最多 4 个`;
+
+            const total = list.reduce((sum, item) => sum + item.ips.length, 0);
+            if (total > 14) return `探测目标共 ${total} 路, 最多 14 路 (认证服务器已占 2 路)`;
+            return null;
+        }
     }
 ];
 
@@ -684,7 +734,11 @@ document.addEventListener('alpine:init', () => {
             const notify = Alpine.store('notify');
             Alpine.store('main').resetConfigs();
             const ok = await this.saveConfigs();
-            if (ok) notify.info('配置已复位到默认值, 需要重新填写账号后重启程序');
+            if (ok) {
+                // 和 LuCI 保持一致: 复位只写文件不重启, 提示完刷新页面, 让用户对着默认值填账号
+                notify.success('配置已复位到默认值, 页面即将刷新, 请重新填写账号');
+                setTimeout(() => location.reload(), 2000);
+            }
         },
 
         /** 等程序重启完成, 然后自动刷新页面。 */
@@ -725,6 +779,8 @@ document.addEventListener('alpine:init', () => {
         accounts: [],
         timeWindows: [],
         error: '',
+        /** 高级选项是否展开 (只是界面状态, 不写进配置) */
+        showAdvanced: false,
 
         init() {
             this.getAccounts();
@@ -759,6 +815,12 @@ document.addEventListener('alpine:init', () => {
             }
             this.error = '';
             this.timeWindows.push(defaultEditTimeWindow());
+        },
+
+        /** 探测目标总路数: 添加按钮用它判断是否已到 14 路上限 */
+        probeIpTotal() {
+            const configs = Alpine.store('main').configs || {};
+            return probeHostsOut(configs.probe_hosts).reduce((sum, item) => sum + item.ips.length, 0);
         },
 
         removeTimeWindow(index) {

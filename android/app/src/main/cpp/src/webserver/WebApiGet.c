@@ -46,6 +46,21 @@ static void reply_json(struct mg_connection* c, cJSON* root)
 }
 
 /**
+ * @brief 使用单调时钟计算精确运行时长 (免疫手机联网后 NTP 墙钟跳变与无符号下溢)
+ */
+static uint64_t calc_uptime_ms(void)
+{
+    const uint64_t steady_now = get_steady_tm_ms();
+    if (g_start_steady_tm > 0 && steady_now >= g_start_steady_tm)
+    {
+        return steady_now - g_start_steady_tm;
+    }
+
+    const uint64_t wall_now = get_cur_tm_ms();
+    return wall_now >= g_start_run_tm ? (wall_now - g_start_run_tm) : 0;
+}
+
+/**
  * @brief 查询认证状态
  * @param out 是否已认证
  * @return 是否查询成功 (Web 进程连不上认证进程时为 false)
@@ -131,7 +146,7 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
     // 根目录转发到 index.html
     if (mg_match(hm->uri, mg_str("/"), NULL))
     {
-        mg_http_reply(c, 302, "Location: /index.html\r\n", "");
+        mg_http_reply(c, 302, "Location: /index.html\r\n" HEADER_CORS, "");
         return true;
     }
 
@@ -174,6 +189,11 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         }
 
         cJSON* auth = cJSON_CreateObject();
+        if (auth == NULL)
+        {
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
+        }
         cJSON_AddBoolToObject(auth, "status", is_authed);
         // 认证进程不可达时额外标出来, 前端可据此提示 (不认这个字段的前端会忽略它)
         cJSON_AddBoolToObject(auth, "reachable", reachable);
@@ -261,11 +281,16 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         return true;
     }
 
-    // 获取运行时间 (兼容 KernelSU WebUI)
+    // 获取运行时间 (兼容 KernelSU WebUI, 使用单调时钟防 NTP 校时跳变/下溢)
     if (mg_match(hm->uri, mg_str("/api/status/uptime"), NULL))
     {
         cJSON* info = cJSON_CreateObject();
-        cJSON_AddNumberToObject(info, "uptime_ms", (double)(get_cur_tm_ms() - g_start_run_tm));
+        if (info == NULL)
+        {
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
+        }
+        cJSON_AddNumberToObject(info, "uptime_ms", (double)calc_uptime_ms());
         reply_json(c, info);
         return true;
     }
@@ -274,13 +299,18 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
     if (mg_match(hm->uri, mg_str("/api/status/sys"), NULL))
     {
         cJSON* info = cJSON_CreateObject();
+        if (info == NULL)
+        {
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
+        }
         cJSON_AddStringToObject(info, "version", PROGRAM_FULL_VERSION);
-        cJSON_AddNumberToObject(info, "uptime_ms", (double)(get_cur_tm_ms() - g_start_run_tm));
+        cJSON_AddNumberToObject(info, "uptime_ms", (double)calc_uptime_ms());
         cJSON_AddNumberToObject(info, "log_level", get_logger_level());
         cJSON_AddStringToObject(info, "log_dir", safe_str(get_logger_dir()));
         cJSON_AddStringToObject(info, "config_file", safe_str(get_config_file_path()));
         cJSON_AddBoolToObject(info, "program_enabled", g_prog_enabled);
-        cJSON_AddBoolToObject(info, "restart_pending", g_need_restart);
+        cJSON_AddBoolToObject(info, "restart_pending", g_need_restart != 0);
         cJSON_AddNumberToObject(info, "account_count", g_prog_cnt);
         cJSON_AddNumberToObject(info, "thread_count", g_prog_cnt);
         cJSON_AddStringToObject(info, "bootId", boot_id_get());
@@ -317,6 +347,11 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         }
 
         cJSON* configs = cJSON_CreateObject();
+        if (configs == NULL)
+        {
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
+        }
 
         cJSON_AddBoolToObject(configs, "enabled", g_prog_enabled);
         cJSON_AddBoolToObject(configs, "web_external_acc", g_web_external_acc);
@@ -331,30 +366,118 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         cJSON_AddNumberToObject(configs, "op_timeout", (double)g_op_timeout);
         cJSON_AddNumberToObject(configs, "web_port", g_web_port);
 
+        /**
+         * 联网探测目标: 用内存里当前生效的那份 (缺省时就是内置默认)。
+         * 漏了它的话网页上会显示默认值, 用户改过的探测目标会被"保存"覆盖掉。
+         */
+        cJSON* probe_hosts = probe_targets_to_json();
+        if (probe_hosts != NULL)
+        {
+            cJSON_AddItemToObject(configs, "probe_hosts", probe_hosts);
+        }
+
         cJSON* accounts = cJSON_CreateArray();
         cJSON* account = cJSON_CreateObject();
-
-        cJSON_AddStringToObject(account, "username", g_prog_status[0].login_cfg.usr);
-        cJSON_AddStringToObject(account, "password", g_prog_status[0].login_cfg.pwd);
-        cJSON_AddStringToObject(account, "channel", channel_name(g_prog_status[0].login_cfg.chn));
-
-        cJSON* time_windows = cJSON_CreateArray();
-        for (uint8_t i = 0; i < g_prog_status[0].login_cfg.time_window_count; i++)
+        if (accounts == NULL || account == NULL)
         {
-            const time_window_t* win = &g_prog_status[0].login_cfg.time_windows[i];
-            char start_str[TIME_WINDOW_STR_LEN];
-            char end_str[TIME_WINDOW_STR_LEN];
-            format_week_min(win->start_week_min, start_str);
-            format_week_min(win->end_week_min, end_str);
-
-            cJSON* window_obj = cJSON_CreateObject();
-            cJSON_AddStringToObject(window_obj, "start", start_str);
-            cJSON_AddStringToObject(window_obj, "end", end_str);
-            cJSON_AddItemToArray(time_windows, window_obj);
+            cJSON_Delete(accounts);
+            cJSON_Delete(account);
+            cJSON_Delete(configs);
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
         }
-        cJSON_AddItemToObject(account, "time_windows", time_windows);
 
-        cJSON_AddItemToArray(accounts, account);
+        if (g_prog_status != NULL)
+        {
+            cJSON_AddStringToObject(account, "username", g_prog_status[0].cfg.usr);
+            cJSON_AddStringToObject(account, "password", g_prog_status[0].cfg.pwd);
+            cJSON_AddStringToObject(account, "channel", channel_name(g_prog_status[0].cfg.chn));
+
+            char mark_str[16] = "";
+            if (g_prog_status[0].cfg.use_cus_mark)
+            {
+                snprintf(mark_str, sizeof(mark_str), "0x%x", g_prog_status[0].cfg.mark);
+            }
+            cJSON_AddStringToObject(account, "mark", mark_str);
+
+            cJSON* time_windows = cJSON_CreateArray();
+            if (time_windows != NULL)
+            {
+                for (uint8_t i = 0; i < g_prog_status[0].cfg.time_window_count; i++)
+                {
+                    const time_window_t* win = &g_prog_status[0].cfg.time_windows[i];
+                    char start_str[TIME_WINDOW_STR_LEN];
+                    char end_str[TIME_WINDOW_STR_LEN];
+                    format_week_min(win->start_week_min, start_str);
+                    format_week_min(win->end_week_min, end_str);
+
+                    cJSON* window_obj = cJSON_CreateObject();
+                    if (window_obj != NULL)
+                    {
+                        cJSON_AddStringToObject(window_obj, "start", start_str);
+                        cJSON_AddStringToObject(window_obj, "end", end_str);
+                        cJSON_AddItemToArray(time_windows, window_obj);
+                    }
+                }
+                cJSON_AddItemToObject(account, "time_windows", time_windows);
+            }
+        }
+
+        // 结合磁盘配置保留当前激活账号的原始 mark 字符串, 并按磁盘原序完整保留其余所有账号 (防丢 mark 与防重复追加)
+        const int active_idx = (g_prog_status != NULL && g_prog_status[0].cfg.idx >= 1)
+            ? (int)(g_prog_status[0].cfg.idx - 1)
+            : 0;
+        bool account_placed = false;
+
+        char* disk_cfg_text = read_cfg_file();
+        if (disk_cfg_text != NULL)
+        {
+            cJSON* disk_cfg = cJSON_Parse(disk_cfg_text);
+            if (disk_cfg != NULL)
+            {
+                const cJSON* disk_accounts = cJSON_GetObjectItem(disk_cfg, "accounts");
+                if (cJSON_IsArray(disk_accounts))
+                {
+                    const int disk_cnt = cJSON_GetArraySize(disk_accounts);
+                    if (disk_cnt > 0)
+                    {
+                        const int target_idx = (active_idx >= 0 && active_idx < disk_cnt) ? active_idx : 0;
+                        const cJSON* disk_active = cJSON_GetArrayItem(disk_accounts, target_idx);
+                        const cJSON* disk_mark = disk_active != NULL ? cJSON_GetObjectItem(disk_active, "mark") : NULL;
+                        if (cJSON_IsString(disk_mark) && disk_mark->valuestring != NULL && disk_mark->valuestring[0] != '\0')
+                        {
+                            cJSON* raw_mark = cJSON_CreateString(disk_mark->valuestring);
+                            if (raw_mark != NULL)
+                            {
+                                cJSON_ReplaceItemInObject(account, "mark", raw_mark);
+                            }
+                        }
+
+                        for (int i = 0; i < disk_cnt; i++)
+                        {
+                            if (i == target_idx)
+                            {
+                                cJSON_AddItemToArray(accounts, account);
+                                account_placed = true;
+                            }
+                            else
+                            {
+                                cJSON* extra = cJSON_Duplicate(cJSON_GetArrayItem(disk_accounts, i), 1);
+                                if (extra != NULL) cJSON_AddItemToArray(accounts, extra);
+                            }
+                        }
+                    }
+                }
+                cJSON_Delete(disk_cfg);
+            }
+            free(disk_cfg_text);
+        }
+
+        if (account_placed == false)
+        {
+            cJSON_AddItemToArray(accounts, account);
+        }
+
         cJSON_AddItemToObject(configs, "accounts", accounts);
 
         reply_json(c, configs);
@@ -397,16 +520,26 @@ bool handle_api_get(struct mg_connection* c, struct mg_http_message* hm)
         if (count > 1) qsort(entries, (size_t)count, sizeof(log_file_entry_t), cmp_log_files);
 
         cJSON* root = cJSON_CreateObject();
-        cJSON_AddStringToObject(root, "dir", safe_str(get_logger_dir()));
         cJSON* files = cJSON_CreateArray();
+        if (root == NULL || files == NULL)
+        {
+            cJSON_Delete(root);
+            cJSON_Delete(files);
+            mg_http_reply(c, 500, HEADER_CORS, "");
+            return true;
+        }
+        cJSON_AddStringToObject(root, "dir", safe_str(get_logger_dir()));
         for (int i = 0; i < count; i++)
         {
             cJSON* file = cJSON_CreateObject();
-            cJSON_AddStringToObject(file, "name", entries[i].name);
-            cJSON_AddNumberToObject(file, "size", (double)entries[i].size);
-            cJSON_AddNumberToObject(file, "mtime", (double)entries[i].mtime);
-            cJSON_AddBoolToObject(file, "current", entries[i].current);
-            cJSON_AddItemToArray(files, file);
+            if (file != NULL)
+            {
+                cJSON_AddStringToObject(file, "name", entries[i].name);
+                cJSON_AddNumberToObject(file, "size", (double)entries[i].size);
+                cJSON_AddNumberToObject(file, "mtime", (double)entries[i].mtime);
+                cJSON_AddBoolToObject(file, "current", entries[i].current);
+                cJSON_AddItemToArray(files, file);
+            }
         }
         cJSON_AddItemToObject(root, "files", files);
 

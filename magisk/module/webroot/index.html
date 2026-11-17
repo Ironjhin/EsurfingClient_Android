@@ -2,161 +2,2026 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ESurfing Daemon</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<script>
+try {
+  const saved = localStorage.getItem('esurfing_theme');
+  if (saved === 'light' || saved === 'dark') {
+    document.querySelector('meta[name="color-scheme"]').content = saved;
+    document.documentElement.dataset.theme = saved;
+  }
+} catch {}
+</script>
+<title>ESurfing Daemon — 守护控制台</title>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #e6edf3; padding: 20px; }
-.container { max-width: 720px; margin: 0 auto; }
-h1 { font-size: 1.5rem; margin-bottom: 4px; }
-.subtitle { color: #8b949e; font-size: 0.85rem; margin-bottom: 24px; }
-.card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-.card h2 { font-size: 1rem; margin-bottom: 16px; color: #58a6ff; }
-.row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #21262d; }
-.row:last-child { border-bottom: none; }
-.label { color: #8b949e; font-size: 0.9rem; }
-.value { font-size: 0.9rem; }
-.badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
-.badge-ok { background: #1a3a2a; color: #3fb950; }
-.badge-fail { background: #3a1a1a; color: #f85149; }
-.badge-warn { background: #3a2e1a; color: #d29922; }
-.form-group { margin-bottom: 14px; }
-.form-group label { display: block; font-size: 0.85rem; color: #8b949e; margin-bottom: 4px; }
-.form-group input, .form-group select { width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; font-size: 0.9rem; }
-.form-group input:focus, .form-group select:focus { outline: none; border-color: #58a6ff; }
-.check-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-.check-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: #58a6ff; }
-.btn { padding: 8px 20px; border: none; border-radius: 6px; font-size: 0.9rem; cursor: pointer; font-weight: 600; }
-.btn-primary { background: #238636; color: #fff; }
-.btn-primary:hover { background: #2ea043; }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-danger { background: #da3633; color: #fff; }
-.btn-danger:hover { background: #f85149; }
-.actions { display: flex; gap: 8px; margin-top: 16px; }
-.toast { visibility: hidden; min-width: 200px; background: #238636; color: #fff; text-align: center; padding: 10px 16px; border-radius: 6px; position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); font-size: 0.85rem; z-index: 100; }
-.toast.error { background: #da3633; }
-.toast.show { visibility: visible; animation: fadeInOut 2.5s; }
-@keyframes fadeInOut { 0% { opacity: 0; bottom: 0; } 10% { opacity: 1; bottom: 24px; } 80% { opacity: 1; } 100% { opacity: 0; bottom: 0; } }
-.log-box { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; font-family: 'Consolas', 'Courier New', monospace; font-size: 0.8rem; max-height: 240px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; color: #7ee787; margin-top: 8px; }
+:root {
+  color-scheme: light dark;
+
+  --bg-page: #f3f6fb;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f8fafd;
+  --bg-input: #f8fafc;
+  --bg-header: rgba(255, 255, 255, 0.82);
+  --bg-hover: rgba(15, 23, 42, 0.045);
+
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 20px rgba(15, 23, 42, 0.04);
+  --shadow-modal: 0 20px 50px rgba(15, 23, 42, 0.22);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-soft: rgba(37, 99, 235, 0.10);
+
+  --ok: #16a34a;
+  --ok-bg: rgba(22, 163, 74, 0.12);
+  --ok-border: rgba(22, 163, 74, 0.25);
+
+  --warn: #d97706;
+  --warn-bg: rgba(217, 119, 6, 0.12);
+  --warn-border: rgba(217, 119, 6, 0.28);
+
+  --danger: #dc2626;
+  --danger-hover: #b91c1c;
+  --danger-bg: rgba(220, 38, 38, 0.10);
+  --danger-border: rgba(220, 38, 38, 0.25);
+
+  --neutral-btn: #475569;
+  --neutral-btn-hover: #334155;
+
+  --switch-track: #cbd5e1;
+  --switch-thumb: #ffffff;
+
+  --scrollbar-track: #e2e8f0;
+  --scrollbar-thumb: #94a3b8;
+
+  --radius-card: 18px;
+  --radius-tile: 14px;
+  --radius-control: 11px;
+  --radius-pill: 999px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-page: #0b0f17;
+    --bg-surface: #131924;
+    --bg-subtle: #192130;
+    --bg-input: #0e141e;
+    --bg-header: rgba(19, 25, 36, 0.82);
+    --bg-hover: rgba(148, 163, 184, 0.08);
+
+    --border-subtle: rgba(148, 163, 184, 0.13);
+    --border-strong: rgba(148, 163, 184, 0.24);
+    --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.25), 0 10px 28px rgba(0, 0, 0, 0.22);
+    --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.55);
+
+    --text-primary: #e6edf3;
+    --text-secondary: #9fb0c3;
+    --text-muted: #7d8fa4;
+
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-soft: rgba(59, 130, 246, 0.16);
+
+    --ok: #3fb950;
+    --ok-bg: rgba(63, 185, 80, 0.14);
+    --ok-border: rgba(63, 185, 80, 0.30);
+
+    --warn: #eab308;
+    --warn-bg: rgba(234, 179, 8, 0.14);
+    --warn-border: rgba(234, 179, 8, 0.30);
+
+    --danger: #f85149;
+    --danger-hover: #ff6b63;
+    --danger-bg: rgba(248, 81, 73, 0.14);
+    --danger-border: rgba(248, 81, 73, 0.32);
+
+    --neutral-btn: #334155;
+    --neutral-btn-hover: #475569;
+
+    --switch-track: #334155;
+    --switch-thumb: #f8fafc;
+
+    --scrollbar-track: #161e2b;
+    --scrollbar-thumb: #475569;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-page: #0b0f17;
+  --bg-surface: #131924;
+  --bg-subtle: #192130;
+  --bg-input: #0e141e;
+  --bg-header: rgba(19, 25, 36, 0.82);
+  --bg-hover: rgba(148, 163, 184, 0.08);
+
+  --border-subtle: rgba(148, 163, 184, 0.13);
+  --border-strong: rgba(148, 163, 184, 0.24);
+  --shadow-card: 0 2px 6px rgba(0, 0, 0, 0.25), 0 10px 28px rgba(0, 0, 0, 0.22);
+  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.55);
+
+  --text-primary: #e6edf3;
+  --text-secondary: #9fb0c3;
+  --text-muted: #7d8fa4;
+
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --accent-soft: rgba(59, 130, 246, 0.16);
+
+  --ok: #3fb950;
+  --ok-bg: rgba(63, 185, 80, 0.14);
+  --ok-border: rgba(63, 185, 80, 0.30);
+
+  --warn: #eab308;
+  --warn-bg: rgba(234, 179, 8, 0.14);
+  --warn-border: rgba(234, 179, 8, 0.30);
+
+  --danger: #f85149;
+  --danger-hover: #ff6b63;
+  --danger-bg: rgba(248, 81, 73, 0.14);
+  --danger-border: rgba(248, 81, 73, 0.32);
+
+  --neutral-btn: #334155;
+  --neutral-btn-hover: #475569;
+
+  --switch-track: #334155;
+  --switch-thumb: #f8fafc;
+
+  --scrollbar-track: #161e2b;
+  --scrollbar-thumb: #475569;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root {
+  accent-color: var(--accent);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Noto Sans SC", sans-serif;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+}
+
+/* Sticky Glass Topbar */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-header);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border-subtle);
+  padding: max(10px, env(safe-area-inset-top)) 16px 10px;
+}
+
+.topbar-inner {
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.brand-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.brand-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.version-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.brand-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pulse-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.pulse-chip.is-online .pulse-dot {
+  background: var(--ok);
+  box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.55);
+  animation: pulse-ring 2s infinite;
+}
+
+.pulse-chip.is-warn .pulse-dot {
+  background: var(--warn);
+}
+
+.pulse-chip.is-offline .pulse-dot {
+  background: var(--danger);
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(63, 185, 80, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(63, 185, 80, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-chip.is-online .pulse-dot { animation: none; }
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.1s ease;
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.icon-btn:active {
+  transform: scale(0.96);
+}
+
+.icon-btn:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Theme toggle icon branching (CSS-only based on color-scheme) */
+.theme-icon-dark,
+.theme-icon-light {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-icon-light { display: block; }
+:root[data-theme="light"] .theme-icon-dark { display: block; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-icon-light { display: block; }
+}
+@media (prefers-color-scheme: light), (prefers-color-scheme: no-preference) {
+  :root:not([data-theme="dark"]) .theme-icon-dark { display: block; }
+}
+
+/* Main Container & Bento Cards */
+.container {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 18px;
+  box-shadow: var(--shadow-card);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.card-title svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Bento Status Tiles */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@media (min-width: 640px) {
+  .status-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.stat-tile {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-tile);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.stat-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.mono-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+  border: 1px solid transparent;
+}
+
+.badge-ok {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border-color: var(--ok-border);
+}
+
+.badge-fail {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+
+.badge-warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+
+.badge-neutral {
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+
+.err-banner {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 500;
+  word-break: break-word;
+  display: none;
+}
+
+/* Buttons */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+@media (min-width: 520px) {
+  .actions-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  border: 1px solid transparent;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.16s ease, border-color 0.16s ease, opacity 0.16s ease, transform 0.1s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+.btn-success {
+  background: #16a34a;
+  color: #ffffff;
+}
+.btn-success:hover:not(:disabled) { background: #15803d; }
+
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+}
+.btn-danger:hover:not(:disabled) { background: var(--danger-hover); }
+
+.btn-warn-outline {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-color: var(--warn-border);
+}
+.btn-warn-outline:hover:not(:disabled) {
+  background: rgba(217, 119, 6, 0.20);
+}
+
+.btn-danger-outline {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: var(--danger-border);
+}
+.btn-danger-outline:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.18);
+}
+
+.btn-secondary {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+.btn-secondary:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btn-neutral {
+  background: var(--neutral-btn);
+  color: #ffffff;
+}
+.btn-neutral:hover:not(:disabled) { background: var(--neutral-btn-hover); }
+
+.btn-sm {
+  min-height: 44px;
+  padding: 8px 12px;
+  font-size: 0.84rem;
+}
+
+.btn.is-loading svg {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.helper-note {
+  margin-top: 12px;
+  font-size: 0.77rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+/* Forms & Inputs */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-tile);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+
+.switch-label-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.switch-title {
+  font-size: 0.94rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.switch-desc {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+/* Accessible iOS/Android Toggle Switch */
+.toggle-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 52px;
+  height: 30px;
+  min-width: 52px;
+  border-radius: 999px;
+  background: var(--switch-track);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin: 7px 0;
+  flex-shrink: 0;
+}
+
+.toggle-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--switch-thumb);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.toggle-switch:checked {
+  background: var(--accent);
+}
+
+.toggle-switch:checked::before {
+  transform: translateX(22px);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+@media (min-width: 560px) {
+  .form-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.req-star {
+  color: var(--danger);
+}
+
+.input-control,
+.select-control {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 13px;
+  font: inherit;
+  font-size: max(1rem, 0.94rem);
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.input-control:focus,
+.select-control:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.input-control[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-bg);
+}
+
+.field-error {
+  font-size: 0.76rem;
+  color: var(--danger);
+  min-height: 0;
+  display: none;
+}
+
+.field-error.visible {
+  display: block;
+}
+
+.field-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.password-wrap .input-control {
+  padding-right: 48px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.password-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.eye-off { display: none; }
+.password-toggle[aria-pressed="true"] .eye-on { display: none; }
+.password-toggle[aria-pressed="true"] .eye-off { display: block; }
+
+/* Accordion (<details>) for Advanced Settings & Probe Hosts */
+.accordion-panel {
+  margin-top: 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-tile);
+  background: var(--bg-subtle);
+  overflow: hidden;
+}
+
+.accordion-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.accordion-summary:hover {
+  background: var(--bg-hover);
+}
+
+.accordion-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accordion-chevron {
+  transition: transform 0.2s ease;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.accordion-panel[open] .accordion-chevron {
+  transform: rotate(90deg);
+}
+
+.accordion-body {
+  padding: 4px 14px 14px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .accordion-panel::details-content {
+    interpolate-size: allow-keywords;
+    overflow: clip;
+    transition: block-size 0.25s ease, content-visibility 0.25s ease;
+    transition-behavior: allow-discrete;
+  }
+  .accordion-panel:not([open])::details-content {
+    block-size: 0;
+  }
+}
+
+.meta-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.meta-chip {
+  font-size: 0.74rem;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.probe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.probe-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.probe-count.is-over {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.probe-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.probe-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+@media (min-width: 560px) {
+  .probe-item {
+    grid-template-columns: 1fr 1.25fr auto;
+    align-items: end;
+  }
+}
+
+.probe-item .input-control {
+  min-height: 44px;
+  font-size: 0.88rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.probe-remove-btn {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.probe-remove-btn:hover {
+  background: rgba(220, 38, 38, 0.2);
+}
+
+.probe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Log Terminal Card */
+.log-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.log-search-wrap {
+  flex: 1 1 160px;
+  min-width: 140px;
+}
+
+.log-toolbar .input-control,
+.log-toolbar .select-control {
+  min-height: 44px;
+  padding: 8px 11px;
+  font-size: 0.85rem;
+}
+
+.log-filter-select {
+  width: auto;
+  min-width: 110px;
+}
+
+.log-autoscroll-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border-radius: var(--radius-control);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.log-autoscroll-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.log-terminal {
+  color-scheme: dark;
+  background: #090d14;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.log-terminal-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #101722;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  font-size: 0.74rem;
+  color: #8b9bb0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.log-box {
+  height: 300px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Courier New", monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #cbd5e1;
+  scrollbar-color: #3b4759 #0d131d;
+}
+
+@supports not (scrollbar-color: auto) {
+  .log-box {
+    scrollbar-width: auto;
+  }
+  .log-box::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .log-box::-webkit-scrollbar-track {
+    background: #0d131d;
+  }
+  .log-box::-webkit-scrollbar-thumb {
+    background: #3b4759;
+    border-radius: 4px;
+  }
+}
+
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.log-line:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.lvl-fatal { color: #ff7b72; font-weight: 700; background: rgba(248, 81, 73, 0.12); }
+.lvl-error { color: #ff7b72; }
+.lvl-warn  { color: #f0b429; }
+.lvl-info  { color: #56d364; }
+.lvl-debug { color: #79c0ff; }
+.lvl-trace { color: #8b949e; }
+.lvl-plain { color: #cbd5e1; }
+
+.log-empty {
+  color: #6e7681;
+  padding: 12px 4px;
+}
+
+/* Native <dialog> Confirmation Modal */
+dialog {
+  margin: auto;
+  max-width: min(92vw, 420px);
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-modal);
+  padding: 0;
+}
+
+dialog[open] {
+  display: block;
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog::backdrop {
+  background: rgba(2, 6, 23, 0.58);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.dialog-body {
+  padding: 20px;
+}
+
+.dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.dialog-title svg {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.dialog-desc {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Toast Notification */
+.toast {
+  position: fixed;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translate(-50%, 16px);
+  min-width: 220px;
+  max-width: 90vw;
+  padding: 11px 18px;
+  border-radius: var(--radius-pill);
+  background: #16a34a;
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 100;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+}
+
+.toast.error {
+  background: #dc2626;
+}
+
+.toast.show {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.visually-hidden {
+  position: absolute;
+  clip-path: inset(50%);
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  white-space: nowrap;
+}
 </style>
 </head>
 <body>
-<div class="container">
-  <h1>🔌 ESurfing Daemon</h1>
-  <p class="subtitle">广东天翼校园网认证守护进程 — 管理后台</p>
-
-  <!-- Status -->
-  <div class="card">
-    <h2>运行状态</h2>
-    <div class="row"><span class="label">认证状态</span><span class="value" id="authStatus">检测中...</span></div>
-    <div class="row"><span class="label">网络状态</span><span class="value" id="onlineStatus">检测中...</span></div>
-    <div class="row"><span class="label">运行时间</span><span class="value" id="uptime">-</span></div>
-    <div class="actions" style="margin-top:12px;">
-      <button class="btn btn-danger" onclick="forceAuthReset()">🔄 强制重新认证</button>
-      <button class="btn btn-danger" onclick="restartService()" style="background:#b62324;">🔁 重启服务</button>
-      <button class="btn btn-danger" onclick="stopService()" style="background:#6e7681;">⏹ 停止服务</button>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="M9 12l2 2 4-4"/>
+        </svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title-row">
+          <h1 class="brand-title">ESurfing Daemon</h1>
+          <span class="version-pill" id="sysVersionBadge">--</span>
+        </div>
+        <p class="brand-subtitle">广东天翼校园网认证守护进程</p>
+      </div>
     </div>
-    <p style="color:#8b949e;font-size:0.75rem;margin-top:8px;">认证失败久等时点击"强制重新认证"立即重试。<br>服务彻底卡死、久连不上时点"重启服务"重启守护进程（会短暂断开几秒）。<br>点"停止服务"仅退出守护进程，无需重启手机；KernelSU 模块列表的 Action 可再次启动。</p>
+    <div class="topbar-actions">
+      <div class="pulse-chip" id="livePulse" title="守护进程实时状态">
+        <span class="pulse-dot" aria-hidden="true"></span>
+        <span id="livePulseText">检测中</span>
+      </div>
+      <button type="button" class="icon-btn" id="themeToggleBtn" aria-label="切换深色或浅色主题" title="切换深浅主题">
+        <svg class="theme-icon-light" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+        </svg>
+        <svg class="theme-icon-dark" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+        </svg>
+      </button>
+    </div>
   </div>
+</header>
 
-  <!-- Config -->
-  <div class="card">
-    <h2>配置</h2>
-    <div class="check-row">
-      <input type="checkbox" id="enabled">
-      <label for="enabled">启用自动认证</label>
+<main class="container">
+  <!-- Status Bento Card -->
+  <section class="card" aria-labelledby="statusHeading">
+    <div class="card-header">
+      <h2 class="card-title" id="statusHeading">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        运行状态
+      </h2>
     </div>
-    <div class="form-group">
-      <label for="logLevel">日志等级</label>
-      <select id="logLevel">
-        <option value="2">ERROR</option>
-        <option value="3">WARN</option>
-        <option value="4" selected>INFO</option>
-        <option value="5">DEBUG</option>
-        <option value="6">VERBOSE</option>
+
+    <div class="status-grid">
+      <div class="stat-tile">
+        <span class="stat-label">认证状态</span>
+        <div class="stat-value" id="authStatus"><span class="badge badge-neutral">检测中...</span></div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">网络连通</span>
+        <div class="stat-value" id="onlineStatus"><span class="badge badge-neutral">检测中...</span></div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">运行时长</span>
+        <div class="stat-value mono-val" id="uptime">-</div>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-label">核心版本</span>
+        <div class="stat-value mono-val" id="sysVersion">-</div>
+      </div>
+    </div>
+
+    <div id="authErrorBox" class="err-banner" role="alert"></div>
+
+    <div class="actions-grid">
+      <button type="button" class="btn btn-warn-outline" id="btnForceReset" onclick="forceAuthReset()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+        </svg>
+        <span>强制重新认证</span>
+      </button>
+      <button type="button" class="btn btn-danger-outline" id="btnRestart" onclick="restartService()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 16H3v5"/>
+        </svg>
+        <span>重启服务</span>
+      </button>
+      <button type="button" class="btn btn-neutral" id="btnStop" onclick="stopService()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+        <span>停止服务</span>
+      </button>
+    </div>
+
+    <p class="helper-note">
+      认证失败久等时点击“强制重新认证”立即重试；守护进程卡死时点击“重启服务”（短暂断开几秒后自动恢复）；“停止服务”仅安全退出守护进程，无需重启手机，可在 KernelSU / Magisk 模块 Action 重新启动。
+    </p>
+  </section>
+
+  <!-- Config Bento Card -->
+  <section class="card" aria-labelledby="configHeading">
+    <div class="card-header">
+      <h2 class="card-title" id="configHeading">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        认证配置
+      </h2>
+    </div>
+
+    <form id="configForm" novalidate>
+      <div class="switch-row">
+        <label class="switch-label-wrap" for="enabled">
+          <span class="switch-title">启用自动认证</span>
+          <span class="switch-desc">守护进程启动及断线时自动执行校园网拨号保活</span>
+        </label>
+        <input type="checkbox" id="enabled" name="enabled" switch class="toggle-switch">
+      </div>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="username">用户名 <span class="req-star" aria-hidden="true">*</span></label>
+          <input type="text" id="username" name="username" class="input-control" placeholder="校园网账号" autocomplete="username" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="next" aria-describedby="usernameErr" required>
+          <span class="field-error" id="usernameErr" role="alert"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="password">密码 <span class="req-star" aria-hidden="true">*</span></label>
+          <div class="password-wrap">
+            <input type="password" id="password" name="password" class="input-control" placeholder="校园网密码" autocomplete="current-password" enterkeyhint="done" aria-describedby="passwordErr" required>
+            <button type="button" class="password-toggle" id="togglePasswordBtn" aria-pressed="false" aria-label="显示密码" title="显示/隐藏密码">
+              <svg class="eye-on" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+              <svg class="eye-off" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/>
+                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+                <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/>
+                <line x1="2" y1="2" x2="22" y2="22"/>
+              </svg>
+            </button>
+          </div>
+          <span class="field-error" id="passwordErr" role="alert"></span>
+        </div>
+
+        <div class="form-grid form-grid-2">
+          <div class="form-group">
+            <label for="channel">认证通道</label>
+            <select id="channel" name="channel" class="select-control">
+              <option value="android">Android (推荐)</option>
+              <option value="windows">Windows</option>
+              <option value="linux">Linux</option>
+              <option value="ios">iOS</option>
+              <option value="macos">macOS</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="logLevel">日志等级</label>
+            <select id="logLevel" name="logLevel" class="select-control">
+              <option value="0">0 - NONE (关闭)</option>
+              <option value="1">1 - FATAL (致命)</option>
+              <option value="2">2 - ERROR (错误)</option>
+              <option value="3">3 - WARN (警告)</option>
+              <option value="4" selected>4 - INFO (信息)</option>
+              <option value="5">5 - DEBUG (调试)</option>
+              <option value="6">6 - TRACE (全部)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Advanced Accordion -->
+      <details class="accordion-panel" id="advancedAccordion">
+        <summary class="accordion-summary">
+          <span class="accordion-summary-left">
+            <svg class="accordion-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+            <span>高级参数与探测目标 (probe_hosts)</span>
+          </span>
+          <span class="badge badge-neutral" id="advancedSummaryBadge">默认</span>
+        </summary>
+        <div class="accordion-body">
+          <div class="meta-chips" id="preservedMetaChips">
+            <span class="meta-chip" id="chipWebPort">web_port: 8888</span>
+            <span class="meta-chip" id="chipLogDir">log_dir: ./</span>
+            <span class="meta-chip" id="chipExtraAccounts">附加账号: 0</span>
+          </div>
+
+          <div class="form-grid form-grid-2">
+            <div class="form-group">
+              <label for="connTimeout">连接超时 conn_timeout (秒)</label>
+              <input type="text" id="connTimeout" name="connTimeout" class="input-control" inputmode="numeric" value="10" aria-describedby="connTimeoutErr">
+              <span class="field-error" id="connTimeoutErr" role="alert"></span>
+            </div>
+            <div class="form-group">
+              <label for="opTimeout">操作超时 op_timeout (秒)</label>
+              <input type="text" id="opTimeout" name="opTimeout" class="input-control" inputmode="numeric" value="15" aria-describedby="opTimeoutErr">
+              <span class="field-error" id="opTimeoutErr" role="alert"></span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="accountMark">路由标记 mark (十六进制，留空自动分配)</label>
+            <input type="text" id="accountMark" name="accountMark" class="input-control" placeholder="例如 0x100，默认留空" autocorrect="off" autocapitalize="none" spellcheck="false" aria-describedby="accountMarkErr">
+            <span class="field-error" id="accountMarkErr" role="alert"></span>
+          </div>
+
+          <div class="form-group">
+            <div class="probe-header">
+              <label>联网探测目标 (probe_hosts)</label>
+              <span class="probe-count" id="probeRouteCount">共 4 / 14 路</span>
+            </div>
+            <span class="field-hint">每条填写域名及对应的固定 IPv4（英文逗号分隔）。单域名最多 4 个 IPv4，总计最多 14 路。</span>
+            <div class="probe-list" id="probeHostsList"></div>
+            <span class="field-error" id="probeHostsErr" role="alert"></span>
+            <div class="probe-actions">
+              <button type="button" class="btn btn-secondary btn-sm" id="addProbeHostBtn">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                添加探测域名
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="resetProbeHostsBtn">恢复默认探测</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <div class="actions">
+        <button type="button" class="btn btn-secondary" id="btnSave" onclick="saveConfig(false)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          仅保存
+        </button>
+        <button type="submit" class="btn btn-primary" id="btnSaveAndApply">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          保存并应用
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Log Terminal Bento Card -->
+  <section class="card" aria-labelledby="logHeading">
+    <div class="card-header">
+      <h2 class="card-title" id="logHeading">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="4 17 10 11 4 5"/>
+          <line x1="12" y1="19" x2="20" y2="19"/>
+        </svg>
+        运行日志
+      </h2>
+      <span class="badge badge-neutral" id="logCountBadge">0 行</span>
+    </div>
+
+    <div class="log-toolbar">
+      <search class="log-search-wrap">
+        <label for="logSearchInput" class="visually-hidden">筛选日志关键字</label>
+        <input type="search" id="logSearchInput" class="input-control" placeholder="搜索日志关键字..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+      </search>
+
+      <label for="logFilterLevel" class="visually-hidden">按日志等级筛选</label>
+      <select id="logFilterLevel" class="select-control log-filter-select" aria-label="按日志等级筛选">
+        <option value="ALL">全部级别</option>
+        <option value="ERROR">ERROR+</option>
+        <option value="WARN">WARN+</option>
+        <option value="INFO">INFO+</option>
+        <option value="DEBUG">DEBUG+</option>
       </select>
-    </div>
-    <div class="form-group">
-      <label for="username">用户名</label>
-      <input type="text" id="username" placeholder="校园网账号">
-    </div>
-    <div class="form-group">
-      <label for="password">密码</label>
-      <input type="password" id="password" placeholder="校园网密码">
-    </div>
-    <div class="form-group">
-      <label for="channel">通道</label>
-      <select id="channel">
-        <option value="android">Android (推荐)</option>
-        <option value="windows">Windows</option>
-        <option value="linux">Linux</option>
-        <option value="ios">iOS</option>
-        <option value="macos">macOS</option>
-      </select>
-    </div>
-    <div class="actions">
-      <button class="btn btn-primary" onclick="saveConfig()">保存</button>
-      <button class="btn btn-danger" onclick="saveAndApply()">保存并重启</button>
-    </div>
-  </div>
 
-  <!-- Log -->
-  <div class="card">
-    <h2>运行日志</h2>
-    <div style="display:flex;gap:8px;margin-bottom:8px;">
-      <button class="btn btn-primary" onclick="refreshLog()">刷新日志</button>
-      <button class="btn btn-primary" onclick="exportLog()">导出日志</button>
+      <label class="log-autoscroll-label" for="logAutoScroll">
+        <input type="checkbox" id="logAutoScroll" checked>
+        <span>自动滚底</span>
+      </label>
     </div>
-    <div class="log-box" id="logBox">等待日志...</div>
-  </div>
-</div>
 
-<div class="toast" id="toast"></div>
+    <div class="actions" style="margin-top:0;margin-bottom:10px;">
+      <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshLog" onclick="refreshLog()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+        </svg>
+        刷新日志
+      </button>
+      <button type="button" class="btn btn-secondary btn-sm" id="btnCopyLog" onclick="copyLog()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        复制日志
+      </button>
+      <button type="button" class="btn btn-success btn-sm" id="btnExportLog" onclick="exportLog()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        导出日志
+      </button>
+    </div>
+
+    <div class="log-terminal">
+      <div class="log-terminal-bar">
+        <span>run.log (最近 100 行)</span>
+        <span id="logStatusHint">等待加载</span>
+      </div>
+      <div class="log-box" id="logBox" aria-live="off">等待日志...</div>
+    </div>
+  </section>
+</main>
+
+<!-- Native Modal Confirmation Dialog -->
+<dialog id="confirmDialog" closedby="any" aria-labelledby="confirmTitle">
+  <div class="dialog-body">
+    <h3 class="dialog-title" id="confirmTitle">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <span id="confirmTitleText">确认停止守护进程</span>
+    </h3>
+    <p class="dialog-desc" id="confirmMessage"></p>
+    <form method="dialog" class="dialog-actions">
+      <button type="submit" value="cancel" class="btn btn-secondary" autofocus>取消</button>
+      <button type="submit" value="confirm" class="btn btn-danger" id="confirmOkBtn">确认停止</button>
+    </form>
+  </div>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const API = 'http://127.0.0.1:8888';
-let latestLogText = '';
+const THEME_KEY = 'esurfing_theme';
+const DEFAULT_PROBE_HOSTS = [
+  { host: 'connectivitycheck.platform.hicloud.com', ips: ['183.61.185.93', '125.88.255.53'] },
+  { host: 'connect.rom.miui.com', ips: ['202.69.4.32', '220.181.104.183'] }
+];
 
+let latestLogText = '';
+let cachedConfig = null;
+let toastTimer = null;
+let isBusyAction = false;
+let isServiceStopped = false;
+let confirmResolver = null;
+
+// --- Theme Toggle (follows system by default, persists explicit override) ---
+const colorSchemeQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function getRenderedTheme() {
+  const meta = document.querySelector('meta[name="color-scheme"]');
+  const content = meta ? meta.content : 'light dark';
+  if (content === 'light' || content === 'dark') return content;
+  return colorSchemeQuery && colorSchemeQuery.matches ? 'dark' : 'light';
+}
+
+function applyThemeState(stored) {
+  const meta = document.querySelector('meta[name="color-scheme"]');
+  if (stored === 'light' || stored === 'dark') {
+    if (meta) meta.content = stored;
+    document.documentElement.dataset.theme = stored;
+  } else {
+    if (meta) meta.content = 'light dark';
+    delete document.documentElement.dataset.theme;
+  }
+  const btn = document.getElementById('themeToggleBtn');
+  if (btn) {
+    const rendered = getRenderedTheme();
+    btn.title = rendered === 'dark' ? '当前为深色，点击切换浅色' : '当前为浅色，点击切换深色';
+  }
+}
+
+document.getElementById('themeToggleBtn').addEventListener('click', () => {
+  const current = getRenderedTheme();
+  const target = current === 'dark' ? 'light' : 'dark';
+  const sysTheme = colorSchemeQuery && colorSchemeQuery.matches ? 'dark' : 'light';
+  try {
+    if (target === sysTheme) {
+      localStorage.removeItem(THEME_KEY);
+      applyThemeState(null);
+      showToast('已跟随系统外观');
+    } else {
+      localStorage.setItem(THEME_KEY, target);
+      applyThemeState(target);
+      showToast(target === 'dark' ? '已切换至深色模式' : '已切换至浅色模式');
+    }
+  } catch {
+    applyThemeState(target);
+  }
+});
+
+if (colorSchemeQuery && typeof colorSchemeQuery.addEventListener === 'function') {
+  colorSchemeQuery.addEventListener('change', () => {
+    try {
+      applyThemeState(localStorage.getItem(THEME_KEY));
+    } catch {
+      applyThemeState(null);
+    }
+  });
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key === THEME_KEY) applyThemeState(e.newValue);
+});
+
+applyThemeState((() => {
+  try { return localStorage.getItem(THEME_KEY); } catch { return null; }
+})());
+
+// --- Dialog Modal Helpers ---
+const confirmDialog = document.getElementById('confirmDialog');
+
+if (confirmDialog && !('closedBy' in HTMLDialogElement.prototype)) {
+  const outsideDialog = (e, dialog) => {
+    const r = dialog.getBoundingClientRect();
+    return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+  };
+  let pressedOutside = false;
+  confirmDialog.addEventListener('pointerdown', (e) => { pressedOutside = outsideDialog(e, confirmDialog); });
+  confirmDialog.addEventListener('pointerup', (e) => {
+    if (pressedOutside && outsideDialog(e, confirmDialog)) confirmDialog.close('');
+  });
+}
+
+if (confirmDialog) {
+  confirmDialog.addEventListener('close', () => {
+    const val = confirmDialog.returnValue;
+    confirmDialog.returnValue = '';
+    if (confirmResolver) {
+      const resolve = confirmResolver;
+      confirmResolver = null;
+      resolve(val === 'confirm');
+    }
+  });
+}
+
+function showConfirmModal(title, message, okLabel = '确认') {
+  if (!confirmDialog || typeof confirmDialog.showModal !== 'function') {
+    return Promise.resolve(window.confirm(message));
+  }
+  document.getElementById('confirmTitleText').textContent = title;
+  document.getElementById('confirmMessage').textContent = message;
+  document.getElementById('confirmOkBtn').textContent = okLabel;
+  confirmDialog.returnValue = '';
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+    confirmDialog.showModal();
+  });
+}
+
+// --- Toast & General Helpers ---
 function showToast(msg, isError) {
   const t = document.getElementById('toast');
   t.textContent = msg;
+  if (toastTimer) clearTimeout(toastTimer);
   t.className = 'toast' + (isError ? ' error' : '') + ' show';
-  setTimeout(() => t.className = 'toast', 2500);
+  toastTimer = setTimeout(() => {
+    t.className = 'toast';
+    toastTimer = null;
+  }, 2600);
+}
+
+function setFieldError(inputEl, errId, msg) {
+  const errEl = errId ? document.getElementById(errId) : null;
+  if (msg) {
+    if (inputEl) inputEl.setAttribute('aria-invalid', 'true');
+    if (errEl) {
+      errEl.textContent = msg;
+      errEl.classList.add('visible');
+    }
+  } else {
+    if (inputEl) inputEl.removeAttribute('aria-invalid');
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.classList.remove('visible');
+    }
+  }
+}
+
+function normalizeChannel(raw) {
+  if (raw === null || raw === undefined) return 'android';
+  const v = String(raw).trim().toLowerCase();
+  switch (v) {
+    case '1':
+    case 'windows':
+    case 'win':
+      return 'windows';
+    case '2':
+    case 'linux':
+    case 'pc':
+      return 'linux';
+    case '3':
+    case 'android':
+    case 'phone':
+      return 'android';
+    case '4':
+    case 'ios':
+    case 'iphone':
+      return 'ios';
+    case '5':
+    case 'macos':
+    case 'mac':
+    case 'osx':
+      return 'macos';
+    default:
+      return 'android';
+  }
+}
+
+function isValidIPv4(value) {
+  const text = String(value == null ? '' : value).trim();
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(text)) return false;
+  return text.split('.').every((part) => {
+    if (part.length > 1 && part.startsWith('0')) return false;
+    const n = Number(part);
+    return Number.isInteger(n) && n >= 0 && n <= 255;
+  });
+}
+
+function setButtonLoading(btn, loading) {
+  if (!btn) return;
+  btn.disabled = !!loading;
+  btn.classList.toggle('is-loading', !!loading);
+}
+
+// --- Password Visibility Toggle ---
+const passwordInput = document.getElementById('password');
+const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+togglePasswordBtn.addEventListener('click', () => {
+  const isShown = passwordInput.type === 'text';
+  passwordInput.type = isShown ? 'password' : 'text';
+  togglePasswordBtn.setAttribute('aria-pressed', String(!isShown));
+  togglePasswordBtn.setAttribute('aria-label', isShown ? '显示密码' : '隐藏密码');
+});
+
+// Clear validation errors on input
+document.getElementById('username').addEventListener('input', (e) => setFieldError(e.target, 'usernameErr', ''));
+document.getElementById('password').addEventListener('input', (e) => setFieldError(e.target, 'passwordErr', ''));
+document.getElementById('connTimeout').addEventListener('input', (e) => setFieldError(e.target, 'connTimeoutErr', ''));
+document.getElementById('opTimeout').addEventListener('input', (e) => setFieldError(e.target, 'opTimeoutErr', ''));
+document.getElementById('accountMark').addEventListener('input', (e) => setFieldError(e.target, 'accountMarkErr', ''));
+
+// --- Probe Hosts Editor ---
+let probeRowSeq = 0;
+
+function createProbeRow(host = '', ipsText = '') {
+  const rowId = ++probeRowSeq;
+  const row = document.createElement('div');
+  row.className = 'probe-item';
+
+  const hostGroup = document.createElement('div');
+  hostGroup.className = 'form-group';
+  const hostLabel = document.createElement('label');
+  hostLabel.textContent = '探测域名';
+  hostLabel.htmlFor = `probeHost_${rowId}`;
+  const hostInput = document.createElement('input');
+  hostInput.type = 'text';
+  hostInput.id = `probeHost_${rowId}`;
+  hostInput.className = 'input-control probe-host-input';
+  hostInput.placeholder = '例如 connect.rom.miui.com';
+  hostInput.autocomplete = 'off';
+  hostInput.autocorrect = 'off';
+  hostInput.autocapitalize = 'none';
+  hostInput.spellcheck = false;
+  hostInput.value = host;
+  hostGroup.append(hostLabel, hostInput);
+
+  const ipGroup = document.createElement('div');
+  ipGroup.className = 'form-group';
+  const ipLabel = document.createElement('label');
+  ipLabel.textContent = '固定 IPv4 (逗号分隔)';
+  ipLabel.htmlFor = `probeIps_${rowId}`;
+  const ipInput = document.createElement('input');
+  ipInput.type = 'text';
+  ipInput.id = `probeIps_${rowId}`;
+  ipInput.className = 'input-control probe-ips-input';
+  ipInput.placeholder = '例如 202.69.4.32, 220.181.104.183';
+  ipInput.autocomplete = 'off';
+  ipInput.autocorrect = 'off';
+  ipInput.autocapitalize = 'none';
+  ipInput.spellcheck = false;
+  ipInput.value = ipsText;
+  ipGroup.append(ipLabel, ipInput);
+
+  const delBtn = document.createElement('button');
+  delBtn.type = 'button';
+  delBtn.className = 'probe-remove-btn';
+  delBtn.setAttribute('aria-label', '删除此探测目标');
+  delBtn.title = '删除';
+  delBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+
+  const clearProbeErr = () => {
+    setFieldError(hostInput, null, '');
+    setFieldError(ipInput, null, '');
+    setFieldError(null, 'probeHostsErr', '');
+    updateProbeRouteBadge();
+  };
+  hostInput.addEventListener('input', clearProbeErr);
+  ipInput.addEventListener('input', clearProbeErr);
+  delBtn.addEventListener('click', () => {
+    row.remove();
+    setFieldError(null, 'probeHostsErr', '');
+    updateProbeRouteBadge();
+  });
+
+  row.append(hostGroup, ipGroup, delBtn);
+  return row;
+}
+
+function renderProbeHosts(list) {
+  const container = document.getElementById('probeHostsList');
+  container.innerHTML = '';
+  const items = Array.isArray(list) && list.length > 0 ? list : DEFAULT_PROBE_HOSTS;
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const host = typeof item.host === 'string' ? item.host.trim() : '';
+    const ips = Array.isArray(item.ips) ? item.ips.filter(Boolean).join(', ') : '';
+    container.appendChild(createProbeRow(host, ips));
+  });
+  updateProbeRouteBadge();
+}
+
+function collectAndValidateProbeHosts() {
+  const rows = Array.from(document.querySelectorAll('#probeHostsList .probe-item'));
+  const result = [];
+  let totalRoutes = 0;
+  let ninthHostInput = null;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const hostInput = row.querySelector('.probe-host-input');
+    const ipInput = row.querySelector('.probe-ips-input');
+    const host = hostInput.value.trim();
+    const ipsRaw = ipInput.value.trim();
+
+    setFieldError(hostInput, null, '');
+    setFieldError(ipInput, null, '');
+
+    if (!host && !ipsRaw) continue;
+
+    if (!host) {
+      return { ok: false, error: `第 ${i + 1} 条探测目标缺少域名`, focusEl: hostInput };
+    }
+    if (/\s/.test(host)) {
+      return { ok: false, error: `探测域名 "${host}" 不能包含空格`, focusEl: hostInput };
+    }
+
+    const parts = ipsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) {
+      return { ok: false, error: `${host} 至少需要填写 1 个合法 IPv4`, focusEl: ipInput };
+    }
+    const invalidIp = parts.find((ip) => !isValidIPv4(ip));
+    if (invalidIp) {
+      return { ok: false, error: `${host} 包含无效 IPv4: ${invalidIp}`, focusEl: ipInput };
+    }
+    if (parts.length > 4) {
+      return { ok: false, error: `${host} 配了 ${parts.length} 个 IP，单域名最多 4 个`, focusEl: ipInput };
+    }
+
+    if (result.length === 8 && !ninthHostInput) {
+      ninthHostInput = hostInput;
+    }
+    totalRoutes += parts.length;
+    result.push({ host, ips: parts });
+  }
+
+  if (result.length === 0) {
+    const firstHost = document.querySelector('#probeHostsList .probe-host-input');
+    return { ok: false, error: '探测目标至少保留 1 条（域名 + 合法 IPv4）', focusEl: firstHost };
+  }
+  if (result.length > 8) {
+    return { ok: false, error: `探测域名最多支持 8 个（当前 ${result.length} 个）`, focusEl: ninthHostInput || document.querySelector('#probeHostsList .probe-host-input') };
+  }
+  if (totalRoutes > 14) {
+    const firstIp = document.querySelector('#probeHostsList .probe-ips-input');
+    return { ok: false, error: `探测目标共 ${totalRoutes} 路，总计最多 14 路（认证服务器已占 2 路）`, focusEl: firstIp };
+  }
+  return { ok: true, list: result, totalRoutes };
+}
+
+function updateProbeRouteBadge() {
+  const rows = Array.from(document.querySelectorAll('#probeHostsList .probe-item'));
+  let count = 0;
+  rows.forEach((row) => {
+    const ipsRaw = row.querySelector('.probe-ips-input').value;
+    count += ipsRaw.split(',').map((s) => s.trim()).filter(isValidIPv4).length;
+  });
+  const badge = document.getElementById('probeRouteCount');
+  badge.textContent = `共 ${count} / 14 路`;
+  badge.classList.toggle('is-over', count > 14);
+}
+
+document.getElementById('addProbeHostBtn').addEventListener('click', () => {
+  const container = document.getElementById('probeHostsList');
+  const row = createProbeRow('', '');
+  container.appendChild(row);
+  row.querySelector('.probe-host-input').focus();
+});
+
+document.getElementById('resetProbeHostsBtn').addEventListener('click', () => {
+  renderProbeHosts(DEFAULT_PROBE_HOSTS);
+  setFieldError(null, 'probeHostsErr', '');
+  showToast('已恢复默认探测目标，点击保存后生效');
+});
+
+// --- Status Refresh & System Info ---
+function updateLivePulse(isAuthed, isConnected, onlineCode, authReason, sysReachable, stopped = false) {
+  const chip = document.getElementById('livePulse');
+  const text = document.getElementById('livePulseText');
+  chip.className = 'pulse-chip';
+
+  if (stopped) {
+    chip.classList.add('is-offline');
+    text.textContent = '已停止';
+  } else if (!sysReachable && !isConnected && onlineCode === 0 && !authReason) {
+    chip.classList.add('is-offline');
+    text.textContent = '离线';
+  } else if (isAuthed || isConnected || onlineCode === 204) {
+    chip.classList.add('is-online');
+    text.textContent = '在线';
+  } else if (authReason === 'disabled' || authReason === 'config' || onlineCode === 302) {
+    chip.classList.add('is-warn');
+    text.textContent = authReason === 'disabled' ? '已禁用' : '待认证';
+  } else {
+    chip.classList.add('is-offline');
+    text.textContent = '未联网';
+  }
 }
 
 async function refreshStatus() {
   let isAuthed = false;
   let isConnected = false;
   let onlineCode = 0;
+  let authReason = '';
+  let authErrorMsg = '';
+  let authReachable = false;
+  let sysReachable = false;
 
   try {
-    const authRes = await fetch(API + '/api/status/auth');
+    const authRes = await fetch(API + '/api/status/auth', { cache: 'no-store' });
     if (authRes.ok) {
+      authReachable = true;
       const authData = await authRes.json();
       if (authData.status) isAuthed = true;
-      if (authData.connected) isConnected = true;
+      if (authData.reason) authReason = String(authData.reason);
+      if (authData.errorMessage) {
+        const codes = [
+          authData.errorCode ? 'Error-Code: ' + authData.errorCode : '',
+          authData.subError ? 'Sub-Error: ' + authData.subError : ''
+        ].filter(Boolean).join(', ');
+        authErrorMsg = codes ? `${authData.errorMessage} (${codes})` : String(authData.errorMessage);
+      }
     }
   } catch {}
 
   try {
-    const onlineRes = await fetch(API + '/api/status/online');
+    const onlineRes = await fetch(API + '/api/status/online', { cache: 'no-store' });
     onlineCode = onlineRes.status;
     if (onlineCode === 204) isConnected = true;
   } catch {}
 
-  if (!isConnected && latestLogText) {
-    const lines = latestLogText.split('\n').filter(l => l.trim()).slice(-20);
+  try {
+    const sysRes = await fetch(API + '/api/status/sys', { cache: 'no-store' });
+    if (sysRes.ok) {
+      sysReachable = true;
+      const sysData = await sysRes.json();
+      const ver = sysData && sysData.version ? String(sysData.version) : '-';
+      document.getElementById('sysVersion').textContent = ver;
+      document.getElementById('sysVersionBadge').textContent = ver;
+    }
+  } catch {}
+
+  const backendReachable = authReachable || sysReachable;
+  if (backendReachable && isServiceStopped) {
+    isServiceStopped = false;
+    const stopBtn = document.getElementById('btnStop');
+    if (stopBtn) stopBtn.disabled = false;
+  }
+
+  if (isServiceStopped && !backendReachable) {
+    document.getElementById('authStatus').innerHTML = '<span class="badge badge-fail">已停止</span>';
+    document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">未知</span>';
+    document.getElementById('uptime').textContent = '-';
+    const errBox = document.getElementById('authErrorBox');
+    errBox.textContent = '';
+    errBox.style.display = 'none';
+    updateLivePulse(false, false, 0, '', false, true);
+    return;
+  }
+
+  // 日志兜底仅在后端可达、未处于主动停止态、探测尚未返回 204/302 且进程未禁用时启用, 严格排除所有失败/错误日志
+  if (backendReachable && !isServiceStopped && !isConnected && onlineCode !== 302 && authReason !== 'disabled' && latestLogText) {
+    const lines = latestLogText.split('\n').filter((l) => l.trim()).slice(-20);
     for (let i = lines.length - 1; i >= 0; i--) {
-      if (lines[i].includes('已认证登录')) {
+      const line = lines[i];
+      if (
+        line.includes('需要认证') ||
+        line.includes('检测到 302') ||
+        line.includes('网络错误') ||
+        line.includes('心跳包发送失败') ||
+        line.includes('心跳包连续') ||
+        line.includes('心跳响应失败') ||
+        line.includes('心跳被服务端拒绝') ||
+        line.includes('登出完成') ||
+        line.includes('失败') ||
+        line.includes('错误')
+      ) {
+        break;
+      }
+      if (line.includes('已认证登录')) {
         isAuthed = true;
         isConnected = true;
         break;
       }
-      if (lines[i].includes('已连接至互联网') || lines[i].includes('响应码: 204') || lines[i].includes('心跳包')) {
+      if (
+        line.includes('已连接至互联网') ||
+        line.includes('响应码: 204') ||
+        line.includes('下一次发送心跳包')
+      ) {
         isConnected = true;
-        break;
-      }
-      if (lines[i].includes('需要认证') || lines[i].includes('网络错误')) {
         break;
       }
     }
@@ -165,12 +2030,29 @@ async function refreshStatus() {
   const authEl = document.getElementById('authStatus');
   if (isAuthed) {
     authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已认证</span>';
+  } else if (authReason === 'disabled') {
+    authEl.innerHTML = '<span class="badge badge-warn">已禁用自动认证</span>';
+  } else if (authReason === 'config') {
+    authEl.innerHTML = '<span class="badge badge-warn">&#9888; 待配置账号</span>';
+  } else if (authReason === 'no-account') {
+    authEl.innerHTML = '<span class="badge badge-warn">&#9888; 无可用账号</span>';
   } else if (isConnected) {
-    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span> <span class="badge badge-warn">（守护中 / 正常在线）</span>';
+    authEl.innerHTML = '<span class="badge badge-ok">&#10003; 已联网</span><span class="badge badge-warn">守护中</span>';
   } else if (onlineCode === 302) {
     authEl.innerHTML = '<span class="badge badge-warn">&#9888; 需认证</span>';
+  } else if (authReason === 'not-running') {
+    authEl.innerHTML = '<span class="badge badge-fail">&#10007; 认证进程未运行</span>';
   } else {
     authEl.innerHTML = '<span class="badge badge-fail">&#10007; 未认证</span>';
+  }
+
+  const errBox = document.getElementById('authErrorBox');
+  if (!isAuthed && authErrorMsg) {
+    errBox.textContent = '上次认证错误：' + authErrorMsg;
+    errBox.style.display = 'block';
+  } else {
+    errBox.textContent = '';
+    errBox.style.display = 'none';
   }
 
   const onlineEl = document.getElementById('onlineStatus');
@@ -182,12 +2064,12 @@ async function refreshStatus() {
     onlineEl.innerHTML = '<span class="badge badge-fail">&#10007; 离线</span>';
   }
 
-  // 更新运行时间
   try {
-    const uptimeRes = await fetch(API + '/api/status/uptime');
+    const uptimeRes = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
+    if (!uptimeRes.ok) throw new Error('uptime failed');
     const uptimeData = await uptimeRes.json();
     const el = document.getElementById('uptime');
-    if (uptimeData.uptime_ms > 0) {
+    if (typeof uptimeData.uptime_ms === 'number' && uptimeData.uptime_ms >= 0) {
       const seconds = Math.floor(uptimeData.uptime_ms / 1000);
       const minutes = Math.floor(seconds / 60);
       const hours = Math.floor(minutes / 60);
@@ -201,179 +2083,547 @@ async function refreshStatus() {
     } else {
       el.textContent = '-';
     }
-  } catch { document.getElementById('uptime').textContent = '-'; }
+  } catch {
+    document.getElementById('uptime').textContent = '-';
+  }
+
+  updateLivePulse(isAuthed, isConnected, onlineCode, authReason, backendReachable, false);
+}
+
+// --- Configuration Load & Lossless Save ---
+function isDefaultProbeHosts(list) {
+  if (!Array.isArray(list) || list.length !== DEFAULT_PROBE_HOSTS.length) return false;
+  return list.every((item, idx) => {
+    if (!item || typeof item !== 'object') return false;
+    const def = DEFAULT_PROBE_HOSTS[idx];
+    const host = typeof item.host === 'string' ? item.host.trim() : '';
+    const ips = Array.isArray(item.ips) ? item.ips.map((ip) => String(ip).trim()).filter(Boolean) : [];
+    return host === def.host && ips.length === def.ips.length && ips.every((ip, k) => ip === def.ips[k]);
+  });
+}
+
+function updatePreservedChips(data) {
+  const port = typeof data.web_port === 'number' ? data.web_port : 8888;
+  const logDir = typeof data.log_dir === 'string' && data.log_dir.trim() ? data.log_dir : './';
+  const extraCount = Array.isArray(data.accounts) && data.accounts.length > 1 ? data.accounts.length - 1 : 0;
+  document.getElementById('chipWebPort').textContent = `web_port: ${port}`;
+  document.getElementById('chipLogDir').textContent = `log_dir: ${logDir}`;
+  document.getElementById('chipExtraAccounts').textContent = `附加账号: ${extraCount}`;
+
+  const hasCustomMark = Array.isArray(data.accounts) && data.accounts[0] && data.accounts[0].mark;
+  const hasCustomTimeout = (typeof data.conn_timeout === 'number' && data.conn_timeout !== 10) ||
+    (typeof data.op_timeout === 'number' && data.op_timeout !== 15);
+  const hasCustomProbe = Array.isArray(data.probe_hosts) && !isDefaultProbeHosts(data.probe_hosts);
+  document.getElementById('advancedSummaryBadge').textContent =
+    (hasCustomMark || hasCustomTimeout || hasCustomProbe) ? '已自定义' : '默认';
 }
 
 async function loadConfig() {
   try {
-    const res = await fetch(API + '/api/getConfigs');
+    const res = await fetch(API + '/api/getConfigs', { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    document.getElementById('enabled').checked = data.enabled;
-    document.getElementById('logLevel').value = data.log_lv;
-    if (data.accounts && data.accounts.length > 0) {
-      document.getElementById('username').value = data.accounts[0].username;
-      document.getElementById('password').value = data.accounts[0].password;
-      let ch = (data.accounts[0].channel || 'android').toLowerCase();
-      if (ch === 'phone') ch = 'android';
-      if (ch === 'pc') ch = 'linux';
-      document.getElementById('channel').value = ch;
+    cachedConfig = JSON.parse(JSON.stringify(data));
+
+    document.getElementById('enabled').checked = !!data.enabled;
+    const lvNum = Number(data.log_lv);
+    const lv = Number.isInteger(lvNum) && lvNum >= 0 && lvNum <= 6 ? lvNum : 4;
+    document.getElementById('logLevel').value = String(lv);
+
+    if (Array.isArray(data.accounts) && data.accounts.length > 0 && data.accounts[0]) {
+      document.getElementById('username').value = data.accounts[0].username || '';
+      document.getElementById('password').value = data.accounts[0].password || '';
+      document.getElementById('channel').value = normalizeChannel(data.accounts[0].channel);
+      document.getElementById('accountMark').value = typeof data.accounts[0].mark === 'string' ? data.accounts[0].mark : '';
+    } else {
+      document.getElementById('channel').value = 'android';
+      document.getElementById('accountMark').value = '';
     }
-  } catch { showToast('加载配置失败', true); }
+
+    document.getElementById('connTimeout').value =
+      typeof data.conn_timeout === 'number' && data.conn_timeout > 0 ? String(data.conn_timeout) : '10';
+    document.getElementById('opTimeout').value =
+      typeof data.op_timeout === 'number' && data.op_timeout > 0 ? String(data.op_timeout) : '15';
+
+    renderProbeHosts(Array.isArray(data.probe_hosts) ? data.probe_hosts : DEFAULT_PROBE_HOSTS);
+    updatePreservedChips(data);
+  } catch {
+    renderProbeHosts(DEFAULT_PROBE_HOSTS);
+    showToast('加载配置失败', true);
+  }
 }
 
-async function saveConfig() {
-  const cfg = {
-    enabled: document.getElementById('enabled').checked,
-    log_lv: parseInt(document.getElementById('logLevel').value),
-    accounts: [{
-      username: document.getElementById('username').value.trim(),
-      password: document.getElementById('password').value,
-      channel: document.getElementById('channel').value,
-      mark: ''
-    }]
-  };
-  if (!cfg.accounts[0].username) { showToast('请输入用户名', true); return; }
-  if (!cfg.accounts[0].password) { showToast('请输入密码', true); return; }
+async function saveConfig(silentSuccess) {
+  const usernameEl = document.getElementById('username');
+  const passwordEl = document.getElementById('password');
+  const connTimeoutEl = document.getElementById('connTimeout');
+  const opTimeoutEl = document.getElementById('opTimeout');
+  const markEl = document.getElementById('accountMark');
 
+  const username = usernameEl.value.trim();
+  const password = passwordEl.value;
+
+  setFieldError(usernameEl, 'usernameErr', '');
+  setFieldError(passwordEl, 'passwordErr', '');
+  setFieldError(connTimeoutEl, 'connTimeoutErr', '');
+  setFieldError(opTimeoutEl, 'opTimeoutErr', '');
+  setFieldError(markEl, 'accountMarkErr', '');
+  setFieldError(null, 'probeHostsErr', '');
+
+  if (!username) {
+    setFieldError(usernameEl, 'usernameErr', '请输入用户名');
+    usernameEl.focus();
+    showToast('请输入用户名', true);
+    return false;
+  }
+  if (!password) {
+    setFieldError(passwordEl, 'passwordErr', '请输入密码');
+    passwordEl.focus();
+    showToast('请输入密码', true);
+    return false;
+  }
+
+  const connTimeout = Number(connTimeoutEl.value.trim());
+  if (!Number.isInteger(connTimeout) || connTimeout < 1 || connTimeout > 300) {
+    document.getElementById('advancedAccordion').open = true;
+    setFieldError(connTimeoutEl, 'connTimeoutErr', '请输入 1 - 300 的整数秒');
+    connTimeoutEl.focus();
+    showToast('连接超时参数无效', true);
+    return false;
+  }
+
+  const opTimeout = Number(opTimeoutEl.value.trim());
+  if (!Number.isInteger(opTimeout) || opTimeout < 1 || opTimeout > 300) {
+    document.getElementById('advancedAccordion').open = true;
+    setFieldError(opTimeoutEl, 'opTimeoutErr', '请输入 1 - 300 的整数秒');
+    opTimeoutEl.focus();
+    showToast('操作超时参数无效', true);
+    return false;
+  }
+
+  const markVal = markEl.value.trim();
+  if (markVal && !/^(0[xX])?[0-9a-fA-F]{1,8}$/.test(markVal)) {
+    document.getElementById('advancedAccordion').open = true;
+    setFieldError(markEl, 'accountMarkErr', 'mark 应为十六进制字符串（如 0x100），或留空');
+    markEl.focus();
+    showToast('路由标记格式无效', true);
+    return false;
+  }
+
+  const probeCheck = collectAndValidateProbeHosts();
+  if (!probeCheck.ok) {
+    document.getElementById('advancedAccordion').open = true;
+    setFieldError(probeCheck.focusEl || null, 'probeHostsErr', probeCheck.error);
+    if (probeCheck.focusEl) probeCheck.focusEl.focus();
+    showToast(probeCheck.error, true);
+    return false;
+  }
+
+  // 若初始加载时未能缓存完整配置, 保存前尝试拉取一次以避免覆盖高级字段
+  if (!cachedConfig) {
+    try {
+      const pre = await fetch(API + '/api/getConfigs', { cache: 'no-store' });
+      if (pre.ok) cachedConfig = await pre.json();
+    } catch {}
+  }
+
+  const cfg = cachedConfig ? JSON.parse(JSON.stringify(cachedConfig)) : {};
+  const lvParsed = parseInt(document.getElementById('logLevel').value, 10);
+  cfg.enabled = document.getElementById('enabled').checked;
+  cfg.log_lv = Number.isInteger(lvParsed) && lvParsed >= 0 && lvParsed <= 6 ? lvParsed : 4;
+  if (typeof cfg.web_external_acc !== 'boolean') cfg.web_external_acc = false;
+  if (typeof cfg.log_dir !== 'string' || !cfg.log_dir.trim()) cfg.log_dir = './';
+  if (typeof cfg.web_port !== 'number' || cfg.web_port < 1 || cfg.web_port > 65535) cfg.web_port = 8888;
+  cfg.conn_timeout = connTimeout;
+  cfg.op_timeout = opTimeout;
+  cfg.probe_hosts = probeCheck.list;
+
+  const prevAccounts = Array.isArray(cfg.accounts) ? cfg.accounts : [];
+  const firstAcc = (prevAccounts[0] && typeof prevAccounts[0] === 'object')
+    ? { ...prevAccounts[0] }
+    : {};
+  firstAcc.username = username;
+  firstAcc.password = password;
+  firstAcc.channel = normalizeChannel(document.getElementById('channel').value);
+  firstAcc.mark = markVal;
+  if (!Array.isArray(firstAcc.time_windows)) firstAcc.time_windows = [];
+
+  // 完整保留第 2+ 个账号及首个账号的 mark / time_windows
+  cfg.accounts = [firstAcc, ...prevAccounts.slice(1)];
+
+  const saveBtn = document.getElementById('btnSave');
+  setButtonLoading(saveBtn, true);
   try {
     const res = await fetch(API + '/api/saveConfigs', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(cfg)
     });
     if (res.status === 204) {
-      showToast('配置已保存');
-    } else {
-      showToast('保存失败', true);
+      cachedConfig = JSON.parse(JSON.stringify(cfg));
+      updatePreservedChips(cfg);
+      if (!silentSuccess) showToast('配置已保存');
+      return true;
     }
-  } catch { showToast('保存失败: 网络错误', true); }
+    showToast('保存失败 (HTTP ' + res.status + ')', true);
+    return false;
+  } catch {
+    showToast('保存失败: 网络错误', true);
+    return false;
+  } finally {
+    setButtonLoading(saveBtn, false);
+  }
 }
 
 async function saveAndApply() {
-  await saveConfig();
+  const applyBtn = document.getElementById('btnSaveAndApply');
+  setButtonLoading(applyBtn, true);
   try {
+    const saved = await saveConfig(true);
+    if (!saved) return;
+
     const res = await fetch(API + '/api/applyConfigs', {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apply: true })
     });
     if (res.status === 204) {
-      showToast('配置已应用，认证线程即将重启');
+      showToast('配置已保存并应用，认证进程即将重载');
+      setTimeout(refreshStatus, 1000);
+    } else {
+      showToast('配置已保存，但应用失败 (HTTP ' + res.status + ')', true);
     }
-  } catch { showToast('应用失败', true); }
+  } catch {
+    showToast('配置已保存，但应用失败: 网络错误', true);
+  } finally {
+    setButtonLoading(applyBtn, false);
+  }
 }
 
-// Force auth reset — breaks the long retry sleep and restarts dialer now
+document.getElementById('configForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  saveAndApply();
+});
+
+// --- Service Control Actions ---
 async function forceAuthReset() {
+  if (isBusyAction) return;
+  const btn = document.getElementById('btnForceReset');
+  isBusyAction = true;
+  setButtonLoading(btn, true);
   try {
     const res = await fetch(API + '/api/auth/reset', { method: 'POST' });
-    const data = await res.json();
-    if (data && data.ok) {
+    if (res.status === 204) {
       showToast('已触发强制重新认证');
-    } else {
-      showToast(data && data.reason === 'no dialer' ? '守护进程未在运行' : '触发失败', true);
+      setTimeout(refreshStatus, 800);
+      return;
     }
-  } catch { showToast('请求失败', true); }
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.ok) {
+      showToast('已触发强制重新认证');
+      setTimeout(refreshStatus, 800);
+    } else {
+      const msg = data && data.reason === 'no dialer'
+        ? '认证子进程未在运行'
+        : (data && data.reason === 'not ready' ? '配置尚未加载就绪' : '触发失败');
+      showToast(msg, true);
+    }
+  } catch {
+    showToast('请求失败', true);
+  } finally {
+    isBusyAction = false;
+    setButtonLoading(btn, false);
+  }
 }
 
-
-// Stop service — clean exit without execv restart (no phone reboot needed)
 async function stopService() {
-  if (!confirm('确定停止守护进程？停止后 Web 后台将不可用，需在 KernelSU/Magisk 模块 Action 中重新启动。')) return;
-  const btn = document.querySelector('button[onclick="stopService()"]');
+  if (isBusyAction) return;
+  const ok = await showConfirmModal(
+    '确认停止守护进程',
+    '停止后 Web 后台将不可用，需在 KernelSU / Magisk 模块 Action 中重新启动。是否继续？',
+    '确认停止'
+  );
+  if (!ok) return;
+
+  const btn = document.getElementById('btnStop');
+  isBusyAction = true;
+  setButtonLoading(btn, true);
   try {
     const res = await fetch(API + '/api/stop', { method: 'POST' });
-    const data = await res.json();
-    if (data && data.ok) {
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.ok) {
       showToast('服务正在停止...');
-      if (btn) btn.disabled = true;
-      // Wait until API is gone
       for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise((r) => setTimeout(r, 500));
         try {
           const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
           if (!ping.ok) break;
-        } catch { break; }
+        } catch {
+          break;
+        }
+      }
+      isServiceStopped = true;
+      if (btn) {
+        btn.classList.remove('is-loading');
+        btn.disabled = true;
       }
       showToast('服务已停止（无需重启手机）');
       document.getElementById('authStatus').innerHTML = '<span class="badge badge-fail">已停止</span>';
       document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">未知</span>';
       document.getElementById('uptime').textContent = '-';
+      updateLivePulse(false, false, 0, '', false, true);
     } else {
       showToast('停止请求失败', true);
+      setButtonLoading(btn, false);
     }
   } catch {
+    isServiceStopped = true;
+    if (btn) {
+      btn.classList.remove('is-loading');
+      btn.disabled = true;
+    }
     showToast('服务已停止（无需重启手机）');
-    if (btn) btn.disabled = true;
+    document.getElementById('authStatus').innerHTML = '<span class="badge badge-fail">已停止</span>';
+    document.getElementById('onlineStatus').innerHTML = '<span class="badge badge-warn">未知</span>';
+    document.getElementById('uptime').textContent = '-';
+    updateLivePulse(false, false, 0, '', false, true);
+  } finally {
+    isBusyAction = false;
   }
 }
 
-// Restart service — asks the daemon to execv itself, then polls until it's back
+async function waitUntilNewInstance(oldBootId, oldUptime) {
+  let sawDown = false;
+  for (let i = 0; i < 35; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const sysRes = await fetch(API + '/api/status/sys', { cache: 'no-store' });
+      if (!sysRes.ok) {
+        sawDown = true;
+        continue;
+      }
+      const sysData = await sysRes.json();
+      const newBootId = sysData && sysData.bootId ? String(sysData.bootId) : '';
+      const newUptime = sysData && typeof sysData.uptime_ms === 'number' ? sysData.uptime_ms : Infinity;
+      if (oldBootId ? (newBootId && newBootId !== oldBootId) : (sawDown || newUptime < oldUptime)) {
+        return true;
+      }
+    } catch {
+      sawDown = true;
+    }
+  }
+  return false;
+}
+
 async function restartService() {
-  const btn = document.querySelector('button[onclick="restartService()"]');
+  if (isBusyAction) return;
+  const btn = document.getElementById('btnRestart');
+  isBusyAction = true;
+  setButtonLoading(btn, true);
+
+  let oldBootId = '';
+  let oldUptime = Infinity;
+  try {
+    const pre = await fetch(API + '/api/status/sys', { cache: 'no-store' });
+    if (pre.ok) {
+      const preData = await pre.json();
+      if (preData && preData.bootId) oldBootId = String(preData.bootId);
+      if (preData && typeof preData.uptime_ms === 'number') oldUptime = preData.uptime_ms;
+    }
+  } catch {}
+
   try {
     const res = await fetch(API + '/api/restart', { method: 'POST' });
-    const data = await res.json();
-    if (data && data.ok) {
+    const data = await res.json().catch(() => null);
+    if (res.ok && data && data.ok) {
       showToast('服务正在重启，请稍候...');
-      if (btn) btn.disabled = true;
-      let back = false;
-      for (let i = 0; i < 30; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        try {
-          const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
-          if (ping.ok) { back = true; break; }
-        } catch { /* still restarting */ }
-      }
+      const back = await waitUntilNewInstance(oldBootId, oldUptime);
       if (back) {
         showToast('服务已恢复，正在刷新...');
-        setTimeout(() => location.reload(), 1000);
+        setTimeout(() => location.reload(), 500);
       } else {
         showToast('服务尚未恢复，请手动刷新页面', true);
-        if (btn) btn.disabled = false;
+        setButtonLoading(btn, false);
+        isBusyAction = false;
       }
     } else {
       showToast('重启请求失败', true);
+      setButtonLoading(btn, false);
+      isBusyAction = false;
     }
   } catch {
     showToast('服务正在重启，等待恢复...');
-    if (btn) btn.disabled = true;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      try {
-        const ping = await fetch(API + '/api/status/uptime', { cache: 'no-store' });
-        if (ping.ok) { location.reload(); return; }
-      } catch { /* still restarting */ }
+    const back = await waitUntilNewInstance(oldBootId, oldUptime);
+    if (back) {
+      location.reload();
+      return;
     }
     showToast('服务尚未恢复，请手动刷新页面', true);
-    if (btn) btn.disabled = false;
+    setButtonLoading(btn, false);
+    isBusyAction = false;
   }
 }
 
-// Log polling — /api/log returns full rotate history + current run.log
-async function pollLog() {
+// --- Log Viewer (XSS-safe DOM rendering + level color + filter/search + autoscroll) ---
+const LOG_RANK = { FATAL: 1, ERROR: 2, WARN: 3, INFO: 4, DEBUG: 5, TRACE: 6 };
+const FILTER_MAX_RANK = { ALL: 99, ERROR: 2, WARN: 3, INFO: 4, DEBUG: 5 };
+
+function detectLogLevel(line) {
+  if (line.includes('[FATAL]')) return 'FATAL';
+  if (line.includes('[ERROR]')) return 'ERROR';
+  if (line.includes('[WARN]')) return 'WARN';
+  if (line.includes('[INFO]')) return 'INFO';
+  if (line.includes('[DEBUG]')) return 'DEBUG';
+  if (line.includes('[TRACE]')) return 'TRACE';
+  return '';
+}
+
+function renderLogs() {
+  const box = document.getElementById('logBox');
+  const countBadge = document.getElementById('logCountBadge');
+  const statusHint = document.getElementById('logStatusHint');
+  const filterLv = document.getElementById('logFilterLevel').value;
+  const keyword = document.getElementById('logSearchInput').value.trim().toLowerCase();
+  const maxRank = FILTER_MAX_RANK[filterLv] || 99;
+
+  if (!latestLogText) {
+    box.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'log-empty';
+    empty.textContent = '(empty)';
+    box.appendChild(empty);
+    countBadge.textContent = '0 行';
+    return;
+  }
+
+  const rawLines = latestLogText.split('\n').filter((l) => l.length > 0);
+  const matched = rawLines.filter((line) => {
+    if (maxRank < 99) {
+      const lv = detectLogLevel(line);
+      const rank = LOG_RANK[lv] || 4;
+      if (rank > maxRank) return false;
+    }
+    if (keyword && !line.toLowerCase().includes(keyword)) return false;
+    return true;
+  });
+  const filtered = matched.slice(-100);
+
+  const frag = document.createDocumentFragment();
+  if (filtered.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'log-empty';
+    empty.textContent = '(当前筛选条件下无匹配日志)';
+    frag.appendChild(empty);
+  } else {
+    filtered.forEach((line) => {
+      const div = document.createElement('div');
+      const lv = detectLogLevel(line);
+      div.className = 'log-line ' + (lv ? 'lvl-' + lv.toLowerCase() : 'lvl-plain');
+      div.textContent = line;
+      frag.appendChild(div);
+    });
+  }
+
+  box.innerHTML = '';
+  box.appendChild(frag);
+  countBadge.textContent = (maxRank < 99 || keyword)
+    ? `${filtered.length} / ${matched.length} 匹配`
+    : `${filtered.length} / ${rawLines.length} 行`;
+  if (statusHint) statusHint.textContent = `已更新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
+
+  if (document.getElementById('logAutoScroll').checked) {
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+document.getElementById('logFilterLevel').addEventListener('change', renderLogs);
+document.getElementById('logSearchInput').addEventListener('input', renderLogs);
+document.getElementById('logAutoScroll').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    const box = document.getElementById('logBox');
+    box.scrollTop = box.scrollHeight;
+  }
+});
+
+async function pollLog(forceRender = false) {
+  const box = document.getElementById('logBox');
+  const statusHint = document.getElementById('logStatusHint');
   try {
     const res = await fetch(`${API}/api/log?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) {
-      document.getElementById('logBox').textContent =
-        res.status === 503 ? '(日志尚未就绪)' : `(获取失败 HTTP ${res.status})`;
+      box.textContent = res.status === 503 ? '(日志尚未就绪)' : `(获取失败 HTTP ${res.status})`;
+      if (statusHint) statusHint.textContent = `HTTP ${res.status}`;
       return false;
     }
     const text = await res.text();
+    const hasRendered = !!box.querySelector('.log-line, .log-empty');
+    if (!forceRender && text === latestLogText && hasRendered) {
+      if (statusHint) statusHint.textContent = `已更新 ${new Date().toLocaleTimeString('zh-CN', { hour12: false })}`;
+      return true;
+    }
     latestLogText = text;
-    const lines = text.split('\n').filter(l => l).slice(-100);
-    document.getElementById('logBox').textContent = lines.join('\n') || '(empty)';
+    renderLogs();
     return true;
-  } catch (e) {
-    document.getElementById('logBox').textContent = '(无法连接日志接口)';
+  } catch {
+    box.textContent = '(无法连接日志接口)';
+    if (statusHint) statusHint.textContent = '连接失败';
     return false;
   }
 }
 
 async function refreshLog() {
-  const ok = await pollLog();
-  showToast(ok ? '日志已刷新' : '刷新日志失败', !ok);
+  const btn = document.getElementById('btnRefreshLog');
+  setButtonLoading(btn, true);
+  try {
+    const ok = await pollLog(true);
+    showToast(ok ? '日志已刷新' : '刷新日志失败', !ok);
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
+
+async function copyLog() {
+  const box = document.getElementById('logBox');
+  const renderedLines = Array.from(box.querySelectorAll('.log-line')).map((el) => el.textContent).join('\n');
+  const textToCopy = renderedLines || (latestLogText && latestLogText.trim() ? latestLogText : '');
+  if (!textToCopy) {
+    showToast('当前没有可复制的日志', true);
+    return;
+  }
+  try {
+    let copied = false;
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        copied = true;
+      } catch {}
+    }
+    if (!copied) {
+      const ta = document.createElement('textarea');
+      ta.value = textToCopy;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      copied = document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+    if (copied) {
+      showToast('日志已复制到剪贴板');
+    } else {
+      showToast('复制失败，请使用导出功能', true);
+    }
+  } catch {
+    showToast('复制失败，请使用导出功能', true);
+  }
 }
 
 async function exportLog() {
+  const btn = document.getElementById('btnExportLog');
+  setButtonLoading(btn, true);
   try {
     const res = await fetch(`${API}/api/log?t=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) {
@@ -381,7 +2631,7 @@ async function exportLog() {
       return;
     }
     const text = await res.text();
-    const blob = new Blob([text], { type: 'text/plain' });
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -393,6 +2643,8 @@ async function exportLog() {
     showToast('日志已导出');
   } catch {
     showToast('导出失败: 网络错误', true);
+  } finally {
+    setButtonLoading(btn, false);
   }
 }
 

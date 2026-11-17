@@ -6,6 +6,7 @@
     <application
         android:label="ESurfing"
         android:icon="@drawable/ic_launcher_foreground"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.ESurfingUI">
 
         <activity

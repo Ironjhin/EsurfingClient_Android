@@ -22,8 +22,6 @@
 
 static bool s_cfg_usable = false;
 
-static uint64_t s_cfg_hash = 0;
-
 static uint64_t s_cfg_check_time = 0;
 
 /* ------------------------------------------------------------------
@@ -91,14 +89,14 @@ static bool supervisor_child_ready(child_t* child, const int index)
     if (child->kind != CHILD_AUTH) return true;
     if (s_cfg_usable == false) return false;
 
-    child->account = (index < g_prog_cnt) ? g_prog_status[index].login_cfg.idx : 0;
+    child->account = (index < g_prog_cnt) ? g_prog_status[index].cfg.idx : 0;
 
     return child->account != 0;
 }
 
 static void supervisor_restart_due(void)
 {
-    const uint64_t now = get_cur_tm_ms();
+    const uint64_t now = get_steady_tm_ms();
 
     for (int i = 0; i < g_child_count; i++)
     {
@@ -118,10 +116,12 @@ static void supervisor_restart_due(void)
 }
 
 /**
- * @brief 按配置文件的变化调整子进程
+ * @brief 按"保存并应用"标记调整子进程
  *
- * 监管者与子进程之间没有通道, 网页上的"保存并应用"传不到这里, 只能盯着配置文件:
- * 内容变了才重新解析一次 (解析一次要写好几行日志, 每 200 毫秒来一次会把日志刷满)。
+ * 监管者与子进程之间没有通道, 网页上的"保存并应用"传不到这里, 只能靠 Web 进程
+ * 落下的 .apply 标记: 有标记才重新解析一次 (解析一次要写好几行日志)。
+ *
+ * 单纯保存配置不会让这里重读 —— 用户点了"应用"或重启才生效。
  *
  * 配置从不可用变回可用时要主动把认证子进程拉起来 —— 它们没有"待机"的形态,
  * 不可用期间压根没被拉起来过
@@ -133,11 +133,21 @@ static void supervisor_sync_cfg(void)
     if (now - s_cfg_check_time < SUPERVISOR_CFG_CHECK_MS) return;
     s_cfg_check_time = now;
 
-    const uint64_t hash = cfg_file_hash();
-    if (hash == s_cfg_hash) return;
-    s_cfg_hash = hash;
+    // 只有网页上点了"保存并应用"才重新解析
+    if (cfg_take_apply_request() == false) return;
 
     const bool usable = load_cfg();
+
+    if (usable)
+    {
+        // 用户主动应用了可用配置: 退避清零, 让尚未运行的认证进程立即拉起
+        for (int i = 0; i < g_child_count; i++)
+        {
+            if (g_children[i].kind != CHILD_AUTH) continue;
+            g_children[i].restarts = 0;
+            g_children[i].next_start_time = 0;
+        }
+    }
 
     if (usable == s_cfg_usable) return;
     s_cfg_usable = usable;
@@ -145,14 +155,6 @@ static void supervisor_sync_cfg(void)
     if (usable)
     {
         LOG_DEBUG("配置已可用, 认证进程开始拉起");
-
-        // 退避清零: 之前拉不起来是因为配置不可用, 不该按失败次数继续等下去
-        for (int i = 0; i < g_child_count; i++)
-        {
-            if (g_children[i].kind != CHILD_AUTH) continue;
-            g_children[i].restarts = 0;
-            g_children[i].next_start_time = 0;
-        }
     }
     else
     {
@@ -271,7 +273,7 @@ static bool supervisor_build_children(void)
         memset(child, 0, sizeof(*child));
         child->handle = CHILD_HANDLE_INVALID;
         child->kind = CHILD_AUTH;
-        child->account = (i < g_prog_cnt) ? g_prog_status[i].login_cfg.idx : 0;
+        child->account = (i < g_prog_cnt) ? g_prog_status[i].cfg.idx : 0;
         child->control_port = child_control_port(CHILD_AUTH, g_child_count);
         g_child_count++;
     }
@@ -307,7 +309,6 @@ int work_supervisor(void)
      * 和把 run.log 改名归档, 每次都归档就会在日志目录里堆一堆只有横幅的垃圾文件
      */
     s_cfg_usable = load_cfg();
-    s_cfg_hash = cfg_file_hash();
 
     if (s_cfg_usable == false)
     {

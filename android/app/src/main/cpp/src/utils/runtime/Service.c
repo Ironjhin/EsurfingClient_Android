@@ -1,5 +1,6 @@
 #include "supervisor/Supervisor.h"
 
+#include "core/States.h"
 #include "utils/runtime/Shutdown.h"
 #include "utils/runtime/Service.h"
 #include "utils/log/Logger.h"
@@ -7,7 +8,6 @@
 
 #ifdef _WIN32
 #include <setjmp.h>
-extern jmp_buf g_exit_jmp;
 #else
 #include <stdlib.h>
 #include <unistd.h>
@@ -17,8 +17,6 @@ extern jmp_buf g_exit_jmp;
 #ifndef ENOENT
 #define ENOENT 2
 #endif
-
-extern bool g_need_restart;
 
 extern void work(void);
 

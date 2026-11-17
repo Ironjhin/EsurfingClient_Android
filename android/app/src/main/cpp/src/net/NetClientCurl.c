@@ -18,6 +18,7 @@
 
 #ifdef __OPENWRT__
 #include <errno.h>
+#include <unistd.h>
 
 #ifndef SOL_SOCKET
 #define SOL_SOCKET 1
@@ -27,10 +28,6 @@
 #define SO_MARK 36
 #endif
 #endif
-
-char g_school_id[SCHOOL_ID_LENGTH] = {0};
-char g_school_domain[DOMAIN_LENGTH] = {0};
-char g_area[AREA_LENGTH] = {0};
 
 static void resolve_url(char* out, size_t out_len, const char* base, const char* ref)
 {
@@ -102,16 +99,25 @@ curl_socket_t open_socket_callback(void* client_p, curlsocktype purpose, struct 
      * tl_thread_idx 为负表示不在认证线程里 (Web 进程的后台探测线程就是 -1),
      * 此时没有账号上下文, 不绑 mark (走主路由表) —— 但绝不能去读 g_prog_status[-1]
      */
-    if (tl_thread_idx >= 0 && g_prog_status[tl_thread_idx].login_cfg.mark != 0)
+    if (tl_thread_idx >= 0 && g_prog_status[tl_thread_idx].cfg.mark != 0)
     {
-        if (setsockopt(sock_fd, SOL_SOCKET, SO_MARK, &g_prog_status[tl_thread_idx].login_cfg.mark, sizeof(g_prog_status[tl_thread_idx].login_cfg.mark)) == -1)
+        if (setsockopt(sock_fd, SOL_SOCKET, SO_MARK, &g_prog_status[tl_thread_idx].cfg.mark, sizeof(g_prog_status[tl_thread_idx].cfg.mark)) == -1)
         {
-            LOG_ERROR("设置 SO_MARK 失败 (mark = %" PRIu32 " (0x%x)): %s", g_prog_status[tl_thread_idx].login_cfg.mark, g_prog_status[tl_thread_idx].login_cfg.mark, strerror(errno));
+            /**
+             * 绑 mark 失败就直接放弃这次请求: 继续发的话这个 socket 会走主路由表,
+             * 也就是用别的账号的线路出去 —— 多 WAN 下就是串线 (认证请求从 A 线发出,
+             * 会话却记在 B 线的 IP 上)。
+             *
+             * 返回 CURL_SOCKET_BAD 后 curl 不会再管这个 fd, 得自己关掉。
+             */
+            LOG_ERROR("设置 SO_MARK 失败 (mark = %" PRIu32 " (0x%x)): %s, 放弃本次请求",
+                g_prog_status[tl_thread_idx].cfg.mark, g_prog_status[tl_thread_idx].cfg.mark, strerror(errno));
+
+            close(sock_fd);
+            return CURL_SOCKET_BAD;
         }
-        else
-        {
-            LOG_VERBOSE("设置 SO_MARK = %" PRIu32 " (0x%x)", g_prog_status[tl_thread_idx].login_cfg.mark, g_prog_status[tl_thread_idx].login_cfg.mark);
-        }
+
+        LOG_TRACE("设置 SO_MARK = %" PRIu32 " (0x%x)", g_prog_status[tl_thread_idx].cfg.mark, g_prog_status[tl_thread_idx].cfg.mark);
     }
 
     return sock_fd;
@@ -225,7 +231,7 @@ size_t header_cb(const void* contents, const size_t size, const size_t nmemb, vo
         {
             if (!g_prog_status[tl_thread_idx].last_location_lock)
             {
-                LOG_VERBOSE("原始数据: %s", header);
+                LOG_TRACE("原始数据: %s", header);
 
                 const char* value = header + 9;
                 while (*value == ' ') value++;
@@ -246,7 +252,7 @@ size_t header_cb(const void* contents, const size_t size, const size_t nmemb, vo
                 resolve_url(resolved, sizeof(resolved), g_request_url, location);
                 snprintf(g_prog_status[tl_thread_idx].last_location, LAST_LOCATION_LEN, "%s", resolved);
 
-                LOG_VERBOSE("现在的 last_location: %s (长度: %zu)",
+                LOG_TRACE("现在的 last_location: %s (长度: %zu)",
                             g_prog_status[tl_thread_idx].last_location,
                             strlen(g_prog_status[tl_thread_idx].last_location));
             }
